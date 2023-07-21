@@ -1,0 +1,2 @@
+/Library/Developer/CommandLineTools/usr/bin/ar qc libyourDbLib.a CMakeFiles/yourDbLib.dir/source/TSDBEngineImpl.cpp.o CMakeFiles/yourDbLib.dir/source/struct/ColumnValue.cpp.o CMakeFiles/yourDbLib.dir/source/struct/Row.cpp.o CMakeFiles/yourDbLib.dir/source/struct/Schema.cpp.o CMakeFiles/yourDbLib.dir/source/struct/Vin.cpp.o CMakeFiles/yourDbLib.dir/source/vec/ColumnNumber.cpp.o CMakeFiles/yourDbLib.dir/source/vec/ColumnString.cpp.o CMakeFiles/yourDbLib.dir/source/vec/IColumn.cpp.o
+/Library/Developer/CommandLineTools/usr/bin/ranlib libyourDbLib.a

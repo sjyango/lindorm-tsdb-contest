@@ -1,0 +1,2 @@
+/Library/Developer/CommandLineTools/usr/bin/ar qc libtestLib.a CMakeFiles/testLib.dir/__/source/struct/ColumnValue.cpp.o CMakeFiles/testLib.dir/__/source/struct/Row.cpp.o CMakeFiles/testLib.dir/__/source/struct/Schema.cpp.o CMakeFiles/testLib.dir/__/source/struct/Vin.cpp.o CMakeFiles/testLib.dir/TSDBEngineSample.cpp.o
+/Library/Developer/CommandLineTools/usr/bin/ranlib libtestLib.a
