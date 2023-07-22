@@ -34,8 +34,8 @@ void ColumnNumber<T>::insert_range_from(const IColumn& src, size_t start, size_t
 }
 
 template <typename T>
-void ColumnNumber<T>::insert_indices_from(const IColumn& src, const UInt32* indices_begin,
-                         const UInt32* indices_end) {
+void ColumnNumber<T>::insert_indices_from(const IColumn& src, const int* indices_begin,
+                         const int* indices_end) {
     size_t origin_size = size();
     size_t new_size = indices_end - indices_begin;
     data.resize(origin_size + new_size);
@@ -45,6 +45,12 @@ void ColumnNumber<T>::insert_indices_from(const IColumn& src, const UInt32* indi
     for (int i = 0; i < new_size; ++i) {
         data[origin_size + i] = src_data[indices_begin[i]];
     }
+}
+
+template <typename T>
+int ColumnNumber<T>::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
+    const ColumnNumber& rhs = static_cast<const ColumnNumber&>(rhs_);
+    return data[n] > rhs.get_data()[m] ? 1 : (data[n] < rhs.get_data()[m] ? -1 : 0);
 }
 
 }

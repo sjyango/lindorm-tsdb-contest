@@ -44,6 +44,8 @@ public:
         return std::string_view {};
     }
 
+    virtual void clear() = 0;
+
     /// Appends n-th element from other column with the same type.
     /// Is used in merge-sort and merges. It could be implemented in inherited classes more optimally than default implementation.
     virtual void insert_from(const IColumn& src, size_t n) = 0;
@@ -56,8 +58,10 @@ public:
     /// indices_begin + indices_end represent the row indices of column src
     /// Warning:
     ///       if *indices == -1 means the row is null, only use in outer join, do not use in any other place
-    virtual void insert_indices_from(const IColumn& src, const UInt32* indices_begin,
-                                     const UInt32* indices_end) = 0;
+    virtual void insert_indices_from(const IColumn& src, const int* indices_begin,
+                                     const int* indices_end) = 0;
+
+    virtual int compare_at(size_t n, size_t m, const IColumn& rhs) const = 0;
 
     using Offset = UInt32;
     using Offsets = std::vector<Offset>;
@@ -65,5 +69,10 @@ public:
 private:
     std::string _column_name;
 };
+
+using ColumnPtr = const IColumn*;
+using MutableColumnPtr = IColumn*;
+using Columns = std::vector<ColumnPtr>;
+using MutableColumns = std::vector<MutableColumnPtr>;
 
 }

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <set>
 #include <vector>
 #include <cstring>
@@ -27,10 +28,13 @@
 #include <utility>
 #include <ostream>
 #include <map>
+#include <memory>
 #include <cstdio>
 #include <iostream>
 #include <cmath>
 #include <cstdint>
+
+namespace LindormContest {
 
 using UInt8 = uint8_t;
 using UInt16 = uint16_t;
@@ -46,3 +50,5 @@ using Float32 = float;
 using Float64 = double;
 
 using String = std::string;
+
+}

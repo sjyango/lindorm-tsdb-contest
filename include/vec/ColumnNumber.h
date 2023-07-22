@@ -46,8 +46,16 @@ public:
         }
     }
 
+    const Container& get_data() const {
+        return data;
+    }
+
     size_t size() const override {
         return data.size();
+    }
+
+    void clear() override {
+        data.clear();
     }
 
     std::string_view get_string_view() const override {
@@ -58,8 +66,10 @@ public:
 
     void insert_range_from(const IColumn& src, size_t start, size_t length) override;
 
-    void insert_indices_from(const IColumn& src, const UInt32* indices_begin,
-                             const UInt32* indices_end) override;
+    void insert_indices_from(const IColumn& src, const int* indices_begin,
+                             const int* indices_end) override;
+
+    int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
 
 protected:
     Container data;

@@ -66,8 +66,8 @@ void ColumnString::insert_range_from(const IColumn& src, size_t start, size_t le
     }
 }
 
-void ColumnString::insert_indices_from(const IColumn& src, const UInt32* indices_begin,
-                                          const UInt32* indices_end) {
+void ColumnString::insert_indices_from(const IColumn& src, const int* indices_begin,
+                                          const int* indices_end) {
     const ColumnString& src_str = static_cast<const ColumnString&>(src);
     auto src_offset_data = src_str.offsets.data();
 
@@ -99,6 +99,25 @@ void ColumnString::insert_indices_from(const IColumn& src, const UInt32* indices
             memcpy(dst_data_ptr + dst_chars_pos, src_data_ptr + offset, size_to_append);
             dst_chars_pos += size_to_append;
         }
+    }
+}
+
+int ColumnString::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
+    const ColumnString& rhs = static_cast<const ColumnString&>(rhs_);
+    size_t lhs_length = size_at(n);
+    size_t rhs_length = rhs.size_at(m);
+    size_t min_length = std::min(lhs_length, rhs_length);
+    int res = memcmp(chars.data() + offset_at(n), rhs.chars.data() + rhs.offset_at(m), min_length);
+    if (res) {
+        return res;
+    }
+    // res == 0
+    if (lhs_length > rhs_length) {
+        return 1;
+    } else if (lhs_length == rhs_length) {
+        return 0;
+    } else {
+        return -1;
     }
 }
 
