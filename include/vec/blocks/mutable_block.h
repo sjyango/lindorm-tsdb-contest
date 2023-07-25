@@ -18,46 +18,48 @@
 #include <unordered_map>
 
 #include "Root.h"
-#include "common/creator.h"
-#include "vec/IColumn.h"
-#include "vec/block.h"
+#include "block.h"
+#include "vec/columns/IColumn.h"
+#include "struct/Row.h"
 
 namespace LindormContest::vectorized {
 
 class MutableBlock {
-    ENABLE_FACTORY_CREATOR(MutableBlock);
-
+public:
     static MutableBlock build_mutable_block(Block* block) {
         return block == nullptr ? MutableBlock() : MutableBlock(block);
     }
 
     MutableBlock() = default;
 
-    MutableBlock(Block* block) : data {block->mutate_columns()} {
+    MutableBlock(Block* block)
+            : _data {block->mutate_columns()}, _data_types(block->get_data_types()), _names(block->get_names()) {
         initialize_index_by_name();
     }
 
-    MutableBlock(Block& block) : data {block.mutate_columns()} {
+    MutableBlock(Block& block)
+            : _data {block.mutate_columns()}, _data_types(block.get_data_types()), _names(block.get_names()) {
         initialize_index_by_name();
     }
 
-    MutableBlock(Block&& block) : data {block.mutate_columns()} {
+    MutableBlock(Block&& block)
+            : _data {std::move(block.mutate_columns())}, _data_types(std::move(block.get_data_types())), _names(std::move(block.get_names())) {
         initialize_index_by_name();
     }
 
     void initialize_index_by_name() {
-        for (size_t i = 0, size = data.size(); i < size; ++i) {
-            index_by_name[data[i]->get_name()] = i;
+        for (size_t i = 0, size = _data.size(); i < size; ++i) {
+            _index_by_name[_data[i]->get_name()] = i;
         }
     }
 
     void reserve(size_t count) {
-        index_by_name.reserve(count);
-        data.reserve(count);
+        _index_by_name.reserve(count);
+        _data.reserve(count);
     }
 
     size_t rows() const {
-        for (const auto& column : data) {
+        for (const auto& column : _data) {
             if (column) {
                 return column->size();
             }
@@ -67,30 +69,24 @@ class MutableBlock {
     }
 
     ColumnType get_type_by_position(size_t position) const {
-        return data[position]->get_type();
+        return _data[position]->get_type();
     }
 
     const MutableColumnPtr& get_column_by_position(size_t position) const {
-        return data[position];
+        return _data[position];
     }
 
-    size_t columns() const { return data.size(); }
+    size_t columns() const { return _data.size(); }
 
     bool empty() const { return rows() == 0; }
 
     void clear() {
-        for (auto& column : data) {
-            column->clear();
-        }
-        data.clear();
-        index_by_name.clear();
+//        for (auto& column : data) {
+//            column->clear();
+//        }
+        _data.clear();
+        _index_by_name.clear();
     }
-
-    void insert(size_t position, ColumnPtr column);
-
-    void insert(ColumnPtr column);
-
-    void erase(const std::set<size_t>& positions);
 
     void erase(const String& name);
 
@@ -99,6 +95,8 @@ class MutableBlock {
     Block to_block(int start_column, int end_column);
 
     void add_row(const Block* block, int row);
+
+    void add_row(const Row& row);
 
     void add_rows(const Block* block, const int* row_begin, const int* row_end);
 
@@ -112,12 +110,15 @@ class MutableBlock {
                    const MutableBlock& rhs) const;
 
 private:
-
     using Container = MutableColumns;
+    using DataTypes = std::vector<ColumnType>;
+    using Names = std::vector<String>;
     using IndexByName = std::unordered_map<String, size_t>;
 
-    Container data;
-    IndexByName index_by_name;
+    Container _data;
+    IndexByName _index_by_name;
+    DataTypes _data_types;
+    Names _names;
 };
 
 }

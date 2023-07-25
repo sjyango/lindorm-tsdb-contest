@@ -13,6 +13,4 @@
  * limitations under the License.
  */
 
-#include "vec/IColumn.h"
-
-
+#include "vec/columns/IColumn.h"

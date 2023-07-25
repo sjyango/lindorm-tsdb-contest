@@ -16,7 +16,7 @@
 #pragma once
 
 #include "Root.h"
-#include "vec/IColumn.h"
+#include "IColumn.h"
 
 namespace LindormContest::vectorized {
 
@@ -25,16 +25,22 @@ class ColumnNumber : public IColumn {
 public:
     using Container = std::vector<T>;
 
-    ColumnNumber() = default;
+    ColumnNumber(String column_name)
+            : IColumn(column_name) {}
 
-    ColumnNumber(const size_t n) : data(n) {}
+    ColumnNumber(String column_name, const size_t n)
+            : IColumn(column_name), data(n) {}
 
-    ColumnNumber(const size_t n, const T x) : data(n, x) {}
+    ColumnNumber(String column_name, const size_t n, const T x)
+            : IColumn(column_name), data(n, x) {}
 
-    ColumnNumber(std::initializer_list<T> il) : data{il} {}
+    ColumnNumber(String column_name, std::initializer_list<T> il)
+            : IColumn(column_name), data{il} {}
 
-    ColumnNumber(const ColumnNumber& src)
+    ColumnNumber(String column_name, const ColumnNumber& src)
             : IColumn(src.get_name()), data(src.data.begin(), src.data.end()) {}
+
+    ~ColumnNumber() override = default;
 
     ColumnType get_type() const override {
         if constexpr (std::is_same_v<T, Int32>) {
@@ -62,6 +68,8 @@ public:
         return std::string_view {reinterpret_cast<const char*>(data.data()), data.size() * sizeof(T)};
     }
 
+    void push_number(T val);
+
     void insert_from(const IColumn& src, size_t n) override;
 
     void insert_range_from(const IColumn& src, size_t start, size_t length) override;
@@ -71,8 +79,14 @@ public:
 
     int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
 
-protected:
+    MutableColumnPtr clone_resized(size_t s) const override;
+
+private:
     Container data;
 };
+
+using ColumnInt32 = ColumnNumber<Int32>;
+using ColumnInt64 = ColumnNumber<Int64>;
+using ColumnFloat64 = ColumnNumber<Float64>;
 
 }

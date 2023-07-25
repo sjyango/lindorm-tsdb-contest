@@ -40,7 +40,8 @@ namespace LindormContest {
         COLUMN_TYPE_STRING = 1,
         COLUMN_TYPE_INTEGER = 2,
         COLUMN_TYPE_DOUBLE_FLOAT = 3,
-        COLUMN_TYPE_UNINITIALIZED = 4
+        COLUMN_TYPE_TIMESTAMP = 4,
+        COLUMN_TYPE_UNINITIALIZED = 5
     };
 
     std::string getNameFromColumnType(ColumnType columnType);

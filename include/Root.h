@@ -51,4 +51,7 @@ using Float64 = double;
 
 using String = std::string;
 
+using rowid_t = uint32_t;
+using ordinal_t = uint64_t;
+
 }

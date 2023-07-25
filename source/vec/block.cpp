@@ -15,11 +15,11 @@
 
 #pragma once
 
-#include "vec/block.h"
+#include "vec/blocks/block.h"
 
 namespace LindormContest::vectorized {
 
-void Block::insert(size_t position, ColumnPtr column) {
+void Block::insert(size_t position, const ColumnWithTypeAndName& elem) {
     if (position > data.size()) {
         std::cerr << "Position out of bound in Block::insert(), max position = " << data.size() << std::endl;
     }
@@ -30,13 +30,13 @@ void Block::insert(size_t position, ColumnPtr column) {
         }
     }
 
-    index_by_name.emplace(column->get_name(), position);
-    data.emplace(data.begin() + position, column);
+    index_by_name.emplace(elem._name, position);
+    data.emplace(data.begin() + position, elem);
 }
 
-void Block::insert(ColumnPtr column) {
-    index_by_name.emplace(column->get_name(), data.size());
-    data.emplace_back(column);
+void Block::insert(const ColumnWithTypeAndName& elem) {
+    index_by_name.emplace(elem._name, data.size());
+    data.emplace_back(elem);
 }
 
 void Block::erase(size_t position) {
@@ -84,9 +84,40 @@ MutableColumns Block::mutate_columns() {
     size_t num_columns = data.size();
     MutableColumns columns(num_columns);
     for (size_t i = 0; i < num_columns; ++i) {
-        columns[i] = const_cast<MutableColumnPtr>(data[i]);
+        if (data[i]._column) {
+            columns[i] = const_cast<MutableColumnPtr>(data[i]._column);
+        } else {
+            columns[i] = const_cast<MutableColumnPtr>(
+                    ColumnFactory::instance().create_column(data[i]._type, data[i]._name));
+        }
     }
     return columns;
+}
+
+Block Block::copy_block() const {
+    ColumnsWithTypeAndName columns_with_type_and_name;
+    for (const auto& elem : data) {
+        columns_with_type_and_name.emplace_back(elem);
+    }
+    return {columns_with_type_and_name};
+}
+
+Block Block::copy_block(const std::vector<int>& column_uids) const {
+    ColumnsWithTypeAndName columns_with_type_and_name;
+    for (auto uid : column_uids) {
+        assert(uid < data.size());
+        columns_with_type_and_name.emplace_back(data[uid]);
+    }
+    return {columns_with_type_and_name};
+}
+
+Block Block::clone_without_columns() const {
+    Block res;
+    size_t num_columns = data.size();
+    for (int i = 0; i < num_columns; ++i) {
+        res.insert({nullptr, data[i]._type, data[i]._name});
+    }
+    return res;
 }
 
 }

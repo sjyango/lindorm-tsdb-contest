@@ -77,11 +77,10 @@ public:
     SkipList(const SkipList&) = delete;
     void operator=(const SkipList&) = delete;
 
-    void insert(const Key& key, bool* overwritten) {
+    void insert(const Key& key) {
         Node* prev[MAXHEIGHT];
         Node* x = find_greater_or_equal(key, prev);
 
-        *overwritten = false;
         // Our data structure does not allow duplicate insertion
         int height = random_height();
         if (height > get_max_height()) {

@@ -13,9 +13,14 @@
  * limitations under the License.
  */
 
-#include "vec/ColumnNumber.h"
+#include "vec/columns/ColumnNumber.h"
 
 namespace LindormContest::vectorized {
+
+template <typename T>
+void ColumnNumber<T>::push_number(T val) {
+    data.push_back(val);
+}
 
 template <typename T>
 void ColumnNumber<T>::insert_from(const IColumn& src, size_t n) {
@@ -51,6 +56,21 @@ template <typename T>
 int ColumnNumber<T>::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
     const ColumnNumber& rhs = static_cast<const ColumnNumber&>(rhs_);
     return data[n] > rhs.get_data()[m] ? 1 : (data[n] < rhs.get_data()[m] ? -1 : 0);
+}
+
+template <typename T>
+MutableColumnPtr ColumnNumber<T>::clone_resized(size_t to_size) const {
+    auto res = new ColumnNumber<T>(get_name());
+    if (to_size == 0) {
+        return res;
+    }
+    res->data.resize(to_size);
+    size_t count = std::min(size(), to_size);
+    std::memcpy(res->data.data(), data.data(), count * sizeof(T));
+    if (to_size > count) {
+        std::memset(&res->data[count], 0, (to_size - count) * sizeof(T));
+    }
+    return res;
 }
 
 }

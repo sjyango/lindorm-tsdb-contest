@@ -13,9 +13,20 @@
  * limitations under the License.
  */
 
-#include "vec/ColumnString.h"
+#include "vec/columns/ColumnString.h"
 
 namespace LindormContest::vectorized {
+
+void ColumnString::push_string(const char* pos, size_t length) {
+    const size_t old_size = chars.size();
+    const size_t new_size = old_size + length;
+
+    if (length) {
+        chars.resize(new_size);
+        std::memcpy(chars.data() + old_size, pos, length);
+    }
+    offsets.push_back(new_size);
+}
 
 void ColumnString::insert_from(const IColumn& src, size_t n) {
     const ColumnString& src_vec = static_cast<const ColumnString&>(src);
@@ -119,6 +130,27 @@ int ColumnString::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
     } else {
         return -1;
     }
+}
+
+MutableColumnPtr ColumnString::clone_resized(size_t to_size) const {
+    auto res = new ColumnString(get_name());
+    if (to_size == 0) {
+        return res;
+    }
+    size_t from_size = size();
+    if (to_size <= from_size) {
+        // just cut column
+        res->offsets.assign(offsets.begin(), offsets.begin() + to_size);
+        res->chars.assign(chars.begin(), chars.begin() + offsets[to_size - 1]);
+    } else {
+        // copy column and append empty string for extra elements
+        if (from_size > 0) {
+            res->offsets.assign(offsets.begin(), offsets.end());
+            res->chars.assign(chars.begin(), chars.end());
+        }
+        res->offsets.resize(to_size, chars.size());
+    }
+    return res;
 }
 
 }

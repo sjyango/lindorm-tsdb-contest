@@ -20,11 +20,22 @@
 
 namespace LindormContest::vectorized {
 
+class IColumn;
+class ColumnString;
+
+using ColumnUPtr = std::unique_ptr<const IColumn>;
+using MutableColumnUPtr = std::unique_ptr<IColumn>;
+using UColumns = std::vector<ColumnUPtr>;
+using MutableUColumns = std::vector<MutableColumnUPtr>;
+
+using ColumnPtr = const IColumn*;
+using MutableColumnPtr = IColumn*;
+using Columns = std::vector<ColumnPtr>;
+using MutableColumns = std::vector<MutableColumnPtr>;
+
 class IColumn {
 public:
-    IColumn() = default;
-
-    explicit IColumn(std::string column_name): _column_name(std::move(column_name)) {}
+    IColumn(String column_name): _column_name(std::move(column_name)) {}
 
     IColumn(const IColumn&) = default;
 
@@ -63,16 +74,15 @@ public:
 
     virtual int compare_at(size_t n, size_t m, const IColumn& rhs) const = 0;
 
+    virtual MutableColumnPtr clone_resized(size_t s) const = 0;
+
+    virtual MutableColumnPtr clone_empty() const { return clone_resized(0); }
+
     using Offset = UInt32;
     using Offsets = std::vector<Offset>;
 
 private:
     std::string _column_name;
 };
-
-using ColumnPtr = const IColumn*;
-using MutableColumnPtr = IColumn*;
-using Columns = std::vector<ColumnPtr>;
-using MutableColumns = std::vector<MutableColumnPtr>;
 
 }

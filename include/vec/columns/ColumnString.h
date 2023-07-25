@@ -15,8 +15,8 @@
 
 #pragma once
 
+#include "IColumn.h"
 #include "Root.h"
-#include "vec/IColumn.h"
 
 namespace LindormContest::vectorized {
 
@@ -25,11 +25,13 @@ public:
     using Char = UInt8;
     using Chars = std::vector<Char>;
 
-    ColumnString() = default;
+    ColumnString(String column_name) : IColumn(column_name) {}
 
     ColumnString(const ColumnString& src)
             : IColumn(src.get_name()), offsets(src.offsets.begin(), src.offsets.end()),
               chars(src.chars.begin(), src.chars.end()) {}
+
+    ~ColumnString() override = default;
 
     ColumnType get_type() const {
         return ColumnType::COLUMN_TYPE_STRING;
@@ -47,10 +49,20 @@ public:
         return offsets.size();
     }
 
+    Chars& get_chars() { return chars; }
+
+    const Chars& get_chars() const { return chars; }
+
+    Offsets& get_offsets() { return offsets; }
+
+    const Offsets& get_offsets() const { return offsets; }
+
     void clear() override {
         offsets.clear();
         chars.clear();
     }
+
+    void push_string(const char* pos, size_t length);
 
     void insert_from(const IColumn& src, size_t n) override;
 
@@ -60,6 +72,8 @@ public:
                              const int* indices_end) override;
 
     int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
+
+    MutableColumnPtr clone_resized(size_t s) const override;
 
 
 protected:

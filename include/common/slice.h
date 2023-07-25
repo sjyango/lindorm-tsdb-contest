@@ -21,68 +21,91 @@ namespace LindormContest {
 
 class Slice {
 public:
+    char* _data;
+    size_t _size;
+
     // Create an empty slice.
-    Slice() : data_(""), size_(0) {}
+    Slice() : _data(nullptr), _size(0) {}
+
+    Slice(char* s, size_t n) : _data(s), _size(n) {}
+
+    Slice(const char* s, size_t n) : _data(const_cast<char*>(s)), _size(n) {}
 
     // Create a slice that refers to d[0,n-1].
-    Slice(const char* d, size_t n) : data_(d), size_(n) {}
+    Slice(const UInt8* s, size_t n) : _data(const_cast<char*>(reinterpret_cast<const char*>(s))), _size(n) {}
 
     // Create a slice that refers to the contents of "s"
-    Slice(const std::string& s) : data_(s.data()), size_(s.size()) {}
+    Slice(const std::string& s) : _data(const_cast<char*>(s.data())), _size(s.size()) {}
 
     // Create a slice that refers to s[0,strlen(s)-1]
-    Slice(const char* s) : data_(s), size_(strlen(s)) {}
+    Slice(const char* s) : _data(const_cast<char*>(s)), _size(strlen(s)) {}
 
     // Intentionally copyable.
     Slice(const Slice&) = default;
     Slice& operator=(const Slice&) = default;
 
     // Return a pointer to the beginning of the referenced data
-    const char* data() const { return data_; }
+    const char* data() const { return _data; }
 
     // Return the length (in bytes) of the referenced data
-    size_t size() const { return size_; }
+    size_t size() const { return _size; }
 
     // Return true iff the length of the referenced data is zero
-    bool empty() const { return size_ == 0; }
+    bool empty() const { return _size == 0; }
 
     // Return the ith byte in the referenced data.
     // REQUIRES: n < size()
     char operator[](size_t n) const {
         assert(n < size());
-        return data_[n];
+        return _data[n];
     }
 
     // Change this slice to refer to an empty array
     void clear() {
-        data_ = "";
-        size_ = 0;
+        _data = nullptr;
+        _size = 0;
     }
 
     // Drop the first "n" bytes from this slice.
     void remove_prefix(size_t n) {
         assert(n <= size());
-        data_ += n;
-        size_ -= n;
+        _data += n;
+        _size -= n;
     }
 
     // Return a string that contains the copy of the referenced data.
-    std::string ToString() const { return std::string(data_, size_); }
+    String to_string() const {
+        return String(reinterpret_cast<const char*>(_data), _size);
+    }
 
     // Three-way comparison.  Returns value:
     //   <  0 iff "*this" <  "b",
     //   == 0 iff "*this" == "b",
     //   >  0 iff "*this" >  "b"
-    int compare(const Slice& b) const;
+    int compare(const Slice& b) const {
+        const size_t min_len = (_size < b._size) ? _size : b._size;
+        int r = memcmp(_data, b._data, min_len);
+        if (r == 0) {
+            if (_size < b._size)
+                r = -1;
+            else if (_size > b._size)
+                r = +1;
+        }
+        return r;
+    }
 
     // Return true iff "x" is a prefix of "*this"
     bool starts_with(const Slice& x) const {
-        return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
+        return ((_size >= x._size) && (memcmp(_data, x._data, x._size) == 0));
     }
 
-private:
-    const char* data_;
-    size_t size_;
+    static size_t compute_total_size(const std::vector<Slice>& slices) {
+        size_t total_size = 0;
+        for (auto& slice : slices) {
+            total_size += slice._size;
+        }
+        return total_size;
+    }
 };
 
 inline bool operator==(const Slice& x, const Slice& y) {
@@ -92,16 +115,46 @@ inline bool operator==(const Slice& x, const Slice& y) {
 
 inline bool operator!=(const Slice& x, const Slice& y) { return !(x == y); }
 
-inline int Slice::compare(const Slice& b) const {
-    const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
-    int r = memcmp(data_, b.data_, min_len);
-    if (r == 0) {
-        if (size_ < b.size_)
-            r = -1;
-        else if (size_ > b.size_)
-            r = +1;
+class OwnedSlice {
+public:
+    OwnedSlice() = default;
+    
+    OwnedSlice(const UInt8* _data, size_t size) {
+        _owned_data = std::make_unique<UInt8[]>(size);
+        _size = size;
+        std::memcpy(_owned_data.get(), _data, size);
     }
-    return r;
-}
+
+    OwnedSlice(String&& src) {
+        _owned_data = std::make_unique<UInt8[]>(src.size());
+        _size = src.size();
+        std::memcpy(_owned_data.get(), src.data(), src.size());
+    }
+
+    OwnedSlice(OwnedSlice&& src) {
+        _owned_data = std::move(src._owned_data);
+        _size = src._size;
+    }
+
+    OwnedSlice& operator=(OwnedSlice&& src) {
+        if (this != &src) {
+            std::swap(_owned_data, src._owned_data);
+            std::swap(_size, src._size);
+        }
+        return *this;
+    }
+
+    ~OwnedSlice() = default;
+
+    Slice slice() const {
+        return Slice(_owned_data.get(), _size);
+    }
+
+    size_t size() const { return _size; }
+
+private:
+    std::unique_ptr<UInt8[]> _owned_data;
+    size_t _size;
+};
 
 }
