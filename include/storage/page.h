@@ -22,7 +22,7 @@
 namespace LindormContest::storage {
 
 struct Page {
-    std::vector<OwnedSlice> _data;
+    OwnedSlice _data;
     PageFooter _page_footer;
     std::shared_ptr<Page> _prev;
     std::shared_ptr<Page> _next;
@@ -31,13 +31,13 @@ struct Page {
 
     ~Page() = default;
 
-    Page(std::vector<OwnedSlice>&& data, PageFooter page_footer,
+    Page(OwnedSlice&& data, PageFooter page_footer,
          std::shared_ptr<Page> prev, std::shared_ptr<Page> next)
             : _data(std::move(data)),
               _page_footer(page_footer),
               _prev(prev), _next(next) {}
 
-    Page(std::vector<OwnedSlice>&& data, PageFooter page_footer)
+    Page(OwnedSlice&& data, PageFooter page_footer)
             : _data(std::move(data)),
               _page_footer(page_footer),
               _prev(nullptr), _next(nullptr) {}

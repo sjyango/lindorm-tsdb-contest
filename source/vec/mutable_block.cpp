@@ -13,8 +13,6 @@
 * limitations under the License.
 */
 
-#pragma once
-
 #include "vec/blocks/mutable_block.h"
 
 namespace LindormContest::vectorized {

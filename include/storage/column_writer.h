@@ -34,9 +34,17 @@ public:
 
     ~ColumnWriter();
 
-    Status finish();
-
     Status finish_current_page();
+
+    ordinal_t get_next_rowid() const { return _next_rowid; }
+
+    Status append_data(const uint8_t** ptr, size_t num_rows);
+
+    Status append_data_in_current_page(const uint8_t** data, size_t* num_written);
+
+    Status append_data_in_current_page(const uint8_t* data, size_t* num_written);
+
+    // Status finish();
 
     // uint64_t estimate_buffer_size();
 
@@ -54,23 +62,17 @@ public:
 
     // Status write_bloom_filter_index();
 
-    ordinal_t get_next_rowid() const { return _next_rowid; }
-
-    Status append_data(const uint8_t** ptr, size_t num_rows);
-
-    Status append_data_in_current_page(const uint8_t** data, size_t* num_written);
-
-    Status append_data_in_current_page(const uint8_t* data, size_t* num_written);
-
 private:
     const TableColumn& _column;
     // UInt64 _data_size;
     ordinal_t _first_rowid = 0;
     ordinal_t _next_rowid = 0;
-    PageLinkedList _pages;
-    // io::FileWriter* _file_writer = nullptr;
+
     std::unique_ptr<PageBuilder> _page_builder;
+    std::unique_ptr<PageLinkedList> _pages;
     std::unique_ptr<OrdinalIndexWriter> _ordinal_index_builder;
+
+    // io::FileWriter* _file_writer = nullptr;
     // std::unique_ptr<ZoneMapIndexWriter> _zone_map_index_builder;
     // std::unique_ptr<BitmapIndexWriter> _bitmap_index_builder;
     // std::unique_ptr<InvertedIndexColumnWriter> _inverted_index_builder;

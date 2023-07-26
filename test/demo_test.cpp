@@ -13,28 +13,14 @@
 * limitations under the License.
 */
 
-#pragma once
+#include <gtest/gtest.h>
 
-#include "Root.h"
-#include "common/status.h"
-#include "vec/blocks/block.h"
-#include "table_schema.h"
+namespace LindormContest::test {
 
-namespace LindormContest::storage {
-
-class RowsetWriter {
-public:
-    RowsetWriter(const TableSchema* schema);
-
-    ~RowsetWriter();
-
-    Status add_block(const vectorized::Block* block);
-
-private:
-    static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 100000;
-    const TableSchema* _schema;
-    std::unique_ptr<SegmentWriter> _segment_writer;
-
-};
+TEST(HelloTest, BasicAssertions) {
+    EXPECT_STRNE("hello", "world");
+    EXPECT_EQ(7 * 6, 42);
+}
 
 }
+

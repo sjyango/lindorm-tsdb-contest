@@ -29,22 +29,24 @@ public:
             : IColumn(column_name) {}
 
     ColumnNumber(String column_name, const size_t n)
-            : IColumn(column_name), data(n) {}
+            : IColumn(column_name), _data(n) {}
 
     ColumnNumber(String column_name, const size_t n, const T x)
-            : IColumn(column_name), data(n, x) {}
+            : IColumn(column_name), _data(n, x) {}
 
     ColumnNumber(String column_name, std::initializer_list<T> il)
-            : IColumn(column_name), data{il} {}
+            : IColumn(column_name), _data{il} {}
 
     ColumnNumber(String column_name, const ColumnNumber& src)
-            : IColumn(src.get_name()), data(src.data.begin(), src.data.end()) {}
+            : IColumn(src.get_name()), _data(src._data.begin(), src._data.end()) {}
 
     ~ColumnNumber() override = default;
 
     ColumnType get_type() const override {
         if constexpr (std::is_same_v<T, Int32>) {
             return ColumnType::COLUMN_TYPE_INTEGER;
+        } else if constexpr (std::is_same_v<T, Int64>) {
+            return ColumnType::COLUMN_TYPE_TIMESTAMP;
         } else if constexpr (std::is_same_v<T, Float64>) {
             return ColumnType::COLUMN_TYPE_DOUBLE_FLOAT;
         } else {
@@ -53,37 +55,53 @@ public:
     }
 
     const Container& get_data() const {
-        return data;
+        return _data;
+    }
+
+    T operator[](size_t n) const {
+        return get(n);
+    }
+
+    T get(size_t n) const {
+        return _data[n];
     }
 
     size_t size() const override {
-        return data.size();
+        return _data.size();
     }
 
     void clear() override {
-        data.clear();
+        _data.clear();
     }
 
     std::string_view get_string_view() const override {
-        return std::string_view {reinterpret_cast<const char*>(data.data()), data.size() * sizeof(T)};
+        return std::string_view {reinterpret_cast<const char*>(_data.data()), _data.size() * sizeof(T)};
     }
 
-    void push_number(T val);
+    void push_number(T val) {
+        _data.push_back(val);
+    }
 
-    void insert_from(const IColumn& src, size_t n) override;
+    void insert_from(const IColumn& src, size_t n) override {
+        _data.push_back(static_cast<const ColumnNumber&>(src)._data[n]);
+    }
 
     void insert_range_from(const IColumn& src, size_t start, size_t length) override;
 
-    void insert_indices_from(const IColumn& src, const int* indices_begin,
-                             const int* indices_end) override;
+    void insert_indices_from(const IColumn& src, const int* indices_begin, const int* indices_end) override;
 
-    int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
+    int compare_at(size_t n, size_t m, const IColumn& rhs_) const override;
 
-    MutableColumnPtr clone_resized(size_t s) const override;
+    MutableColumnPtr clone_resized(size_t to_size) const override;
 
 private:
-    Container data;
+    Container _data;
 };
+
+/// Explicit template instantiations - to avoid code bloat in headers.
+template class ColumnNumber<Int32>;
+template class ColumnNumber<Int64>;
+template class ColumnNumber<Float64>;
 
 using ColumnInt32 = ColumnNumber<Int32>;
 using ColumnInt64 = ColumnNumber<Int64>;

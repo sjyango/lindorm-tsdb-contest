@@ -58,8 +58,6 @@ public:
 
     bool is_key() const { return _is_key; }
 
-    UInt16 index_length() const {}
-
     friend bool operator==(const TableColumn& a, const TableColumn& b) {
         if (a._uid != b._uid) {
             return false;

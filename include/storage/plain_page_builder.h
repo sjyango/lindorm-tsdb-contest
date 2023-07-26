@@ -41,20 +41,20 @@ public:
         return _buffer.size() > _data_page_size;
     }
 
-    Status add(const UInt8* vals, size_t* count) override {
+    Status add(const UInt8* data, size_t* count) override {
         if (is_page_full()) {
             *count = 0;
             return Status::OK();
         }
         size_t old_size = _buffer.size();
-        _buffer.resize(old_size + *count * _column.get_type_size());
-        std::memcpy(&_buffer[old_size], vals, *count * _column.get_type_size());
+        _buffer.resize(old_size + (*count) * _column.get_type_size());
+        std::memcpy(&_buffer[old_size], data, (*count) * _column.get_type_size());
         _count += *count;
         return Status::OK();
     }
 
     OwnedSlice finish() override {
-        encode_fixed32_le((UInt8*) &_buffer[0], _count);
+        encode_fixed32_le((UInt8*) &_buffer[0], _count); // encode header, record total counts
         if (_count > 0) {
             _first_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE], _column.get_type_size());
             _last_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE + (_count - 1) * _column.get_type_size()],

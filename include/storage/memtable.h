@@ -22,6 +22,7 @@
 #include "table_schema.h"
 #include "vec/blocks/block.h"
 #include "vec/blocks/mutable_block.h"
+#include "segment_writer.h"
 
 namespace LindormContest::storage {
 
@@ -60,16 +61,14 @@ public:
 
     ~MemTable();
 
-    void insert(const vectorized::Block* input_block);
-
-    void insert(const vectorized::Block* input_block, const std::vector<int>& row_idxs);
+    void insert(const vectorized::Block&& input_block, const std::vector<int>& row_idxs);
 
     bool need_to_flush(size_t threshold) const;
 
     /// Flush
-    Status flush();
+    vectorized::Block flush();
 
-    Status close() {
+    vectorized::Block close() {
         return flush();
     }
 
@@ -108,7 +107,6 @@ private:
     std::unique_ptr<VecTable> _skip_list;
     VecTable::Hint _hint;
     std::vector<std::unique_ptr<RowInBlock>> _row_in_blocks;
-    RowsetWriter* _rowset_writer;
     int64_t _rows = 0;
     vectorized::MutableBlock _input_mutable_block;
     vectorized::MutableBlock _output_mutable_block;

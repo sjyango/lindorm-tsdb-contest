@@ -54,4 +54,16 @@ using String = std::string;
 using rowid_t = uint32_t;
 using ordinal_t = uint64_t;
 
+#define ERR_LOG(str, ...) {                                  \
+    fprintf(stderr, "%s:%d. [ERROR]: ", __FILE__, __LINE__); \
+    fprintf(stderr, str, ##__VA_ARGS__);                     \
+    fprintf(stderr, "\n");                                   \
+}
+
+#define INFO_LOG(str, ...) {                                 \
+    fprintf(stdout, "%s:%d. [INFO]: ", __FILE__, __LINE__);  \
+    fprintf(stdout, str, ##__VA_ARGS__);                     \
+    fprintf(stdout, "\n");                                   \
+}
+
 }

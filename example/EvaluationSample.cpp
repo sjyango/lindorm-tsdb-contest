@@ -7,7 +7,7 @@
 // The actual evaluation program is far more complex than the sample, e.g.,
 // it might contain the restarting progress to clean all memory cache, it
 // might test the memory cache strategies by a pre-warming procedure, and
-// it might perform read and write tests crosswise, or even concurrently.
+// it might perform read and write test crosswise, or even concurrently.
 // Besides, as long as you write to the interface specification, you don't
 // have to worry about incompatibility with our evaluation program.
 //

@@ -80,6 +80,10 @@ public:
         return 0;
     }
 
+    bool empty() const {
+        return rows() == 0;
+    }
+
     DataTypes get_data_types() const {
         DataTypes res;
         res.reserve(columns());

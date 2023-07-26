@@ -18,7 +18,7 @@
 #include "Root.h"
 #include "slice.h"
 
-namespace LindormContest::storage {
+namespace LindormContest {
 
 inline void encode_fixed8_le(uint8_t* buf, uint8_t val) {
     *buf = val;
@@ -140,8 +140,7 @@ const uint8_t* decode_varint32_ptr_fallback(const uint8_t* p, const uint8_t* lim
     return nullptr;
 }
 
-inline const uint8_t* decode_varint32_ptr(const uint8_t* ptr, const uint8_t* limit,
-                                          uint32_t* value) {
+inline const uint8_t* decode_varint32_ptr(const uint8_t* ptr, const uint8_t* limit, uint32_t* value) {
     if (ptr < limit) {
         uint32_t result = *ptr;
         if ((result & 128) == 0) {
@@ -152,7 +151,22 @@ inline const uint8_t* decode_varint32_ptr(const uint8_t* ptr, const uint8_t* lim
     return decode_varint32_ptr_fallback(ptr, limit, value);
 }
 
-extern const uint8_t* decode_varint64_ptr(const uint8_t* p, const uint8_t* limit, uint64_t* value);
+inline const uint8_t* decode_varint64_ptr(const uint8_t* p, const uint8_t* limit, uint64_t* value) {
+    uint64_t result = 0;
+    for (uint32_t shift = 0; shift <= 63 && p < limit; shift += 7) {
+        uint64_t byte = *p;
+        p++;
+        if (byte & 128) {
+            // More bytes are present
+            result |= ((byte & 127) << shift);
+        } else {
+            result |= (byte << shift);
+            *value = result;
+            return p;
+        }
+    }
+    return nullptr;
+}
 
 template <typename T>
 void put_varint32(T* dst, uint32_t v) {

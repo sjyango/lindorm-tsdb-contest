@@ -33,12 +33,12 @@ public:
     MutableBlock() = default;
 
     MutableBlock(Block* block)
-            : _data {block->mutate_columns()}, _data_types(block->get_data_types()), _names(block->get_names()) {
+            : _data {std::move(block->mutate_columns())}, _data_types(std::move(block->get_data_types())), _names(std::move(block->get_names())) {
         initialize_index_by_name();
     }
 
     MutableBlock(Block& block)
-            : _data {block.mutate_columns()}, _data_types(block.get_data_types()), _names(block.get_names()) {
+            : _data {std::move(block.mutate_columns())}, _data_types(std::move(block.get_data_types())), _names(std::move(block.get_names())) {
         initialize_index_by_name();
     }
 

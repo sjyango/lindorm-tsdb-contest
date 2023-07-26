@@ -13,14 +13,14 @@
 * limitations under the License.
 */
 
-#pragma once
-
 #include "storage/column_writer.h"
 
 namespace LindormContest::storage {
 
 ColumnWriter::ColumnWriter(const TableColumn& column) : _column(column) {
     _page_builder = std::make_unique<PlainPageBuilder>(column, DEFAULT_PAGE_SIZE);
+    _pages = std::make_unique<PageLinkedList>();
+    _ordinal_index_builder = std::make_unique<OrdinalIndexWriter>();
 }
 
 ColumnWriter::~ColumnWriter() = default;
@@ -62,50 +62,33 @@ Status ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* n
     return Status::OK();
 }
 
-Status ColumnWriter::finish() {
-    Status res = finish_current_page();
-    if (!res.ok()) {
-        return res;
-    }
-    // _opts.meta->set_num_rows(_next_rowid);
-    return Status::OK();
-}
-
 Status ColumnWriter::finish_current_page() {
     if (_next_rowid == _first_rowid) {
         return Status::OK();
     }
-    std::vector<Slice> body;
-    OwnedSlice encoded_values = _page_builder->finish();
+    OwnedSlice page_data = _page_builder->finish();
     _page_builder->reset();
-    body.push_back(encoded_values.slice());
 
     // prepare data page footer
     Page page;
     page._page_footer._page_type = PageType::DATA_PAGE;
-    page._page_footer._uncompressed_size = Slice::compute_total_size(body);
+    page._page_footer._uncompressed_size = page_data.size();
     page._page_footer._data_page_footer._first_ordinal = _first_rowid;
     page._page_footer._data_page_footer._num_values = _next_rowid - _first_rowid;
-    page._data.emplace_back(std::move(encoded_values));
+    page._data = std::move(page_data);
 
-    // trying to compress page body
-    // OwnedSlice compressed_body;
-    // RETURN_IF_ERROR(PageIO::compress_page_body(_compress_codec, _opts.compression_min_space_saving,
-    //                                            body, &compressed_body));
-    // if (compressed_body.slice().empty()) {
-    //     // page body is uncompressed
-    //     page->data.emplace_back(std::move(encoded_values));
-    //     page->data.emplace_back(std::move(nullmap));
-    // } else {
-    //     // page body is compressed
-    //     page->data.emplace_back(std::move(compressed_body));
-    // }
-    // _push_back_page(page.release());
-
-    _pages.push_page_back(std::move(page));
+    _pages->push_page_back(std::move(page));
     _first_rowid = _next_rowid;
     return Status::OK();
 }
+
+// Status ColumnWriter::finish() {
+//     Status res = finish_current_page();
+//     if (!res.ok()) {
+//         return res;
+//     }
+//     return Status::OK();
+// }
 
 //uint64_t ColumnWriter::estimate_buffer_size() {
 //    uint64_t size = _data_size;

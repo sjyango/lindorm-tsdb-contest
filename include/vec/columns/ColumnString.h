@@ -28,8 +28,8 @@ public:
     ColumnString(String column_name) : IColumn(column_name) {}
 
     ColumnString(const ColumnString& src)
-            : IColumn(src.get_name()), offsets(src.offsets.begin(), src.offsets.end()),
-              chars(src.chars.begin(), src.chars.end()) {}
+            : IColumn(src.get_name()), _offsets(src._offsets.begin(), src._offsets.end()),
+              _chars(src._chars.begin(), src._chars.end()) {}
 
     ~ColumnString() override = default;
 
@@ -38,31 +38,44 @@ public:
     }
 
     inline size_t offset_at(size_t i) const {
-        return offsets[i - 1];
+        return _offsets[i - 1];
     }
 
     inline size_t size_at(size_t i) const {
-        return offsets[i] - offsets[i - 1];
+        return _offsets[i] - _offsets[i - 1];
+    }
+
+    String operator[](size_t n) {
+        return {reinterpret_cast<const char*>(_chars.data() + offset_at(n)), size_at(n)};
     }
 
     size_t size() const override {
-        return offsets.size();
+        return _offsets.size();
     }
 
-    Chars& get_chars() { return chars; }
+    Chars& get_chars() { return _chars; }
 
-    const Chars& get_chars() const { return chars; }
+    const Chars& get_chars() const { return _chars; }
 
-    Offsets& get_offsets() { return offsets; }
+    Offsets& get_offsets() { return _offsets; }
 
-    const Offsets& get_offsets() const { return offsets; }
+    const Offsets& get_offsets() const { return _offsets; }
 
     void clear() override {
-        offsets.clear();
-        chars.clear();
+        _offsets.clear();
+        _chars.clear();
     }
 
-    void push_string(const char* pos, size_t length);
+    void push_string(const char* pos, size_t length) {
+        const size_t old_size = _chars.size();
+        const size_t new_size = old_size + length;
+
+        if (length) {
+            _chars.resize(new_size);
+            std::memcpy(_chars.data() + old_size, pos, length);
+        }
+        _offsets.push_back(new_size);
+    }
 
     void insert_from(const IColumn& src, size_t n) override;
 
@@ -75,10 +88,9 @@ public:
 
     MutableColumnPtr clone_resized(size_t s) const override;
 
-
 protected:
-    Offsets offsets;
-    Chars chars;
+    Offsets _offsets;
+    Chars _chars;
 };
 
 }

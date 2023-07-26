@@ -13,63 +13,71 @@
 * limitations under the License.
 */
 
-#pragma once
-
 #include "storage/delta_writer.h"
 
 namespace LindormContest::storage {
 
-std::unique_ptr<DeltaWriter> DeltaWriter::open(const LindormContest::WriteRequest& w_req, const Schema& schema) {
-    return std::move(std::make_unique<DeltaWriter>(w_req, schema));
+std::unique_ptr<DeltaWriter> DeltaWriter::open(const String& root_path, const String& table_name, const Schema& schema) {
+    return std::move(std::make_unique<DeltaWriter>(root_path, table_name, schema));
 }
 
-DeltaWriter::DeltaWriter(const WriteRequest& w_req, const Schema& schema) {
-    _table_name = w_req.tableName;
+DeltaWriter::DeltaWriter(const String& root_path, const String& table_name, const Schema& schema)
+        : _root_path(root_path), _table_name(table_name) {
     _schema = std::make_unique<TableSchema>(schema);
     _mem_table = std::make_unique<MemTable>(_schema.get());
-    _input_block = std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
+    _segment_writer = std::make_unique<SegmentWriter>(root_path, _schema.get(), allocate_segment_id());
+}
 
+DeltaWriter::~DeltaWriter() = default;
+
+Status DeltaWriter::append(const WriteRequest& w_req) {
     assert(w_req.rows.size() > 0);
+    _input_block = std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
     assert(_input_block->columns() == w_req.rows[0].columns.size() + 2); // 2 represents vin + timestamp
 
     for (const auto& row : w_req.rows) {
         _input_block->add_row(row);
     }
+
+    Status res = write(std::move(_input_block->to_block()), {});
+    if(!res.ok()) {
+        return res;
+    }
+    _input_block.reset();
+    return Status::OK();
 }
 
-DeltaWriter::~DeltaWriter() = default;
-
-Status DeltaWriter::write(const vectorized::Block* block, const std::vector<int>& row_idxs) {
-    if (row_idxs.empty()) {
-        _mem_table->insert(block);
-    } else {
-        _mem_table->insert(block, row_idxs);
-    }
+Status DeltaWriter::write(const vectorized::Block&& block, const std::vector<int>& row_idxs) {
+    _mem_table->insert(std::move(block), row_idxs);
     if (_mem_table->need_to_flush(MEM_TABLE_FLUSH_THRESHOLD)) {
-        auto s = flush_mem_table();
-        if (!s.ok()) {
-            return s;
+        Status res = flush_mem_table();
+        if (!res.ok()) {
+            return res;
         }
     }
     return Status::OK();
 }
 
-Status DeltaWriter::append(const vectorized::Block* block) {
-    return write(block, {});
-}
-
 Status DeltaWriter::flush_mem_table() {
-    Status res = _mem_table->flush();
-    assert(res.ok());
+    vectorized::Block block = std::move(_mem_table->flush());
+    if (block.empty()) {
+        return Status::OK();
+    }
+    _segment_writer->append_block(&block, 0, block.rows(), &_num_rows_written);
     _mem_table = std::make_unique<MemTable>(_schema.get()); // reset mem_table
-    return res;
+    _segment_writer = std::make_unique<SegmentWriter>(_root_path, _schema.get(), allocate_segment_id());
+    return Status::OK();
 }
 
 Status DeltaWriter::close() {
-    Status res = _mem_table->flush();
-    assert(res.ok());
-    _mem_table.reset();
-    return res;
+    vectorized::Block block = std::move(_mem_table->flush());
+    if (block.empty()) {
+        return Status::OK();
+    }
+    _segment_writer->append_block(&block, 0, block.rows(), &_num_rows_written);
+    _mem_table.reset(); // reset mem_table
+    _segment_writer.reset(); // reset segment_writer
+    return Status::OK();
 }
 
 }
