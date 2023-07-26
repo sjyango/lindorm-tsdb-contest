@@ -62,6 +62,10 @@ public:
         return _data;
     }
 
+    T operator[](size_t n) {
+        return get(n);
+    }
+
     T operator[](size_t n) const {
         return get(n);
     }

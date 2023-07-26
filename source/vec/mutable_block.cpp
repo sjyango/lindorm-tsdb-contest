@@ -45,7 +45,7 @@ Block MutableBlock::to_block(int start_column) {
 Block MutableBlock::to_block(int start_column, int end_column) {
     ColumnsWithTypeAndName columns_with_type_and_name;
     for (int i = start_column; i < end_column; ++i) {
-        columns_with_type_and_name.emplace_back(std::const_pointer_cast<const IColumn>(_data[i]), _data_types[i], _names[i]);
+        columns_with_type_and_name.emplace_back(_data[i], _data_types[i], _names[i]);
     }
     return {columns_with_type_and_name};
 }

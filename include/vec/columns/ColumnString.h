@@ -49,6 +49,10 @@ public:
         return {reinterpret_cast<const char*>(_chars.data() + offset_at(n)), size_at(n)};
     }
 
+    String operator[](size_t n) const {
+        return {reinterpret_cast<const char*>(_chars.data() + offset_at(n)), size_at(n)};
+    }
+
     size_t size() const override {
         return _offsets.size();
     }
@@ -64,6 +68,10 @@ public:
     void clear() override {
         _offsets.clear();
         _chars.clear();
+    }
+
+    void push_string(const String& str) {
+        push_string(str.c_str(), str.size());
     }
 
     void push_string(const char* pos, size_t length) {

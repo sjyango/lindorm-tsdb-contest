@@ -18,34 +18,32 @@
 namespace LindormContest::vectorized {
 
 void Block::insert(size_t position, const ColumnWithTypeAndName& elem) {
-    if (position > data.size()) {
-        std::cerr << "Position out of bound in Block::insert(), max position = " << data.size() << std::endl;
+    if (position > _data.size()) {
+        std::cerr << "Position out of bound in Block::insert(), max position = " << _data.size() << std::endl;
     }
 
-    for (auto& name_pos : index_by_name) {
+    for (auto& name_pos : _index_by_name) {
         if (name_pos.second >= position) {
             ++name_pos.second;
         }
     }
 
-    index_by_name.emplace(elem._name, position);
-    data.emplace(data.begin() + position, elem);
+    _index_by_name.emplace(elem._name, position);
+    _data.emplace(_data.begin() + position, elem);
 }
 
 void Block::insert(const ColumnWithTypeAndName& elem) {
-    index_by_name.emplace(elem._name, data.size());
-    data.emplace_back(elem);
+    _index_by_name.emplace(elem._name, _data.size());
+    _data.emplace_back(elem);
 }
 
 void Block::erase(size_t position) {
-    if (data.empty()) {
+    if (_data.empty()) {
         std::cerr << "Block is empty" << std::endl;
     }
-
-    if (position >= data.size()) {
-        std::cerr << "Position out of bound in Block::erase(), max position = " << data.size() - 1 << std::endl;
+    if (position >= _data.size()) {
+        std::cerr << "Position out of bound in Block::erase(), max position = " << _data.size() - 1 << std::endl;
     }
-
     erase_impl(position);
 }
 
@@ -56,36 +54,35 @@ void Block::erase(const std::set<size_t>& positions) {
 }
 
 void Block::erase(const String& name) {
-    auto it = index_by_name.find(name);
-    if (it == index_by_name.end()) {
-        std::cerr << "No such name in Block::erase(): " << name << std::endl;
+    auto it = _index_by_name.find(name);
+    if (it == _index_by_name.end()) {
+        std::cerr << "No such name in `Block::erase()`: " << name << std::endl;
     }
-
     erase_impl(it->second);
 }
 
 void Block::erase_impl(size_t position) {
-    data.erase(data.begin() + position);
-
-    for (auto it = index_by_name.begin(); it != index_by_name.end();) {
+    _data.erase(_data.begin() + position);
+    for (auto it = _index_by_name.begin(); it != _index_by_name.end();) {
         if (it->second == position) {
-            index_by_name.erase(it++);
-        } else if (it->second > position) {
-            --it->second;
+            _index_by_name.erase(it++);
         } else {
+            if (it->second > position) {
+                --it->second;
+            }
             ++it;
         }
     }
 }
 
 SMutableColumns Block::mutate_columns() {
-    size_t num_columns = data.size();
+    size_t num_columns = _data.size();
     SMutableColumns columns(num_columns);
     for (size_t i = 0; i < num_columns; ++i) {
-        if (data[i]._column) {
-            columns[i] = std::const_pointer_cast<IColumn>(data[i]._column);
+        if (_data[i]._column) {
+            columns[i] = std::const_pointer_cast<IColumn>(_data[i]._column);
         } else {
-            columns[i] = ColumnFactory::instance().create_column(data[i]._type, data[i]._name);
+            columns[i] = ColumnFactory::instance().create_column(_data[i]._type, _data[i]._name);
         }
     }
     return columns;
@@ -93,7 +90,7 @@ SMutableColumns Block::mutate_columns() {
 
 Block Block::copy_block() const {
     ColumnsWithTypeAndName columns_with_type_and_name;
-    for (const auto& elem : data) {
+    for (const auto& elem : _data) {
         columns_with_type_and_name.emplace_back(elem);
     }
     return {columns_with_type_and_name};
@@ -102,17 +99,17 @@ Block Block::copy_block() const {
 Block Block::copy_block(const std::vector<int>& column_uids) const {
     ColumnsWithTypeAndName columns_with_type_and_name;
     for (auto uid : column_uids) {
-        assert(uid < data.size());
-        columns_with_type_and_name.emplace_back(data[uid]);
+        assert(uid < _data.size());
+        columns_with_type_and_name.emplace_back(_data[uid]);
     }
     return {columns_with_type_and_name};
 }
 
 Block Block::clone_without_columns() const {
     Block res;
-    size_t num_columns = data.size();
+    size_t num_columns = _data.size();
     for (int i = 0; i < num_columns; ++i) {
-        res.insert({nullptr, data[i]._type, data[i]._name});
+        res.insert({nullptr, _data[i]._type, _data[i]._name});
     }
     return res;
 }

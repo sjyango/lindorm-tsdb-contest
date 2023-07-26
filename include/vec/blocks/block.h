@@ -32,45 +32,45 @@ public:
 
     Block() = default;
 
-    Block(std::initializer_list<ColumnWithTypeAndName> il) : data {il} {
-        initialize_index_by_name();
+    Block(std::initializer_list<ColumnWithTypeAndName> il) : _data {il} {
+        initialize__index_by_name();
     }
 
-    Block(const ColumnsWithTypeAndName& columns) : data {columns} {
-        initialize_index_by_name();
+    Block(const ColumnsWithTypeAndName& columns) : _data {columns} {
+        initialize__index_by_name();
     }
 
     Block(Block&& block)
-            : data(std::move(block.data)), index_by_name(std::move(block.index_by_name)) {}
+            : _data(std::move(block._data)), _index_by_name(std::move(block._index_by_name)) {}
 
     ~Block() = default;
 
-    void initialize_index_by_name() {
-        for (size_t i = 0, size = data.size(); i < size; ++i) {
-            index_by_name[data[i]._column->get_name()] = i;
+    void initialize__index_by_name() {
+        for (size_t i = 0, size = _data.size(); i < size; ++i) {
+            _index_by_name[_data[i]._column->get_name()] = i;
         }
     }
 
     void reserve(size_t count) {
-        index_by_name.reserve(count);
-        data.reserve(count);
+        _index_by_name.reserve(count);
+        _data.reserve(count);
     }
 
     size_t columns() const {
-        return data.size();
+        return _data.size();
     }
 
     SColumns get_columns() const {
-        size_t num_columns = data.size();
+        size_t num_columns = _data.size();
         SColumns columns(num_columns);
         for (int i = 0; i < num_columns; ++i) {
-            columns[i] = data[i]._column;
+            columns[i] = _data[i]._column;
         }
         return columns;
     }
 
     size_t rows() const {
-        for (const auto& elem : data) {
+        for (const auto& elem : _data) {
             if (elem._column) {
                 return elem._column->size();
             }
@@ -85,7 +85,7 @@ public:
     DataTypes get_data_types() const {
         DataTypes res;
         res.reserve(columns());
-        for (const auto& elem : data) {
+        for (const auto& elem : _data) {
             res.push_back(elem._type);
         }
         return res;
@@ -94,15 +94,15 @@ public:
     Names get_names() const {
         Names res;
         res.reserve(columns());
-        for (const auto& elem : data) {
+        for (const auto& elem : _data) {
             res.push_back(elem._name);
         }
         return res;
     }
 
     void clear() {
-        data.clear();
-        index_by_name.clear();
+        _data.clear();
+        _index_by_name.clear();
     }
 
     void insert(size_t position, const ColumnWithTypeAndName& elem);
@@ -116,12 +116,12 @@ public:
     void erase(const String& name);
 
     ColumnWithTypeAndName& get_by_position(size_t position) {
-        assert(position < data.size());
-        return data[position];
+        assert(position < _data.size());
+        return _data[position];
     }
 
     const ColumnWithTypeAndName& get_by_position(size_t position) const {
-        return data[position];
+        return _data[position];
     }
 
     SMutableColumns mutate_columns();
@@ -132,23 +132,23 @@ public:
 
     Block clone_without_columns() const;
 
-    Container::iterator begin() { return data.begin(); }
+    Container::iterator begin() { return _data.begin(); }
 
-    Container::iterator end() { return data.end(); }
+    Container::iterator end() { return _data.end(); }
 
-    Container::const_iterator begin() const { return data.begin(); }
+    Container::const_iterator begin() const { return _data.begin(); }
 
-    Container::const_iterator end() const { return data.end(); }
+    Container::const_iterator end() const { return _data.end(); }
 
-    Container::const_iterator cbegin() const { return data.cbegin(); }
+    Container::const_iterator cbegin() const { return _data.cbegin(); }
 
-    Container::const_iterator cend() const { return data.cend(); }
+    Container::const_iterator cend() const { return _data.cend(); }
 
 private:
     void erase_impl(size_t position);
 
-    Container data;
-    IndexByName index_by_name;
+    Container _data;
+    IndexByName _index_by_name;
 };
 
 }

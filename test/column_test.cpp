@@ -155,8 +155,7 @@ TEST(ColumnTest, ColumnStringTest) {
     ASSERT_EQ(ColumnType::COLUMN_TYPE_STRING, col2->get_type());
 
     for (int32_t i = 0; i < 10000; ++i) {
-        auto str_val = std::to_string(i);
-        col1->push_string(str_val.c_str(), str_val.size());
+        col1->push_string(std::to_string(i));
     }
 
     ASSERT_EQ(10000, col1->size());
