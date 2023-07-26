@@ -165,7 +165,7 @@ public:
         vectorized::Block block;
         for (int i = 0; i < return_columns.size(); ++i) {
             const auto& col = _cols[return_columns[i]];
-            vectorized::ColumnPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
+            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
             block.insert({ptr, col.get_type(), col.get_name()});
         }
         return block;
@@ -174,7 +174,7 @@ public:
     vectorized::Block create_block() const {
         vectorized::Block block;
         for (const auto& col : _cols) {
-            vectorized::ColumnPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
+            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
             block.insert({ptr, col.get_type(), col.get_name()});
         }
         return block;

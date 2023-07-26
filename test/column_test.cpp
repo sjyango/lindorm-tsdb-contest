@@ -23,8 +23,8 @@ namespace LindormContest::test {
 using namespace vectorized;
 
 TEST(ColumnTest, ColumnInt32Test) {
-    ColumnInt32* col1 = (ColumnInt32*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_INTEGER, "col1");
-    ColumnInt32* col2 = (ColumnInt32*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_INTEGER, "col2");
+    std::shared_ptr<ColumnInt32> col1 = std::dynamic_pointer_cast<ColumnInt32>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_INTEGER, "col1"));
+    std::shared_ptr<ColumnInt32> col2 = std::dynamic_pointer_cast<ColumnInt32>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_INTEGER, "col2"));
 
     ASSERT_EQ("col1", col1->get_name());
     ASSERT_EQ(ColumnType::COLUMN_TYPE_INTEGER, col1->get_type());
@@ -63,9 +63,50 @@ TEST(ColumnTest, ColumnInt32Test) {
     }
 }
 
+TEST(ColumnTest, ColumnInt64Test) {
+    std::shared_ptr<ColumnInt64> col1 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col1"));
+    std::shared_ptr<ColumnInt64> col2 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col2"));
+
+    ASSERT_EQ("col1", col1->get_name());
+    ASSERT_EQ(ColumnType::COLUMN_TYPE_TIMESTAMP, col1->get_type());
+    ASSERT_EQ("col2", col2->get_name());
+    ASSERT_EQ(ColumnType::COLUMN_TYPE_TIMESTAMP, col2->get_type());
+
+    for (int64_t i = 0; i < 10000; ++i) {
+        col1->push_number(i);
+    }
+
+    ASSERT_EQ(10000, col1->size());
+
+    for (int64_t i = 0; i < 10000; ++i) {
+        ASSERT_EQ(i, (*col1)[i]);
+    }
+
+    col2->insert_from(*col1, 0);
+    ASSERT_EQ(1, col2->size());
+    ASSERT_EQ(0, (*col2)[0]);
+
+    col2->insert_range_from(*col1, 1, 4999);
+    ASSERT_EQ(5000, col2->size());
+    std::vector<int> indices;
+
+    for (int64_t i = 0; i < 5000; ++i) {
+        indices.push_back(5000 + i);
+        ASSERT_EQ(i, (*col2)[i]);
+    }
+
+    col2->insert_indices_from(*col1, indices.data(), indices.data() + indices.size());
+    ASSERT_EQ(col1->size(), col2->size());
+
+    for (int64_t i = 0; i < 10000; ++i) {
+        ASSERT_EQ(i, (*col2)[i]);
+        ASSERT_EQ(0, col1->compare_at(i, i, *col2));
+    }
+}
+
 TEST(ColumnTest, ColumnFloat64Test) {
-    ColumnFloat64* col1 = (ColumnFloat64*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_DOUBLE_FLOAT, "col1");
-    ColumnFloat64* col2 = (ColumnFloat64*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_DOUBLE_FLOAT, "col2");
+    std::shared_ptr<ColumnFloat64> col1 = std::dynamic_pointer_cast<ColumnFloat64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_DOUBLE_FLOAT, "col1"));
+    std::shared_ptr<ColumnFloat64> col2 = std::dynamic_pointer_cast<ColumnFloat64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_DOUBLE_FLOAT, "col2"));
 
     ASSERT_EQ("col1", col1->get_name());
     ASSERT_EQ(ColumnType::COLUMN_TYPE_DOUBLE_FLOAT, col1->get_type());
@@ -105,8 +146,8 @@ TEST(ColumnTest, ColumnFloat64Test) {
 }
 
 TEST(ColumnTest, ColumnStringTest) {
-    ColumnString* col1 = (ColumnString*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_STRING, "col1");
-    ColumnString* col2 = (ColumnString*)ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_STRING, "col2");
+    std::shared_ptr<ColumnString> col1 = std::dynamic_pointer_cast<ColumnString>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_STRING, "col1"));
+    std::shared_ptr<ColumnString> col2 = std::dynamic_pointer_cast<ColumnString>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_STRING, "col2"));
 
     ASSERT_EQ("col1", col1->get_name());
     ASSERT_EQ(ColumnType::COLUMN_TYPE_STRING, col1->get_type());

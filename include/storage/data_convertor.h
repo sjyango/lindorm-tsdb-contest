@@ -67,9 +67,9 @@ public:
     }
 
     void convert() override {
-        const vectorized::ColumnNumber<T>* column = static_cast<const vectorized::ColumnNumber<T>*>(_column._column);
-        assert(column);
-        _data = column->get_data().data() + _row_pos;
+        assert(_column._column);
+        const vectorized::ColumnNumber<T>& column = reinterpret_cast<const vectorized::ColumnNumber<T>&>(*_column._column);
+        _data = column.get_data().data() + _row_pos;
     }
 
 private:
@@ -93,13 +93,12 @@ public:
 
     void convert() override {
         assert(_column._column);
-        const vectorized::ColumnString* column = static_cast<const vectorized::ColumnString*>(_column._column);
-        assert(column);
-        const char* char_data = reinterpret_cast<const char*>(column->get_chars().data());
+        const vectorized::ColumnString& column = reinterpret_cast<const vectorized::ColumnString&>(*_column._column);
+        const char* char_data = reinterpret_cast<const char*>(column.get_chars().data());
 
         for (size_t pos = _row_pos, i = 0; i < _num_rows; ++i) {
-            const char* data = char_data + column->offset_at(pos + i);
-            size_t size = column->size_at(pos + i);
+            const char* data = char_data + column.offset_at(pos + i);
+            size_t size = column.size_at(pos + i);
             _data.emplace_back(const_cast<char*>(data), size);
         }
 
@@ -169,24 +168,24 @@ public:
     void reset() { _convertors.clear(); }
 
 private:
-    using ColumnDataConvertorUPtr = std::unique_ptr<ColumnDataConvertor>;
+    using ColumnDataConvertorSPtr = std::shared_ptr<ColumnDataConvertor>;
 
-    ColumnDataConvertorUPtr _create_column_data_convertor(const TableColumn& column) {
+    ColumnDataConvertorSPtr _create_column_data_convertor(const TableColumn& column) {
         switch (column.get_type()) {
         case COLUMN_TYPE_INTEGER:
-            return std::make_unique<NumberColumnDataConvertor<Int32>>();
+            return std::make_shared<NumberColumnDataConvertor<Int32>>();
         case COLUMN_TYPE_DOUBLE_FLOAT:
-            return std::make_unique<NumberColumnDataConvertor<Float64>>();
+            return std::make_shared<NumberColumnDataConvertor<Float64>>();
         case COLUMN_TYPE_STRING:
-            return std::make_unique<StringColumnDataConvertor>();
+            return std::make_shared<StringColumnDataConvertor>();
         case COLUMN_TYPE_TIMESTAMP:
-            return std::make_unique<NumberColumnDataConvertor<Int64>>();
+            return std::make_shared<NumberColumnDataConvertor<Int64>>();
         default:
             return nullptr;
         }
     }
 
-    std::vector<ColumnDataConvertorUPtr> _convertors;
+    std::vector<ColumnDataConvertorSPtr> _convertors;
 };
 
 }

@@ -86,7 +86,7 @@ public:
 
     int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
 
-    MutableColumnPtr clone_resized(size_t s) const override;
+    MutableColumnSPtr clone_resized(size_t s) const override;
 
 protected:
     Offsets _offsets;

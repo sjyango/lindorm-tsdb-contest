@@ -54,6 +54,10 @@ public:
         }
     }
 
+    Container& get_data() {
+        return _data;
+    }
+
     const Container& get_data() const {
         return _data;
     }
@@ -92,7 +96,7 @@ public:
 
     int compare_at(size_t n, size_t m, const IColumn& rhs_) const override;
 
-    MutableColumnPtr clone_resized(size_t to_size) const override;
+    MutableColumnSPtr clone_resized(size_t to_size) const override;
 
 private:
     Container _data;

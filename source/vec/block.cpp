@@ -78,15 +78,14 @@ void Block::erase_impl(size_t position) {
     }
 }
 
-MutableColumns Block::mutate_columns() {
+SMutableColumns Block::mutate_columns() {
     size_t num_columns = data.size();
-    MutableColumns columns(num_columns);
+    SMutableColumns columns(num_columns);
     for (size_t i = 0; i < num_columns; ++i) {
         if (data[i]._column) {
-            columns[i] = const_cast<MutableColumnPtr>(data[i]._column);
+            columns[i] = std::const_pointer_cast<IColumn>(data[i]._column);
         } else {
-            columns[i] = const_cast<MutableColumnPtr>(
-                    ColumnFactory::instance().create_column(data[i]._type, data[i]._name));
+            columns[i] = ColumnFactory::instance().create_column(data[i]._type, data[i]._name);
         }
     }
     return columns;

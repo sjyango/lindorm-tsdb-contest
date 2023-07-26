@@ -43,9 +43,7 @@ public:
     Block(Block&& block)
             : data(std::move(block.data)), index_by_name(std::move(block.index_by_name)) {}
 
-    ~Block() {
-        // clear();
-    }
+    ~Block() = default;
 
     void initialize_index_by_name() {
         for (size_t i = 0, size = data.size(); i < size; ++i) {
@@ -62,13 +60,13 @@ public:
         return data.size();
     }
 
-    Columns get_columns() const {
+    SColumns get_columns() const {
         size_t num_columns = data.size();
-        Columns columns(num_columns);
+        SColumns columns(num_columns);
         for (int i = 0; i < num_columns; ++i) {
             columns[i] = data[i]._column;
         }
-        return std::move(columns);
+        return columns;
     }
 
     size_t rows() const {
@@ -103,10 +101,6 @@ public:
     }
 
     void clear() {
-//        for (auto& col : data) {
-//            delete col;
-//        }
-
         data.clear();
         index_by_name.clear();
     }
@@ -130,7 +124,7 @@ public:
         return data[position];
     }
 
-    MutableColumns mutate_columns();
+    SMutableColumns mutate_columns();
 
     Block copy_block() const;
 

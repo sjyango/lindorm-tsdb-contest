@@ -14,6 +14,7 @@
  */
 
 #include "vec/columns/ColumnString.h"
+#include "vec/columns/ColumnFactory.h"
 
 namespace LindormContest::vectorized {
 
@@ -121,11 +122,12 @@ int ColumnString::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
     }
 }
 
-MutableColumnPtr ColumnString::clone_resized(size_t to_size) const {
-    auto res = new ColumnString(get_name());
+MutableColumnSPtr ColumnString::clone_resized(size_t to_size) const {
+    MutableColumnSPtr new_column = ColumnFactory::instance().create_column(get_type(), get_name());
     if (to_size == 0) {
-        return res;
+        return new_column;
     }
+    std::shared_ptr<ColumnString> res = std::dynamic_pointer_cast<ColumnString>(new_column);
     size_t from_size = size();
     if (to_size <= from_size) {
         // just cut column

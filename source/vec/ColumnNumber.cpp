@@ -14,6 +14,7 @@
  */
 
 #include "vec/columns/ColumnNumber.h"
+#include "vec/columns/ColumnFactory.h"
 
 namespace LindormContest::vectorized {
 
@@ -49,11 +50,12 @@ int ColumnNumber<T>::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
 }
 
 template <typename T>
-MutableColumnPtr ColumnNumber<T>::clone_resized(size_t to_size) const {
-    auto res = new ColumnNumber<T>(get_name());
+MutableColumnSPtr ColumnNumber<T>::clone_resized(size_t to_size) const {
+    MutableColumnSPtr new_column = ColumnFactory::instance().create_column(get_type(), get_name());
     if (to_size == 0) {
-        return res;
+        return new_column;
     }
+    std::shared_ptr<ColumnNumber<T>> res = std::dynamic_pointer_cast<ColumnNumber<T>>(new_column);
     res->_data.resize(to_size);
     size_t count = std::min(size(), to_size);
     std::memcpy(res->_data.data(), _data.data(), count * sizeof(T));

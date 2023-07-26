@@ -23,13 +23,13 @@ namespace LindormContest::vectorized {
 
 class ColumnWithTypeAndName {
 public:
-    ColumnPtr _column;
+    ColumnSPtr _column;
     ColumnType _type;
     String _name;
 
     ColumnWithTypeAndName() = default;
 
-    ColumnWithTypeAndName(ColumnPtr column, ColumnType type, const String& name)
+    ColumnWithTypeAndName(ColumnSPtr column, ColumnType type, const String& name)
             : _column(column), _type(type), _name(name) {}
 
     ColumnWithTypeAndName(ColumnType type, const String& name)

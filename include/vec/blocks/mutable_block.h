@@ -72,7 +72,7 @@ public:
         return _data[position]->get_type();
     }
 
-    const MutableColumnPtr& get_column_by_position(size_t position) const {
+    MutableColumnSPtr get_column_by_position(size_t position) const {
         return _data[position];
     }
 
@@ -110,7 +110,7 @@ public:
                    const MutableBlock& rhs) const;
 
 private:
-    using Container = MutableColumns;
+    using Container = SMutableColumns;
     using DataTypes = std::vector<ColumnType>;
     using Names = std::vector<String>;
     using IndexByName = std::unordered_map<String, size_t>;

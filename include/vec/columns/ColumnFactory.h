@@ -28,16 +28,16 @@ public:
         return instance;
     }
 
-    ColumnPtr create_column(ColumnType type, String column_name) {
+    MutableColumnSPtr create_column(ColumnType type, String column_name) {
         switch (type) {
         case COLUMN_TYPE_INTEGER:
-            return new ColumnInt32(column_name);
+            return std::make_shared<ColumnInt32>(column_name);
         case COLUMN_TYPE_DOUBLE_FLOAT:
-            return new ColumnFloat64(column_name);
+            return std::make_shared<ColumnFloat64>(column_name);
         case COLUMN_TYPE_STRING:
-            return new ColumnString(column_name);
+            return std::make_shared<ColumnString>(column_name);
         case COLUMN_TYPE_TIMESTAMP:
-            return new ColumnInt64(column_name);
+            return std::make_shared<ColumnInt64>(column_name);
         default:
             return nullptr;
         }

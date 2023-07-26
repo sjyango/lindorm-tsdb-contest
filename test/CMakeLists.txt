@@ -23,7 +23,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/thirdpar
 
 link_directories(${PROJECT_SOURCE_DIR}/thirdparty/gtest/lib)
 
-set(EXECUTABLES demo_test coding_test column_test)
+set(EXECUTABLES demo_test coding_test column_test block_test)
 
 foreach(EXECUTABLE ${EXECUTABLES})
     add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)
@@ -32,13 +32,5 @@ endforeach()
 
 # add_executable(ut_test ${TEST_LIST})
 
-#add_executable(demo_test demo_test.cpp)
-#target_link_libraries(demo_test Threads::Threads gtest gtest_main DBLib)
-#
-#add_executable(coding_test coding_test.cpp)
-#target_link_libraries(coding_test Threads::Threads gtest gtest_main DBLib)
-#
-#add_executable(column_test column_test.cpp)
-#target_link_libraries(column_test Threads::Threads gtest gtest_main DBLib)
 
 

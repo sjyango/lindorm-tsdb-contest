@@ -23,10 +23,10 @@ namespace LindormContest::vectorized {
 class IColumn;
 class ColumnString;
 
-using ColumnUPtr = std::unique_ptr<const IColumn>;
-using MutableColumnUPtr = std::unique_ptr<IColumn>;
-using UColumns = std::vector<ColumnUPtr>;
-using MutableUColumns = std::vector<MutableColumnUPtr>;
+using ColumnSPtr = std::shared_ptr<const IColumn>;
+using MutableColumnSPtr = std::shared_ptr<IColumn>;
+using SColumns = std::vector<ColumnSPtr>;
+using SMutableColumns = std::vector<MutableColumnSPtr>;
 
 using ColumnPtr = const IColumn*;
 using MutableColumnPtr = IColumn*;
@@ -74,9 +74,9 @@ public:
 
     virtual int compare_at(size_t n, size_t m, const IColumn& rhs) const = 0;
 
-    virtual MutableColumnPtr clone_resized(size_t s) const = 0;
+    virtual MutableColumnSPtr clone_resized(size_t s) const = 0;
 
-    virtual MutableColumnPtr clone_empty() const { return clone_resized(0); }
+    virtual MutableColumnSPtr clone_empty() const { return clone_resized(0); }
 
     using Offset = UInt32;
     using Offsets = std::vector<Offset>;
