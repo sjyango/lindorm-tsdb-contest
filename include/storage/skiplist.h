@@ -30,7 +30,7 @@ private:
     struct Node {
         explicit Node(const Key& k) : key(k) {}
 
-        const Key key;
+        Key key;
 
         Node* next(int n) {
             assert(n >= 0);
@@ -82,6 +82,8 @@ public:
         Node* x = find_greater_or_equal(key, prev);
 
         // Our data structure does not allow duplicate insertion
+        assert(x == nullptr || !equal(key, x->key));
+
         int height = random_height();
         if (height > get_max_height()) {
             for (int i = get_max_height(); i < height; i++) {
@@ -197,7 +199,7 @@ private:
     }
     
     Node* new_node(const Key& key, int height) {
-        char* mem = static_cast<char*>(_arena->alloc(sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1)));
+        char* mem = static_cast<char*>(_arena->allocate_aligned(sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1)));
         return new (mem) Node(key);
     }
     

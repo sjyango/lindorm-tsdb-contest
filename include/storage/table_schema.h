@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "Root.h"
+#include "common/slice.h"
 #include "struct/ColumnValue.h"
 #include "struct/Schema.h"
 #include "vec/blocks/block.h"
@@ -27,7 +28,7 @@ namespace LindormContest::storage {
 
 class TableColumn {
 public:
-    TableColumn(UInt32 uid, String col_name, ColumnType type, bool is_key)
+    TableColumn(UInt32 uid, String col_name, ColumnType type, bool is_key = false)
             : _uid(uid), _col_name(col_name), _type(type), _is_key(is_key) {
         if (_type == COLUMN_TYPE_INTEGER) {
             _SIZE_OF_TYPE = sizeof(Int32);
