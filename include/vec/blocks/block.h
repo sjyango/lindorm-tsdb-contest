@@ -45,6 +45,10 @@ public:
 
     ~Block() = default;
 
+    bool operator==(const Block& rhs) const;
+
+    bool operator!=(const Block& rhs) const;
+
     void initialize__index_by_name() {
         for (size_t i = 0, size = _data.size(); i < size; ++i) {
             _index_by_name[_data[i]._column->get_name()] = i;

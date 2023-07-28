@@ -34,15 +34,35 @@ public:
 
     ~SegmentWriter();
 
-    size_t num_rows_written() const { return _num_rows_written; }
+    size_t num_rows_written() const {
+        return _num_rows_written;
+    }
 
-    size_t row_count() const { return _row_count; }
+    size_t rows() const {
+        return _num_rows_written;
+    }
 
-    Status append_block(const vectorized::Block* block, size_t row_pos, size_t num_rows, size_t* num_rows_written);
+    size_t segment_id() const {
+        return _segment_id;
+    }
 
-    void set_min_key(const Slice& key);
+    String min_encoded_key() const {
+        return _min_key;
+    }
 
-    void set_max_key(const Slice& key);
+    String max_encoded_key() const {
+        return _max_key;
+    }
+
+    Status append_block(vectorized::Block&& block, size_t* num_rows_written);
+
+    Status finalize_segment_data();
+
+    Status finalize_segment_index();
+
+    SegmentData finalize();
+
+    void clear();
 
 private:
     void _create_column_writer(const TableColumn& column);
@@ -62,13 +82,14 @@ private:
     // _row_count means total row count of this segment
     // In vertical compaction row count is recorded when key columns group finish
     //  and _num_rows_written will be updated in value column group
-    size_t _row_count = 0;
+    // size_t _row_count = 0;
     bool _is_first_row = true;
     String _min_key;
     String _max_key;
+    SegmentData _segment_data;
     std::vector<const KeyCoder*> _key_coders;
-    std::unique_ptr<ShortKeyIndexBuilder> _short_key_index_builder;
     std::vector<std::unique_ptr<ColumnWriter>> _column_writers;
+    std::unique_ptr<ShortKeyIndexWriter> _short_key_index_writer;
     std::unique_ptr<BlockDataConvertor> _data_convertor;
 };
 

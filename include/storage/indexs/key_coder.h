@@ -81,9 +81,9 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
     static Status decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
         // decode_ascending only used in orinal index page, maybe should remove it in the future.
         // currently, we reduce the usage of this method.
-        if (encoded_key->_size < sizeof(KeyType)) {
-            return Status::InvalidArgument("Key is too short");
-        }
+        // if (encoded_key->_size < sizeof(KeyType)) {
+        //     return Status::InvalidArgument("Key is too short", "");
+        // }
         KeyType key_val;
         memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
         memcpy(cell_ptr, &key_val, sizeof(KeyType));

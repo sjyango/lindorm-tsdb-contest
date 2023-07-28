@@ -122,13 +122,13 @@ public:
     OwnedSlice(const UInt8* _data, size_t size) {
         _owned_data = std::make_unique<UInt8[]>(size);
         _size = size;
-        std::memcpy(_owned_data.get(), _data, size);
+        std::memcpy(_owned_data.get(), _data, _size);
     }
 
     OwnedSlice(String&& src) {
         _owned_data = std::make_unique<UInt8[]>(src.size());
         _size = src.size();
-        std::memcpy(_owned_data.get(), src.data(), src.size());
+        std::memcpy(_owned_data.get(), src.data(), _size);
     }
 
     OwnedSlice(OwnedSlice&& src) {

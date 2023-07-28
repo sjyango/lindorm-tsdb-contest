@@ -18,6 +18,24 @@
 
 namespace LindormContest::vectorized {
 
+bool ColumnString::operator==(const ColumnString& rhs) const {
+    if (size() != rhs.size()) {
+        return false;
+    }
+
+    for (int i = 0; i < size(); ++i) {
+        if (get(i) != rhs.get(i)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ColumnString::operator!=(const ColumnString& rhs) const {
+    return !(*this == rhs);
+}
+
 void ColumnString::insert_from(const IColumn& src, size_t n) {
     const ColumnString& src_vec = static_cast<const ColumnString&>(src);
     const size_t size_to_append = src_vec._offsets[n] - src_vec._offsets[n - 1];
@@ -67,39 +85,12 @@ void ColumnString::insert_range_from(const IColumn& src, size_t start, size_t le
     }
 }
 
-void ColumnString::insert_indices_from(const IColumn& src, const int* indices_begin,
-                                          const int* indices_end) {
-    const ColumnString& src_str = static_cast<const ColumnString&>(src);
-    auto src_offset_data = src_str._offsets.data();
+void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices_begin, const size_t* indices_end) {
+    size_t new_size = indices_end - indices_begin;
+    const ColumnString& src_data = static_cast<const ColumnString&>(src);
 
-    auto old_char_size = _chars.size();
-    size_t total__chars_size = old_char_size;
-
-    auto dst__offsets_pos = _offsets.size();
-    _offsets.resize(_offsets.size() + indices_end - indices_begin);
-    auto* dst__offsets_data = _offsets.data();
-
-    for (auto x = indices_begin; x != indices_end; ++x) {
-        if (*x != -1) {
-            total__chars_size += src_offset_data[*x] - src_offset_data[*x - 1];
-        }
-        dst__offsets_data[dst__offsets_pos++] = total__chars_size;
-    }
-
-    _chars.resize(total__chars_size);
-
-    auto* src_data_ptr = src_str._chars.data();
-    auto* dst_data_ptr = _chars.data();
-
-    size_t dst__chars_pos = old_char_size;
-
-    for (auto x = indices_begin; x != indices_end; ++x) {
-        if (*x != -1) {
-            const size_t size_to_append = src_offset_data[*x] - src_offset_data[*x - 1];
-            const size_t offset = src_offset_data[*x - 1];
-            memcpy(dst_data_ptr + dst__chars_pos, src_data_ptr + offset, size_to_append);
-            dst__chars_pos += size_to_append;
-        }
+    for (int i = 0; i < new_size; ++i) {
+        push_string(src_data[indices_begin[i]]);
     }
 }
 
@@ -143,5 +134,41 @@ MutableColumnSPtr ColumnString::clone_resized(size_t to_size) const {
     }
     return res;
 }
+
+// void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices_begin,
+//                                           const size_t* indices_end) {
+//     const ColumnString& src_str = static_cast<const ColumnString&>(src);
+//     auto src_offset_data = src_str._offsets.data();
+//
+//     auto old_char_size = _chars.size();
+//     size_t total_chars_size = old_char_size;
+//
+//     auto dst_offsets_pos = _offsets.size();
+//     _offsets.resize(_offsets.size() + indices_end - indices_begin);
+//     auto* dst_offsets_data = _offsets.data();
+//
+//     for (auto x = indices_begin; x != indices_end; ++x) {
+//         if (*x != -1) {
+//             total_chars_size += src_offset_data[*x] - src_offset_data[*x - 1];
+//         }
+//         dst_offsets_data[dst_offsets_pos++] = total_chars_size;
+//     }
+//
+//     _chars.resize(total_chars_size);
+//
+//     auto* src_data_ptr = src_str._chars.data();
+//     auto* dst_data_ptr = _chars.data();
+//
+//     size_t dst_chars_pos = old_char_size;
+//
+//     for (auto x = indices_begin; x != indices_end; ++x) {
+//         if (*x != -1) {
+//             const size_t size_to_append = src_offset_data[*x] - src_offset_data[*x - 1];
+//             const size_t offset = src_offset_data[*x - 1];
+//             memcpy(dst_data_ptr + dst_chars_pos, src_data_ptr + offset, size_to_append);
+//             dst_chars_pos += size_to_append;
+//         }
+//     }
+// }
 
 }

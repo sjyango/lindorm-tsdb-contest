@@ -17,6 +17,24 @@
 
 namespace LindormContest::vectorized {
 
+bool Block::operator==(const Block& rhs) const {
+    if (columns() != rhs.columns()) {
+        return false;
+    }
+
+    for (int i = 0; i < columns(); ++i) {
+        if (get_by_position(i) != rhs.get_by_position(i)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Block::operator!=(const Block& rhs) const {
+    return !(*this == rhs);
+}
+
 void Block::insert(size_t position, const ColumnWithTypeAndName& elem) {
     if (position > _data.size()) {
         std::cerr << "Position out of bound in Block::insert(), max position = " << _data.size() << std::endl;

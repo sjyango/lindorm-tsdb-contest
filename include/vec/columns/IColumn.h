@@ -69,8 +69,8 @@ public:
     /// indices_begin + indices_end represent the row indices of column src
     /// Warning:
     ///       if *indices == -1 means the row is null, only use in outer join, do not use in any other place
-    virtual void insert_indices_from(const IColumn& src, const int* indices_begin,
-                                     const int* indices_end) = 0;
+    virtual void insert_indices_from(const IColumn& src, const size_t* indices_begin,
+                                     const size_t* indices_end) = 0;
 
     virtual int compare_at(size_t n, size_t m, const IColumn& rhs) const = 0;
 

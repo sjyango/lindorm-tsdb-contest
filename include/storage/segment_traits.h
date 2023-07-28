@@ -15,8 +15,11 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "Root.h"
 #include "common/coding.h"
+#include "struct/ColumnValue.h"
 
 namespace LindormContest::storage {
 
@@ -77,12 +80,32 @@ struct PagePointer {
     bool operator!=(const PagePointer& other) const { return !(*this == other); }
 };
 
-struct DataPageFooter {
-    UInt64 _first_ordinal;
-    UInt64 _num_values;
+struct PageFooter {
+    PageType _page_type;
+    size_t _uncompressed_size;
+
+    PageFooter(PageType page_type, size_t uncompressed_size)
+            : _page_type(page_type), _uncompressed_size(uncompressed_size) {}
 };
 
-struct IndexPageFooter {
+struct DataPageMeta : public PageFooter {
+    UInt64 _first_ordinal;
+    UInt64 _num_values;
+
+    DataPageMeta(size_t uncompressed_size, UInt64 first_ordinal, UInt64 num_values)
+            : PageFooter(PageType::DATA_PAGE, uncompressed_size),
+              _first_ordinal(first_ordinal), _num_values(num_values) {}
+};
+
+struct DataPage {
+    OwnedSlice _data;
+    DataPageMeta _meta;
+
+    DataPage(OwnedSlice&& data, DataPageMeta meta)
+            : _data(std::move(data)), _meta(meta) {}
+};
+
+struct IndexPageFooter : public PageFooter {
     enum class IndexPageType {
         UNKNOWN_INDEX_PAGE_TYPE,
         LEAF,
@@ -93,20 +116,71 @@ struct IndexPageFooter {
     IndexPageType _type;
 };
 
-struct ShortKeyFooter {
+enum class ColumnIndexType {
+    UNKNOWN_INDEX_TYPE,
+    ORDINAL_INDEX,
+    ZONE_MAP_INDEX,
+    BITMAP_INDEX,
+    BLOOM_FILTER_INDEX
+};
+
+struct ShortKeyIndexPage : public PageFooter {
     UInt32 _num_items;
     UInt32 _key_bytes;
     UInt32 _offset_bytes;
     UInt32 _segment_id;
     UInt32 _num_segment_rows;
+    OwnedSlice _data;
+
+    ShortKeyIndexPage(size_t uncompressed_size, UInt32 num_items,
+                      UInt32 key_bytes, UInt32 offset_bytes,
+                      UInt32 segment_id, UInt32 num_segment_rows, OwnedSlice&& data)
+            : PageFooter(PageType::SHORT_KEY_PAGE, uncompressed_size),
+              _num_items(num_items), _key_bytes(key_bytes), _offset_bytes(offset_bytes),
+              _segment_id(segment_id), _num_segment_rows(num_segment_rows), _data(std::move(data)) {}
 };
 
-struct PageFooter {
-    PageType _page_type;
-    size_t _uncompressed_size;
-    DataPageFooter _data_page_footer;
-    IndexPageFooter _index_page_footer;
-    ShortKeyFooter _short_key_footer;
+struct OrdinalIndexPage : public PageFooter {
+    ColumnIndexType _index_type;
+    UInt32 _num_items;
+    OwnedSlice _data;
+
+    OrdinalIndexPage(size_t uncompressed_size, UInt32 num_items, OwnedSlice&& data)
+            : PageFooter(PageType::INDEX_PAGE, uncompressed_size),
+              _index_type(ColumnIndexType::ORDINAL_INDEX), _num_items(num_items), _data(std::move(data)) {}
+};
+
+struct ColumnMeta {
+    UInt32 _column_id;
+    ColumnType _type;
+    UInt32 _type_size;
+    EncodingType _encoding_type;
+    CompressionType _compression_type;
+    std::shared_ptr<OrdinalIndexPage> _ordinal_index;
+
+    ColumnMeta(UInt32 column_id, ColumnType type,
+               UInt32 type_size, EncodingType encoding_type,
+               CompressionType compression_type,
+               std::shared_ptr<OrdinalIndexPage> ordinal_index)
+            : _column_id(column_id), _type(type), _type_size(type_size), _encoding_type(encoding_type),
+              _compression_type(compression_type), _ordinal_index(ordinal_index) {}
+};
+
+struct SegmentMeta {
+    UInt32 _version = 1;
+    std::unordered_map<UInt32, ColumnMeta> _column_metas; // column_id -> ColumnMeta
+    UInt32 _num_rows;
+    CompressionType _compression_type;
+    std::shared_ptr<ShortKeyIndexPage> _short_key_index;
+};
+
+struct SegmentData : public std::vector<std::vector<DataPage>> {
+    SegmentMeta _segment_meta;
+};
+
+struct KeyBounds {
+    String min_key;
+    String max_key;
 };
 
 }

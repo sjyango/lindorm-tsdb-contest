@@ -25,6 +25,11 @@ namespace LindormContest {
     Vin::Vin() : vin() {
     }
 
+    Vin::Vin(const std::string& s) {
+        assert(s.size() == VIN_LENGTH);
+        strncpy(vin, s.c_str(), VIN_LENGTH);
+    }
+
     Vin::Vin(const Vin &rhs) : vin() {
         strncpy(vin, rhs.vin, VIN_LENGTH);
     }

@@ -47,7 +47,7 @@ TEST(ColumnTest, ColumnInt32Test) {
 
     col2->insert_range_from(*col1, 1, 4999);
     ASSERT_EQ(5000, col2->size());
-    std::vector<int> indices;
+    std::vector<size_t> indices;
 
     for (int32_t i = 0; i < 5000; ++i) {
         indices.push_back(5000 + i);
@@ -88,7 +88,7 @@ TEST(ColumnTest, ColumnInt64Test) {
 
     col2->insert_range_from(*col1, 1, 4999);
     ASSERT_EQ(5000, col2->size());
-    std::vector<int> indices;
+    std::vector<size_t> indices;
 
     for (int64_t i = 0; i < 5000; ++i) {
         indices.push_back(5000 + i);
@@ -129,7 +129,7 @@ TEST(ColumnTest, ColumnFloat64Test) {
 
     col2->insert_range_from(*col1, 1, 4999);
     ASSERT_EQ(5000, col2->size());
-    std::vector<int> indices;
+    std::vector<size_t> indices;
 
     for (int32_t i = 0; i < 5000; ++i) {
         indices.push_back(5000 + i);
@@ -170,7 +170,7 @@ TEST(ColumnTest, ColumnStringTest) {
 
     col2->insert_range_from(*col1, 1, 4999);
     ASSERT_EQ(5000, col2->size());
-    std::vector<int> indices;
+    std::vector<size_t> indices;
 
     for (int32_t i = 0; i < 5000; ++i) {
         indices.push_back(5000 + i);

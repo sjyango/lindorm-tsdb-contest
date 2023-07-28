@@ -94,11 +94,11 @@ public:
 
     Block to_block(int start_column, int end_column);
 
-    void add_row(const Block* block, int row);
+    void add_row(const Block* block, size_t row);
 
     void add_row(const Row& row);
 
-    void add_rows(const Block* block, const int* row_begin, const int* row_end);
+    void add_rows(const Block* block, const size_t* row_begin, const size_t* row_end);
 
     void add_rows(const Block* block, size_t row_begin, size_t length);
 

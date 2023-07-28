@@ -19,6 +19,26 @@
 namespace LindormContest::vectorized {
 
 template <typename T>
+bool ColumnNumber<T>::operator==(const ColumnNumber<T>& rhs) const {
+    if (size() != rhs.size()) {
+        return false;
+    }
+
+    for (int i = 0; i < size(); ++i) {
+        if (get(i) != rhs.get(i)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+template <typename T>
+bool ColumnNumber<T>::operator!=(const ColumnNumber<T>& rhs) const {
+    return !(*this == rhs);
+}
+
+template <typename T>
 void ColumnNumber<T>::insert_range_from(const IColumn& src, size_t start, size_t length) {
     const ColumnNumber& src_vec = static_cast<const ColumnNumber&>(src);
     if (start + length > src_vec._data.size()) {
@@ -30,16 +50,14 @@ void ColumnNumber<T>::insert_range_from(const IColumn& src, size_t start, size_t
 }
 
 template <typename T>
-void ColumnNumber<T>::insert_indices_from(const IColumn& src, const int* indices_begin,
-                         const int* indices_end) {
+void ColumnNumber<T>::insert_indices_from(const IColumn& src, const size_t* indices_begin, const size_t* indices_end) {
     size_t origin_size = size();
     size_t new_size = indices_end - indices_begin;
     _data.resize(origin_size + new_size);
-
-    const T* src__data = reinterpret_cast<const T*>(src.get_string_view().data());
+    const ColumnNumber<T>& src_data = reinterpret_cast<const ColumnNumber<T>&>(src);
 
     for (int i = 0; i < new_size; ++i) {
-        _data[origin_size + i] = src__data[indices_begin[i]];
+        _data[origin_size + i] = src_data[indices_begin[i]];
     }
 }
 

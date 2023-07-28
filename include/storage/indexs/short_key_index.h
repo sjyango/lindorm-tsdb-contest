@@ -15,47 +15,203 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "Root.h"
-#include "common/status.h"
 #include "common/coding.h"
+#include "common/status.h"
 #include "storage/segment_traits.h"
 
 namespace LindormContest::storage {
 
-class ShortKeyIndexBuilder {
+class ShortKeyIndexWriter {
 public:
-    ShortKeyIndexBuilder(uint32_t segment_id)
+    ShortKeyIndexWriter(UInt32 segment_id)
             : _segment_id(segment_id), _num_items(0) {}
 
-    Status add_item(const Slice& key) {
+    Status add_item(const String& key) {
         put_varint32(&_offset_buf, _key_buf.size());
-        _key_buf.append((const char*) key._data, key._size);
+        _key_buf.append(key.c_str(), key.size());
         _num_items++;
         return Status::OK();
     }
 
-    uint64_t size() { return _key_buf.size() + _offset_buf.size(); }
+    size_t size() {
+        return _key_buf.size() + _offset_buf.size();
+    }
 
-    Status finalize(uint32_t num_segment_rows, std::vector<Slice>* body, PageFooter* page_footer) {
-        page_footer->_page_type = PageType::SHORT_KEY_PAGE;
-        page_footer->_uncompressed_size = _key_buf.size() + _offset_buf.size();
-        page_footer->_short_key_footer._num_items = _num_items;
-        page_footer->_short_key_footer._key_bytes = _key_buf.size();
-        page_footer->_short_key_footer._offset_bytes = _offset_buf.size();
-        page_footer->_short_key_footer._segment_id = _segment_id;
-        page_footer->_short_key_footer._num_segment_rows = num_segment_rows;
-        body->emplace_back(_key_buf);
-        body->emplace_back(_offset_buf);
-        return Status::OK();
+    std::shared_ptr<ShortKeyIndexPage> finalize(UInt32 num_segment_rows) {
+        size_t key_size = _key_buf.size();
+        size_t offset_size = _offset_buf.size();
+        _key_buf.append(_offset_buf);
+        OwnedSlice data(std::move(_key_buf));
+        return std::make_shared<ShortKeyIndexPage>(
+                        key_size + offset_size,
+                        _num_items,
+                        key_size,
+                        offset_size,
+                        _segment_id,
+                        num_segment_rows,
+                        std::move(data)
+                );
     }
 
 private:
-    uint32_t _segment_id;
-    // uint32_t _num_rows_per_block;
-    uint32_t _num_items;
-
+    UInt32 _segment_id;
+    size_t _num_items;
     String _key_buf;
     String _offset_buf;
+};
+
+// Used to decode short key to header and encoded index data.
+// Usage:
+//      ShortKeyIndexDecoder decoder;
+//      decoder.parse(body, footer);
+//      auto iter = decoder.lower_bound(key);
+class ShortKeyIndexReader {
+public:
+    // An Iterator to iterate one short key index.
+    // Client can use this class to iterator all items in this index.
+    class ShortKeyIndexIterator {
+    public:
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = Slice;
+        using pointer = Slice*;
+        using reference = Slice&;
+        using difference_type = size_t;
+
+        ShortKeyIndexIterator(const ShortKeyIndexReader* reader, size_t index = 0)
+                : _reader(reader), _index(index) {}
+
+        ShortKeyIndexIterator& operator-=(size_t step) {
+            _index -= step;
+            return *this;
+        }
+
+        ShortKeyIndexIterator& operator+=(size_t step) {
+            _index += step;
+            return *this;
+        }
+
+        ShortKeyIndexIterator& operator++() {
+            ++_index;
+            return *this;
+        }
+
+        ShortKeyIndexIterator& operator--() {
+            --_index;
+            return *this;
+        }
+
+        bool operator!=(const ShortKeyIndexIterator& other) {
+            return _index != other._index || _reader != other._reader;
+        }
+
+        bool operator==(const ShortKeyIndexIterator& other) {
+            return _index == other._index && _reader == other._reader;
+        }
+
+        size_t operator-(const ShortKeyIndexIterator& other) const {
+            return _index - other._index;
+        }
+
+        inline bool valid() const {
+            return _index >= 0 && _index < _reader->num_items();
+        }
+
+        Slice operator*() const {
+            return _reader->key(_index);
+        }
+
+        size_t index() const {
+            return _index;
+        }
+
+    private:
+        const ShortKeyIndexReader* _reader;
+        size_t _index;
+    };
+
+    ShortKeyIndexReader() : _parsed(false) {}
+
+    Status parse(const ShortKeyIndexPage* page) {
+        _page = page;
+        Slice data = page->_data.slice();
+        // set index buffer
+        _short_key_data = Slice(data._data, page->_key_bytes);
+        // parse offset information
+        Slice offset_slice(data._data + page->_key_bytes, page->_offset_bytes);
+        // +1 for record total length
+        _offsets.resize(page->_num_items + 1);
+        
+        for (UInt32 i = 0; i < page->_num_items; ++i) {
+            UInt32 offset = 0;
+            if (!get_varint32(&offset_slice, &offset)) {
+                return Status::Corruption("Fail to get varint from index offset buffer");
+            }
+            assert(offset <= page->_key_bytes);
+            _offsets[i] = offset;
+        }
+
+        _offsets[page->_num_items] = page->_key_bytes;
+        if (offset_slice._size != 0) {
+            return Status::Corruption("Still has data after parse all key offset");
+        }
+        _parsed = true;
+        return Status::OK();
+    }
+
+    inline ShortKeyIndexIterator begin() const {
+        assert(_parsed);
+        return {this, 0};
+    }
+
+    inline ShortKeyIndexIterator end() const {
+        assert(_parsed);
+        return {this, num_items()};
+    }
+
+    // Return an iterator which locates at the first item who is
+    // equal with or greater than the given key.
+    // NOTE: If one key is the prefix of other key, this function thinks
+    // that longer key is greater than the shorter key.
+    ShortKeyIndexIterator lower_bound(const Slice& key) const {
+        assert(_parsed);
+        return _seek<true>(key);
+    }
+
+    // Return the iterator which locates the first item greater than the input key.
+    ShortKeyIndexIterator upper_bound(const Slice& key) const {
+        assert(_parsed);
+        return _seek<false>(key);
+    }
+
+    UInt32 num_items() const {
+        assert(_parsed);
+        return _page->_num_items;
+    }
+
+    Slice key(size_t index) const {
+        assert(_parsed);
+        assert(index >= 0 && index < num_items());
+        return {_short_key_data._data + _offsets[index], _offsets[index + 1] - _offsets[index]};
+    }
+
+private:
+    template <bool lower_bound>
+    ShortKeyIndexIterator _seek(const Slice& key) const {
+        auto cmp = [](const Slice& lhs, const Slice& rhs) { return lhs.compare(rhs) < 0; };
+        if constexpr (lower_bound) {
+            return std::lower_bound(begin(), end(), key, cmp);
+        } else {
+            return std::upper_bound(begin(), end(), key, cmp);
+        }
+    }
+
+    bool _parsed;
+    const ShortKeyIndexPage* _page;
+    std::vector<UInt32> _offsets;
+    Slice _short_key_data;
 };
 
 }

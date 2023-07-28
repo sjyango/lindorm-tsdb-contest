@@ -25,32 +25,41 @@
 
 namespace LindormContest::storage {
 
+static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 100000;
+
 class DeltaWriter {
 public:
-    static std::unique_ptr<DeltaWriter> open(const String& root_path, const String& table_name, const Schema& schema);
+    static std::unique_ptr<DeltaWriter> open(
+            const String& root_path, const String& table_name,
+            const Schema& schema, std::unordered_map<std::string, std::vector<SegmentData>>* segment_datas);
 
-    DeltaWriter(const String& root_path, const String& table_name, const Schema& schema);
+    DeltaWriter(const String& root_path, const String& table_name, const Schema& schema, std::unordered_map<std::string, std::vector<SegmentData>>* segment_datas);
 
     ~DeltaWriter();
 
     Status append(const WriteRequest& w_req);
 
-    Status write(const vectorized::Block&& block, const std::vector<int>& row_idxs);
+    Status write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs);
+
+    Status flush();
 
     Status close();
 
-    Status flush_mem_table();
+    void reset();
+
+    bool need_to_flush();
+
+    Status flush_segment_writer();
 
     size_t allocate_segment_id() { return _next_segment_id++; };
 
 private:
-    static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 100000;
+    std::unordered_map<std::string, std::vector<SegmentData>>* _segment_datas;
     const String& _root_path;
     String _table_name;
     std::unique_ptr<TableSchema> _schema;
     std::unique_ptr<SegmentWriter> _segment_writer;
     std::unique_ptr<MemTable> _mem_table;
-    std::unique_ptr<vectorized::MutableBlock> _input_block;
     std::atomic<size_t> _next_segment_id = 0;
     size_t _num_rows_written = 0;
 };

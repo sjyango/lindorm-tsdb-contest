@@ -16,13 +16,11 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
 #include "struct/Schema.h"
 #include "skiplist.h"
 #include "table_schema.h"
 #include "vec/blocks/block.h"
 #include "vec/blocks/mutable_block.h"
-#include "segment_writer.h"
 
 namespace LindormContest::storage {
 
@@ -61,23 +59,22 @@ public:
 
     ~MemTable();
 
-    void insert(const vectorized::Block&& input_block, const std::vector<int>& row_idxs);
+    void insert(const vectorized::Block&& input_block, const std::vector<size_t>& row_idxs);
 
-    bool need_to_flush(size_t threshold) const;
-
-    /// Flush
     vectorized::Block flush();
 
     vectorized::Block close() {
-        return flush();
+        return std::move(flush());
     }
 
-    /// The iterator of memtable, so that the data in this memtable
-    /// can be visited outside.
+    size_t rows() const {
+        return _rows;
+    }
+
+    /// The iterator of memtable, so that the data in this memtable can be visited outside.
     class Iterator {
     public:
-        Iterator(MemTable* mem_table)
-                : _mem_table(mem_table), _it(mem_table->_skip_list.get()) {}
+        Iterator(MemTable* mem_table): _it(mem_table->_skip_list.get()) {}
 
         ~Iterator() = default;
 
@@ -94,13 +91,10 @@ public:
         }
 
     private:
-        MemTable* _mem_table;
         VecTable::Iterator _it;
     };
 
 private:
-    void _collect_skip_list();
-
     const TableSchema* _schema;
     std::unique_ptr<RowInBlockComparator> _row_comparator;
     std::unique_ptr<Arena> _arena;

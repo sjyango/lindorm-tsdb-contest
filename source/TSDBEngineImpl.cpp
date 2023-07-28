@@ -38,7 +38,7 @@ int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &sche
         return -1;
     }
     _schemas.insert({tableName, schema});
-    _delta_writers.insert({tableName, storage::DeltaWriter::open(dataDirPath, tableName, schema)});
+    _delta_writers.insert({tableName, storage::DeltaWriter::open(dataDirPath, tableName, schema, &_segment_datas)});
     INFO_LOG("Created new table [%s]", tableName.c_str())
     return 0;
 }

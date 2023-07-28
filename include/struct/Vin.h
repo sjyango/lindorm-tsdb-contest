@@ -38,6 +38,8 @@ namespace LindormContest {
 
         Vin();
 
+        Vin(const std::string& s);
+
         Vin(const Vin &rhs);
 
         bool operator==(const Vin &rhs) const;

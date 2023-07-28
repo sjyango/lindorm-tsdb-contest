@@ -35,10 +35,6 @@ public:
         _num_rows = num_rows;
     }
 
-    virtual void clear_source_column() {
-        _column._column = nullptr;
-    }
-
     virtual void convert() = 0;
 
     virtual const void* get_data() const = 0;
@@ -131,23 +127,17 @@ public:
     void set_source_content(const vectorized::Block* block, size_t row_pos, size_t num_rows) {
         assert(block && num_rows > 0 && row_pos + num_rows <= block->rows() && block->columns() == _convertors.size());
         size_t cid = 0;
+
         for (const auto& column : *block) {
             _convertors[cid]->set_source_column(column, row_pos, num_rows);
             ++cid;
         }
     }
 
-    void set_source_content(const vectorized::Block* block, size_t row_pos,
-                                                  size_t num_rows, std::vector<uint32_t> cids) {
+    void set_source_content(const vectorized::Block* block, size_t row_pos, size_t num_rows, std::vector<uint32_t> cids) {
         assert(block && num_rows > 0 && row_pos + num_rows <= block->rows() && block->columns() <= _convertors.size());
-        for (auto i : cids) {
-            _convertors[i]->set_source_column(block->get_by_position(i), row_pos, num_rows);
-        }
-    }
-
-    void clear_source_content() {
-        for (auto& convertor : _convertors) {
-            convertor->clear_source_column();
+        for (auto cid : cids) {
+            _convertors[cid]->set_source_column(block->get_by_position(cid), row_pos, num_rows);
         }
     }
 

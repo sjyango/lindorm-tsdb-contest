@@ -12,8 +12,11 @@
 #include "Root.h"
 #include "TSDBEngine.hpp"
 #include "storage/delta_writer.h"
+#include "storage/segment_traits.h"
 
 namespace LindormContest {
+
+using namespace storage;
 
 class TSDBEngineImpl : public TSDBEngine {
 public:
@@ -40,8 +43,9 @@ public:
 
 private:
     bool _connected = false;
-    std::unordered_map<std::string, Schema> _schemas; // table_name -> schema
-    std::unordered_map<std::string, std::unique_ptr<storage::DeltaWriter>> _delta_writers; // table_name -> delta_writer
+    std::unordered_map<std::string, Schema> _schemas;
+    std::unordered_map<std::string, std::unique_ptr<DeltaWriter>> _delta_writers;
+    std::unordered_map<std::string, std::vector<SegmentData>> _segment_datas;
 }; // End class TSDBEngineImpl.
 
 }

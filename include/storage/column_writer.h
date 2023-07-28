@@ -34,6 +34,10 @@ public:
 
     ~ColumnWriter();
 
+    UInt32 get_uid() const {
+        return _column.get_uid();
+    }
+
     Status finish_current_page();
 
     ordinal_t get_next_rowid() const { return _next_rowid; }
@@ -44,11 +48,13 @@ public:
 
     Status append_data_in_current_page(const uint8_t* data, size_t* num_written);
 
-    // Status finish();
+    Status finish();
+
+    std::vector<DataPage>&& write_data();
+
+    std::shared_ptr<OrdinalIndexPage> write_ordinal_index();
 
     // uint64_t estimate_buffer_size();
-
-    // Status write_data();
 
     // Status write_ordinal_index();
 
@@ -69,8 +75,8 @@ private:
     ordinal_t _next_rowid = 0;
 
     std::unique_ptr<PageBuilder> _page_builder;
-    std::unique_ptr<PageLinkedList> _pages;
-    std::unique_ptr<OrdinalIndexWriter> _ordinal_index_builder;
+    std::vector<DataPage> _data_pages;
+    std::unique_ptr<OrdinalIndexWriter> _ordinal_index_writer;
 
     // io::FileWriter* _file_writer = nullptr;
     // std::unique_ptr<ZoneMapIndexWriter> _zone_map_index_builder;

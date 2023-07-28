@@ -19,8 +19,7 @@ namespace LindormContest::storage {
 
 ColumnWriter::ColumnWriter(const TableColumn& column) : _column(column) {
     _page_builder = std::make_unique<PlainPageBuilder>(column, DEFAULT_PAGE_SIZE);
-    _pages = std::make_unique<PageLinkedList>();
-    _ordinal_index_builder = std::make_unique<OrdinalIndexWriter>();
+    _ordinal_index_writer = std::make_unique<OrdinalIndexWriter>();
 }
 
 ColumnWriter::~ColumnWriter() = default;
@@ -68,26 +67,43 @@ Status ColumnWriter::finish_current_page() {
     }
     OwnedSlice page_data = _page_builder->finish();
     _page_builder->reset();
-
-    // prepare data page footer
-    Page page;
-    page._page_footer._page_type = PageType::DATA_PAGE;
-    page._page_footer._uncompressed_size = page_data.size();
-    page._page_footer._data_page_footer._first_ordinal = _first_rowid;
-    page._page_footer._data_page_footer._num_values = _next_rowid - _first_rowid;
-    page._data = std::move(page_data);
-
-    _pages->push_page_back(std::move(page));
+    DataPageMeta data_meta(page_data.size(), _first_rowid, _next_rowid - _first_rowid);
+    DataPage page(std::move(page_data), data_meta);
+    _data_pages.emplace_back(std::move(page));
     _first_rowid = _next_rowid;
     return Status::OK();
 }
 
-// Status ColumnWriter::finish() {
-//     Status res = finish_current_page();
-//     if (!res.ok()) {
-//         return res;
-//     }
-//     return Status::OK();
+Status ColumnWriter::finish() {
+    Status res = finish_current_page();
+    if (!res.ok()) {
+        return res;
+    }
+    return Status::OK();
+}
+
+std::vector<DataPage>&& ColumnWriter::write_data() {
+    for (size_t index = 0; index < _data_pages.size(); ++index) {
+        const auto& page = _data_pages[index];
+        _ordinal_index_writer->append_entry(page._meta._first_ordinal, index);
+    }
+    return std::move(_data_pages);
+}
+
+std::shared_ptr<OrdinalIndexPage> ColumnWriter::write_ordinal_index() {
+   return _ordinal_index_writer->finalize();
+}
+
+// write a data page into file and update ordinal index
+// Status ColumnWriter::_write_data_page(Page* page) {
+//    PagePointer pp;
+//    std::vector<Slice> compressed_body;
+//    for (auto& data : page->data) {
+//        compressed_body.push_back(data.slice());
+//    }
+//    RETURN_IF_ERROR(PageIO::write_page(_file_writer, compressed_body, page->footer, &pp));
+//    _ordinal_index_builder->append_entry(page->footer.data_page_footer().first_ordinal(), pp);
+//    return Status::OK();
 // }
 
 //uint64_t ColumnWriter::estimate_buffer_size() {
@@ -107,46 +123,6 @@ Status ColumnWriter::finish_current_page() {
 //        size += _bloom_filter_index_builder->size();
 //    }
 //    return size;
-//}
-
-//Status ColumnWriter::write_data() {
-//    Page* page = _pages.head;
-//    while (page != nullptr) {
-//        RETURN_IF_ERROR(_write_data_page(page));
-//        page = page->next;
-//    }
-//    // write column dict
-//    if (_encoding_info->encoding() == DICT_ENCODING) {
-//        OwnedSlice dict_body;
-//        RETURN_IF_ERROR(_page_builder->get_dictionary_page(&dict_body));
-//
-//        PageFooterPB footer;
-//        footer.set_type(DICTIONARY_PAGE);
-//        footer.set_uncompressed_size(dict_body.slice().get_size());
-//        footer.mutable_dict_page_footer()->set_encoding(PLAIN_ENCODING);
-//
-//        PagePointer dict_pp;
-//        RETURN_IF_ERROR(PageIO::compress_and_write_page(
-//                _compress_codec, _opts.compression_min_space_saving, _file_writer,
-//                {dict_body.slice()}, footer, &dict_pp));
-//        dict_pp.to_proto(_opts.meta->mutable_dict_page());
-//    }
-//    return Status::OK();
-//}
-
-//Status ColumnWriter::write_ordinal_index() {
-//    return _ordinal_index_builder->finish(_file_writer, _opts.meta->add_indexes());
-//}
-
-//Status ColumnWriter::_write_data_page(LindormContest::storage::ColumnWriter::Page* page) {
-//    PagePointer pp;
-//    std::vector<Slice> compressed_body;
-//    for (auto& data : page->data) {
-//        compressed_body.push_back(data.slice());
-//    }
-//    RETURN_IF_ERROR(PageIO::write_page(_file_writer, compressed_body, page->footer, &pp));
-//    _ordinal_index_builder->append_entry(page->footer.data_page_footer().first_ordinal(), pp);
-//    return Status::OK();
 //}
 
 }

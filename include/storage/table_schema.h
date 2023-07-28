@@ -55,7 +55,7 @@ public:
 
     void set_type(ColumnType type) { _type = type; }
 
-    size_t get_type_size() const { return _SIZE_OF_TYPE; }
+    UInt32 get_type_size() const { return _SIZE_OF_TYPE; }
 
     bool is_key() const { return _is_key; }
 

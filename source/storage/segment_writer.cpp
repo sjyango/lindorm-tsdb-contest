@@ -25,6 +25,15 @@ SegmentWriter::SegmentWriter(const String& root_path, const TableSchema* schema,
     _data_convertor->reserve(schema->num_columns());
 
     for (const auto& column : _schema->columns()) {
+        ColumnMeta meta(
+                column.get_uid(),
+                column.get_type(),
+                column.get_type_size(),
+                EncodingType::PLAIN_ENCODING,
+                CompressionType::NO_COMPRESSION,
+                nullptr
+                );
+        _segment_data._segment_meta._column_metas.emplace(column.get_uid(), std::move(meta));
         _create_column_writer(column);
     }
 
@@ -42,10 +51,9 @@ void SegmentWriter::_create_column_writer(const TableColumn& column) {
     _data_convertor->add_column_data_convertor(column);
 }
 
-Status SegmentWriter::append_block(const vectorized::Block* block, size_t row_pos, size_t num_rows, size_t* num_rows_written) {
-    _data_convertor->set_source_content(block, row_pos, num_rows);
-
-    // find all row pos for short key indexes
+Status SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_written) {
+    size_t num_rows = block.rows();
+    _data_convertor->set_source_content(&block, 0, num_rows);
     std::vector<size_t> short_key_pos;
 
     if (_short_key_row_pos == 0 && *num_rows_written == 0) {
@@ -70,32 +78,22 @@ Status SegmentWriter::append_block(const vectorized::Block* block, size_t row_po
         _column_writers[cid]->append_data(&data, num_rows);
     }
 
-    set_min_key(_full_encode_keys(key_columns, 0));
-    set_max_key(_full_encode_keys(key_columns, num_rows - 1));
+    if (_is_first_row) {
+        _min_key = std::move(_full_encode_keys(key_columns, 0));
+        _is_first_row = false;
+    }
+
+    _max_key = std::move(_full_encode_keys(key_columns, num_rows - 1));
     Status res;
 
     for (const auto pos : short_key_pos) {
-        res = _short_key_index_builder->add_item(_encode_keys(key_columns, pos));
+        res = _short_key_index_writer->add_item(_encode_keys(key_columns, pos));
         if (!res.ok()) {
             return res;
         }
     }
-
     *num_rows_written += num_rows;
-    _data_convertor->clear_source_content();
     return Status::OK();
-}
-
-void SegmentWriter::set_min_key(const Slice& key) {
-    if (_is_first_row) {
-        _min_key.append(key.data(), key.size());
-        _is_first_row = false;
-    }
-}
-
-void SegmentWriter::set_max_key(const Slice& key) {
-    _max_key.clear();
-    _max_key.append(key.data(), key.size());
 }
 
 String SegmentWriter::_full_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
@@ -103,7 +101,6 @@ String SegmentWriter::_full_encode_keys(const std::vector<ColumnDataConvertor*>&
     assert(key_columns.size() == _num_key_columns && _key_coders.size() == _num_key_columns);
     std::string encoded_keys;
     size_t cid = 0;
-
     for (const auto& column : key_columns) {
         auto data = column->get_data_at(pos);
         _key_coders[cid]->full_encode_ascending(data, &encoded_keys);
@@ -112,17 +109,64 @@ String SegmentWriter::_full_encode_keys(const std::vector<ColumnDataConvertor*>&
     return encoded_keys;
 }
 
-std::string SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
+String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
     assert(key_columns.size() == _num_short_key_columns);
-    std::string encoded_keys;
+    String encoded_keys;
     size_t cid = 0;
-
     for (const auto& column : key_columns) {
         auto data = column->get_data_at(pos);
         _key_coders[cid]->encode_ascending(data, &encoded_keys);
         ++cid;
     }
     return encoded_keys;
+}
+
+Status SegmentWriter::finalize_segment_data() {
+    for (auto& column_writer : _column_writers) {
+        Status res = column_writer->finish();
+        if (!res.ok()) {
+            return res;
+        }
+    }
+
+    for (auto& column_writer : _column_writers) {
+        _segment_data.emplace_back(std::move(column_writer->write_data()));
+    }
+    return Status::OK();
+}
+
+Status SegmentWriter::finalize_segment_index() {
+    _segment_data._segment_meta._short_key_index = _short_key_index_writer->finalize(_num_rows_written);
+    for (const auto& column_writer : _column_writers) {
+        auto it = _segment_data._segment_meta._column_metas.find(column_writer->get_uid());
+        if (it == _segment_data._segment_meta._column_metas.end()) {
+            return Status::Corruption("column_writer is not found");
+        }
+        it->second._ordinal_index = column_writer->write_ordinal_index();
+    }
+    return Status::OK();
+}
+
+void SegmentWriter::clear() {
+    for (auto& column_writer : _column_writers) {
+        column_writer.reset();
+    }
+    _column_writers.clear();
+    _key_coders.clear();
+    _short_key_index_writer.reset();
+    _data_convertor.reset();
+    _num_rows_written = 0;
+}
+
+SegmentData SegmentWriter::finalize() {
+    Status res;
+    res = finalize_segment_data();
+    assert(res.ok());
+    res = finalize_segment_index();
+    assert(res.ok());
+    _segment_data._segment_meta._num_rows = _num_rows_written;
+    clear();
+    return std::move(_segment_data);
 }
 
 }

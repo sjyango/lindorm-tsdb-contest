@@ -50,7 +50,7 @@ Block MutableBlock::to_block(int start_column, int end_column) {
     return {columns_with_type_and_name};
 }
 
-void MutableBlock::add_row(const Block* block, int row) {
+void MutableBlock::add_row(const Block* block, size_t row) {
     auto block_columns = block->get_columns();
     for (int i = 0; i < _data.size(); ++i) {
         _data[i]->insert_from(*block_columns[i], row);
@@ -96,7 +96,7 @@ void MutableBlock::add_row(const LindormContest::Row& row) {
     }
 }
 
-void MutableBlock::add_rows(const Block* block, const int* row_begin, const int* row_end) {
+void MutableBlock::add_rows(const Block* block, const size_t* row_begin, const size_t* row_end) {
     assert(columns() <= block->columns());
     auto block_columns = block->get_columns();
     for (int i = 0; i < _data.size(); ++i) {
