@@ -16,7 +16,7 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
+#include "common/slice.h"
 
 namespace LindormContest::storage {
 
@@ -46,15 +46,15 @@ public:
     // vals size should be decided according to the page build type
     // TODO make sure vals is naturally-aligned to its type so that impls can use aligned load
     // instead of memcpy to copy values.
-    virtual Status add(const uint8_t* data, size_t* count) = 0;
+    virtual void add(const uint8_t* data, size_t* count) = 0;
 
     // Finish building the current page, return the encoded data.
     // This api should be followed by reset() before reusing the builder
     virtual OwnedSlice finish() = 0;
 
     // Get the dictionary page for dictionary encoding mode column.
-    virtual Status get_dictionary_page(OwnedSlice* dictionary_page) {
-        return Status::NotSupported("get_dictionary_page not implemented");
+    virtual void get_dictionary_page(OwnedSlice* dictionary_page) {
+        throw std::runtime_error("get_dictionary_page not implemented");
     }
 
     // Reset the internal state of the page builder.
@@ -70,13 +70,13 @@ public:
 
     // Return the first value in this page.
     // This method could only be called between finish() and reset().
-    // Status::NotFound if no values have been added.
-    virtual Status get_first_value(void* value) const = 0;
+    // void::NotFound if no values have been added.
+    virtual void get_first_value(void* value) const = 0;
 
     // Return the last value in this page.
     // This method could only be called between finish() and reset().
-    // Status::NotFound if no values have been added.
-    virtual Status get_last_value(void* value) const = 0;
+    // void::NotFound if no values have been added.
+    virtual void get_last_value(void* value) const = 0;
 };
 
 }

@@ -51,7 +51,7 @@ void SegmentWriter::_create_column_writer(const TableColumn& column) {
     _data_convertor->add_column_data_convertor(column);
 }
 
-Status SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_written) {
+void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_written) {
     size_t num_rows = block.rows();
     _data_convertor->set_source_content(&block, 0, num_rows);
     std::vector<size_t> short_key_pos;
@@ -84,16 +84,11 @@ Status SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_w
     }
 
     _max_key = std::move(_full_encode_keys(key_columns, num_rows - 1));
-    Status res;
 
     for (const auto pos : short_key_pos) {
-        res = _short_key_index_writer->add_item(_encode_keys(key_columns, pos));
-        if (!res.ok()) {
-            return res;
-        }
+        _short_key_index_writer->add_item(_encode_keys(key_columns, pos));
     }
     *num_rows_written += num_rows;
-    return Status::OK();
 }
 
 String SegmentWriter::_full_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
@@ -121,30 +116,25 @@ String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_
     return encoded_keys;
 }
 
-Status SegmentWriter::finalize_segment_data() {
+void SegmentWriter::finalize_segment_data() {
     for (auto& column_writer : _column_writers) {
-        Status res = column_writer->finish();
-        if (!res.ok()) {
-            return res;
-        }
+        column_writer->finish();
     }
 
     for (auto& column_writer : _column_writers) {
         _segment_data.emplace_back(std::move(column_writer->write_data()));
     }
-    return Status::OK();
 }
 
-Status SegmentWriter::finalize_segment_index() {
+void SegmentWriter::finalize_segment_index() {
     _segment_data._segment_meta._short_key_index = _short_key_index_writer->finalize(_num_rows_written);
     for (const auto& column_writer : _column_writers) {
         auto it = _segment_data._segment_meta._column_metas.find(column_writer->get_uid());
         if (it == _segment_data._segment_meta._column_metas.end()) {
-            return Status::Corruption("column_writer is not found");
+            throw std::logic_error("column_writer is not found");
         }
         it->second._ordinal_index = column_writer->write_ordinal_index();
     }
-    return Status::OK();
 }
 
 void SegmentWriter::clear() {
@@ -159,11 +149,8 @@ void SegmentWriter::clear() {
 }
 
 SegmentData SegmentWriter::finalize() {
-    Status res;
-    res = finalize_segment_data();
-    assert(res.ok());
-    res = finalize_segment_index();
-    assert(res.ok());
+    finalize_segment_data();
+    finalize_segment_index();
     _segment_data._segment_meta._num_rows = _num_rows_written;
     clear();
     return std::move(_segment_data);

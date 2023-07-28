@@ -40,7 +40,5 @@ foreach(EXECUTABLE ${EXECUTABLES})
     target_link_libraries(${EXECUTABLE} PRIVATE Threads::Threads gtest gtest_main DBLib)
 endforeach()
 
-#add_executable(ut_test ${TEST_LIST})
-#target_link_libraries(ut_test Threads::Threads gtest gtest_main DBLib)
-
-
+add_executable(ut_test ${TEST_LIST})
+target_link_libraries(ut_test Threads::Threads gtest gtest_main DBLib)

@@ -54,10 +54,7 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         return -1;
     }
     auto& delta_writer = _delta_writers[writeRequest.tableName];
-    Status res = delta_writer->append(writeRequest);
-    if (!res.ok()) {
-        return -1;
-    }
+    delta_writer->append(writeRequest);
     return 0;
 }
 

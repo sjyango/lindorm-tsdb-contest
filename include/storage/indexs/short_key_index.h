@@ -19,7 +19,6 @@
 
 #include "Root.h"
 #include "common/coding.h"
-#include "common/status.h"
 #include "storage/segment_traits.h"
 
 namespace LindormContest::storage {
@@ -29,11 +28,10 @@ public:
     ShortKeyIndexWriter(UInt32 segment_id)
             : _segment_id(segment_id), _num_items(0) {}
 
-    Status add_item(const String& key) {
+    void add_item(const String& key) {
         put_varint32(&_offset_buffer, _key_buffer.size());
         _key_buffer.append(key.c_str(), key.size());
         _num_items++;
-        return Status::OK();
     }
 
     size_t size() {
@@ -136,7 +134,7 @@ public:
 
     ShortKeyIndexReader() : _parsed(false) {}
 
-    Status parse(const ShortKeyIndexPage* page) {
+    void parse(const ShortKeyIndexPage* page) {
         _page = page;
         Slice data = page->_data.slice();
         assert(data.size() == (page->_key_bytes + page->_offset_bytes));
@@ -150,8 +148,7 @@ public:
         for (UInt32 i = 0; i < page->_num_items; ++i) {
             UInt32 offset = 0;
             if (!get_varint32(&offset_slice, &offset)) {
-                return Status::OK();
-                // return Status::Corruption("Fail to get varint from index offset buffer", "");
+                throw std::logic_error("Fail to get varint from index offset buffer");
             }
             assert(offset <= page->_key_bytes);
             _offsets[i] = offset;
@@ -159,11 +156,9 @@ public:
 
         _offsets[page->_num_items] = page->_key_bytes;
         if (offset_slice._size != 0) {
-            return Status::OK();
-            //return Status::Corruption("Still has data after parse all key offset", "");
+            throw std::logic_error("Still has data after parse all key offset");
         }
         _parsed = true;
-        return Status::OK();
     }
 
     inline ShortKeyIndexIterator begin() const {

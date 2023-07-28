@@ -19,7 +19,6 @@
 
 #include "Root.h"
 #include "common/coding.h"
-#include "common/status.h"
 #include "storage/segment_traits.h"
 
 namespace LindormContest::storage {
@@ -43,17 +42,13 @@ public:
         return _num_items;
     }
 
-    Status get_first_key(Slice* key) const {
+    void get_first_key(Slice* key) const {
         if (_num_items == 0) {
-            return Status::OK();
-            // return Status::NotFound("index page is empty");
+            throw std::logic_error("Index page is empty");
         }
         Slice input(_buffer);
-        if (get_length_prefixed_slice(&input, key)) {
-            return Status::OK();
-        } else {
-            return Status::OK();
-            // return Status::Corruption("can't decode first key");
+        if (!get_length_prefixed_slice(&input, key)) {
+            throw std::logic_error("Can't decode first key");
         }
     }
 
@@ -133,7 +128,7 @@ public:
 
     OrdinalIndexReader() : _parsed(false) {}
 
-    Status parse(const OrdinalIndexPage* page) {
+    void parse(const OrdinalIndexPage* page) {
         _page = page;
         Slice data = page->_data.slice();
         _ordinals.resize(page->_num_items);
@@ -143,23 +138,19 @@ public:
             ordinal_t ordinal;
             UInt32 index;
             if (!get_varint64(&data, &ordinal)) {
-                return Status::OK();
-                // return Status::Corruption("Fail to get varint `ordinal` from buffer");
+                throw std::logic_error("Fail to get varint `ordinal` from buffer");
             }
             if (!get_varint32(&data, &index)) {
-                return Status::OK();
-                // return Status::Corruption("Fail to get varint `index` from buffer");
+                throw std::logic_error("Fail to get varint `index` from buffer");
             }
             _ordinals[i] = ordinal;
             _indexs[i] = index;
         }
 
         if (data._size != 0) {
-            return Status::OK();
-            // return Status::Corruption("Still has data after parse all key offset");
+            throw std::logic_error("Still has data after parse all key offset");
         }
         _parsed = true;
-        return Status::OK();
     }
 
     inline OrdinalPageIndexIterator begin() const {

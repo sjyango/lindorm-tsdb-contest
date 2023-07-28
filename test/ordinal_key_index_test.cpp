@@ -13,7 +13,6 @@
 * limitations under the License.
 */
 
-#include <string>
 #include <random>
 #include <algorithm>
 
@@ -26,14 +25,14 @@ namespace LindormContest::test {
 
 using namespace storage;
 
-ordinal_t generate_random_ordinal(size_t range) {
+inline ordinal_t generate_random_ordinal(size_t range) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(1, range);
     return dis(gen);
 }
 
-ordinal_t lower_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
+inline ordinal_t lower_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
     for (const auto& item : ordinals) {
         if (item >= ordinal) {
             return item;
@@ -42,7 +41,7 @@ ordinal_t lower_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal)
     return 0;
 }
 
-ordinal_t upper_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
+inline ordinal_t upper_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
     for (const auto& item : ordinals) {
         if (item > ordinal) {
             return item;

@@ -18,14 +18,13 @@
 #include <unordered_map>
 
 #include "Root.h"
-#include "common/status.h"
 #include "struct/ColumnValue.h"
 
 namespace LindormContest::storage {
 
 using FullEncodeAscendingFunc = void (*)(const void* value, std::string* buf);
 using EncodeAscendingFunc = void (*)(const void* value, std::string* buf);
-using DecodeAscendingFunc = Status (*)(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr);
+using DecodeAscendingFunc = void (*)(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr);
 
 // Order-preserving binary encoding for values of a particular type so that
 // those values can be compared by memcpy their encoded bytes.
@@ -51,7 +50,7 @@ public:
     }
 
     // Only used for test, should delete it in the future
-    Status decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) const {
+    void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) const {
         return _decode_ascending(encoded_key, index_size, cell_ptr);
     }
 
@@ -78,7 +77,7 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
         full_encode_ascending(value, buf);
     }
 
-    static Status decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
+    static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
         // decode_ascending only used in orinal index page, maybe should remove it in the future.
         // currently, we reduce the usage of this method.
         // if (encoded_key->_size < sizeof(KeyType)) {
@@ -88,7 +87,6 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
         memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
         memcpy(cell_ptr, &key_val, sizeof(KeyType));
         encoded_key->remove_prefix(sizeof(KeyType));
-        return Status::OK();
     }
 };
 
@@ -107,8 +105,8 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_STRING> {
         buf->append(slice->_data, copy_size);
     }
 
-    static Status decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
-        return Status::NotSupported("decode_ascending is not implemented");
+    static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
+        throw std::runtime_error("decode_ascending is not implemented");
     }
 };
 

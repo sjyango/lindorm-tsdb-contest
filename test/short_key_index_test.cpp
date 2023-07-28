@@ -26,7 +26,7 @@ namespace LindormContest::test {
 
 using namespace storage;
 
-std::string generate_random_string(int length) {
+inline std::string generate_random_string(int length) {
     const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
     std::random_device rd;
@@ -41,7 +41,7 @@ std::string generate_random_string(int length) {
     return str;
 }
 
-Slice lower_bound(const std::vector<std::string>& ss, const String& key) {
+inline Slice lower_bound(const std::vector<std::string>& ss, const String& key) {
     for (const auto& item : ss) {
         if (item >= key) {
             return item;
@@ -50,7 +50,7 @@ Slice lower_bound(const std::vector<std::string>& ss, const String& key) {
     return "";
 }
 
-Slice upper_bound(const std::vector<std::string>& ss, const String& key) {
+inline Slice upper_bound(const std::vector<std::string>& ss, const String& key) {
     for (const auto& item : ss) {
         if (item > key) {
             return item;
@@ -58,7 +58,6 @@ Slice upper_bound(const std::vector<std::string>& ss, const String& key) {
     }
     return "";
 }
-
 
 TEST(ShortKeyIndexTest, BasicShortKeyIndexTest) {
     const size_t N = 10000;

@@ -16,7 +16,6 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
 #include "table_schema.h"
 #include "vec/columns/column_with_type_and_name.h"
 

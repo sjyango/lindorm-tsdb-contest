@@ -59,14 +59,14 @@ inline uint64_t decode_fixed64_le(const uint8_t* buf) {
 }
 
 template <typename T>
-void put_fixed32_le(T* dst, uint32_t val) {
+inline void put_fixed32_le(T* dst, uint32_t val) {
     uint8_t buf[sizeof(val)];
     encode_fixed32_le(buf, val);
     dst->append((char*)buf, sizeof(buf));
 }
 
 template <typename T>
-void put_fixed64_le(T* dst, uint64_t val) {
+inline void put_fixed64_le(T* dst, uint64_t val) {
     uint8_t buf[sizeof(val)];
     encode_fixed64_le(buf, val);
     dst->append((char*)buf, sizeof(buf));
@@ -82,7 +82,7 @@ inline int varint_length(uint64_t v) {
     return len;
 }
 
-uint8_t* encode_varint32(uint8_t* dst, uint32_t v) {
+inline uint8_t* encode_varint32(uint8_t* dst, uint32_t v) {
     // Operate on characters as unsigneds
     static const int B = 128;
     if (v < (1 << 7)) {
@@ -122,7 +122,7 @@ inline uint8_t* encode_varint64(uint8_t* dst, uint64_t v) {
     return dst;
 }
 
-const uint8_t* decode_varint32_ptr_fallback(const uint8_t* p, const uint8_t* limit,
+inline const uint8_t* decode_varint32_ptr_fallback(const uint8_t* p, const uint8_t* limit,
                                             uint32_t* value) {
     uint32_t result = 0;
     for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
@@ -169,27 +169,27 @@ inline const uint8_t* decode_varint64_ptr(const uint8_t* p, const uint8_t* limit
 }
 
 template <typename T>
-void put_varint32(T* dst, uint32_t v) {
+inline void put_varint32(T* dst, uint32_t v) {
     uint8_t buf[16];
     uint8_t* ptr = encode_varint32(buf, v);
     dst->append((char*)buf, static_cast<size_t>(ptr - buf));
 }
 
 template <typename T>
-void put_varint64(T* dst, uint64_t v) {
+inline void put_varint64(T* dst, uint64_t v) {
     uint8_t buf[16];
     uint8_t* ptr = encode_varint64(buf, v);
     dst->append((char*)buf, static_cast<size_t>(ptr - buf));
 }
 
 
-void put_length_prefixed_slice(std::string* dst, const Slice& value) {
+inline void put_length_prefixed_slice(std::string* dst, const Slice& value) {
     put_varint32(dst, value.size());
     dst->append(reinterpret_cast<const char*>(value.data()), value.size());
 }
 
 template <typename T>
-void put_varint64_varint32(T* dst, uint64_t v1, uint32_t v2) {
+inline void put_varint64_varint32(T* dst, uint64_t v1, uint32_t v2) {
     uint8_t buf[16];
     uint8_t* ptr = encode_varint64(buf, v1);
     ptr = encode_varint32(ptr, v2);

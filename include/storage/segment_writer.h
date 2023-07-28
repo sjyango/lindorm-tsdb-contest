@@ -16,7 +16,6 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
 #include "vec/blocks/block.h"
 #include "table_schema.h"
 #include "column_writer.h"
@@ -54,11 +53,11 @@ public:
         return _max_key;
     }
 
-    Status append_block(vectorized::Block&& block, size_t* num_rows_written);
+    void append_block(vectorized::Block&& block, size_t* num_rows_written);
 
-    Status finalize_segment_data();
+    void finalize_segment_data();
 
-    Status finalize_segment_index();
+    void finalize_segment_index();
 
     SegmentData finalize();
 

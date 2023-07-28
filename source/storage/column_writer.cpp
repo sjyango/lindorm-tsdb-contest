@@ -24,46 +24,31 @@ ColumnWriter::ColumnWriter(const TableColumn& column) : _column(column) {
 
 ColumnWriter::~ColumnWriter() = default;
 
-Status ColumnWriter::append_data(const uint8_t** data, size_t num_rows) {
+void ColumnWriter::append_data(const uint8_t** data, size_t num_rows) {
     size_t remaining = num_rows;
     while (remaining > 0) {
         size_t num_written = remaining;
-        Status res = append_data_in_current_page(data, &num_written);
-        if (!res.ok()) {
-            return res;
-        }
+        append_data_in_current_page(data, &num_written);
         remaining -= num_written;
         if (_page_builder->is_page_full()) {
-            res = finish_current_page();
-            if (!res.ok()) {
-                return res;
-            }
+            finish_current_page();
         }
     }
-    return Status::OK();
 }
 
-Status ColumnWriter::append_data_in_current_page(const uint8_t* data, size_t* num_written) {
-    Status res = _page_builder->add(data, num_written);
-    if (!res.ok()) {
-        return res;
-    }
+void ColumnWriter::append_data_in_current_page(const uint8_t* data, size_t* num_written) {
+    _page_builder->add(data, num_written);
     _next_rowid += *num_written;
-    return Status::OK();
 }
 
-Status ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num_written) {
-    Status res = append_data_in_current_page(*data, num_written);
-    if (!res.ok()) {
-        return res;
-    }
+void ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num_written) {
+    append_data_in_current_page(*data, num_written);
     *data += _column.get_type_size() * (*num_written);
-    return Status::OK();
 }
 
-Status ColumnWriter::finish_current_page() {
+void ColumnWriter::finish_current_page() {
     if (_next_rowid == _first_rowid) {
-        return Status::OK();
+        return;
     }
     OwnedSlice page_data = _page_builder->finish();
     _page_builder->reset();
@@ -71,15 +56,10 @@ Status ColumnWriter::finish_current_page() {
     DataPage page(std::move(page_data), data_meta);
     _data_pages.emplace_back(std::move(page));
     _first_rowid = _next_rowid;
-    return Status::OK();
 }
 
-Status ColumnWriter::finish() {
-    Status res = finish_current_page();
-    if (!res.ok()) {
-        return res;
-    }
-    return Status::OK();
+void ColumnWriter::finish() {
+    finish_current_page();
 }
 
 std::vector<DataPage>&& ColumnWriter::write_data() {

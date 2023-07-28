@@ -17,7 +17,6 @@
 
 #include "Root.h"
 #include "page_builder.h"
-#include "common/status.h"
 #include "common/coding.h"
 #include "struct/ColumnValue.h"
 #include "table_schema.h"
@@ -41,16 +40,15 @@ public:
         return _buffer.size() > _data_page_size;
     }
 
-    Status add(const UInt8* data, size_t* count) override {
+    void add(const UInt8* data, size_t* count) override {
         if (is_page_full()) {
             *count = 0;
-            return Status::OK();
+            return;
         }
         size_t old_size = _buffer.size();
         _buffer.resize(old_size + (*count) * _column.get_type_size());
         std::memcpy(&_buffer[old_size], data, (*count) * _column.get_type_size());
         _count += *count;
-        return Status::OK();
     }
 
     OwnedSlice finish() override {
@@ -74,20 +72,18 @@ public:
 
     size_t size() const override { return _buffer.size(); }
 
-    Status get_first_value(void* value) const override {
+    void get_first_value(void* value) const override {
         if (_count == 0) {
-            return Status::NotFound("page is empty");
+            throw std::logic_error("page is empty");
         }
         std::memcpy(value, _first_value.data(), _column.get_type_size());
-        return Status::OK();
     }
 
-    Status get_last_value(void* value) const override {
+    void get_last_value(void* value) const override {
         if (_count == 0) {
-            return Status::NotFound("page is empty");
+            throw std::logic_error("page is empty");
         }
         std::memcpy(value, _last_value.data(), _column.get_type_size());
-        return Status::OK();
     }
 
 private:

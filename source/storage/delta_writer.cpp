@@ -33,7 +33,7 @@ DeltaWriter::DeltaWriter(const String& root_path, const String& table_name,
 
 DeltaWriter::~DeltaWriter() = default;
 
-Status DeltaWriter::append(const WriteRequest& w_req) {
+void DeltaWriter::append(const WriteRequest& w_req) {
     std::unique_ptr<vectorized::MutableBlock> input_block =
             std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
     assert(input_block->columns() == w_req.rows[0].columns.size() + 2); // 2 means vin + timestamp
@@ -42,27 +42,19 @@ Status DeltaWriter::append(const WriteRequest& w_req) {
         input_block->add_row(row);
     }
 
-    Status res = write(std::move(input_block->to_block()), {});
-    if(!res.ok()) {
-        return res;
-    }
+    write(std::move(input_block->to_block()), {});
     input_block.reset();
-    return Status::OK();
 }
 
 bool DeltaWriter::need_to_flush() {
     return _mem_table->rows() >= MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-Status DeltaWriter::write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs) {
+void DeltaWriter::write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs) {
     _mem_table->insert(std::move(block), row_idxs);
     if (need_to_flush()) {
-        Status res = flush();
-        if (!res.ok()) {
-            return res;
-        }
+        flush();
     }
-    return Status::OK();
 }
 
 void DeltaWriter::reset() {
@@ -70,42 +62,37 @@ void DeltaWriter::reset() {
     _segment_writer = std::make_unique<SegmentWriter>(_root_path, _schema.get(), allocate_segment_id());
 }
 
-Status DeltaWriter::flush() {
+void DeltaWriter::flush() {
     vectorized::Block block = std::move(_mem_table->flush());
     if (block.empty()) {
-        return Status::OK();
+        return;
     }
-    Status res = _segment_writer->append_block(std::move(block), &_num_rows_written);
-    if (!res.ok()) {
-        return res;
-    }
+    _segment_writer->append_block(std::move(block), &_num_rows_written);
     flush_segment_writer();
     reset();
-    return Status::OK();
 }
 
-Status DeltaWriter::close() {
+void DeltaWriter::close() {
     vectorized::Block block = std::move(_mem_table->flush());
     if (block.empty()) {
-        return Status::OK();
+        return;
     }
     _segment_writer->append_block(std::move(block), &_num_rows_written);
     _mem_table.reset(); // reset mem_table
     _segment_writer.reset(); // reset segment_writer
-    return Status::OK();
 }
 
-Status DeltaWriter::flush_segment_writer() {
+void DeltaWriter::flush_segment_writer() {
     size_t segment_id = _segment_writer->segment_id();
     size_t num_rows = _segment_writer->num_rows_written();
     if (num_rows == 0) {
-        return Status::OK();
+        return;
     }
     // size_t segment_size;
     // size_t index_size;
     (*_segment_datas)[_table_name].emplace_back(std::move(_segment_writer->finalize()));
     // if (!res.ok()) {
-    //     return Status::Corruption("failed to finalize segment");
+    //     return void::Corruption("failed to finalize segment");
     // }
 
     KeyBounds key_bounds;
@@ -124,7 +111,6 @@ Status DeltaWriter::flush_segment_writer() {
     // }
 
     // add_segment(segid, segstat);
-    return Status::OK();
 }
 
 }

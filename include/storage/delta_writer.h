@@ -16,7 +16,6 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
 #include "struct/Requests.h"
 #include "vec/blocks/block.h"
 #include "memtable.h"
@@ -37,19 +36,19 @@ public:
 
     ~DeltaWriter();
 
-    Status append(const WriteRequest& w_req);
+    void append(const WriteRequest& w_req);
 
-    Status write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs);
+    void write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs);
 
-    Status flush();
+    void flush();
 
-    Status close();
+    void close();
 
     void reset();
 
     bool need_to_flush();
 
-    Status flush_segment_writer();
+    void flush_segment_writer();
 
     size_t allocate_segment_id() { return _next_segment_id++; };
 

@@ -16,8 +16,6 @@
 #pragma once
 
 #include "Root.h"
-#include "common/status.h"
-#include "page.h"
 #include "plain_page_builder.h"
 #include "segment_traits.h"
 #include "storage/indexs/ordinal_key_index.h"
@@ -38,17 +36,17 @@ public:
         return _column.get_uid();
     }
 
-    Status finish_current_page();
+    void finish_current_page();
 
     ordinal_t get_next_rowid() const { return _next_rowid; }
 
-    Status append_data(const uint8_t** ptr, size_t num_rows);
+    void append_data(const uint8_t** ptr, size_t num_rows);
 
-    Status append_data_in_current_page(const uint8_t** data, size_t* num_written);
+    void append_data_in_current_page(const uint8_t** data, size_t* num_written);
 
-    Status append_data_in_current_page(const uint8_t* data, size_t* num_written);
+    void append_data_in_current_page(const uint8_t* data, size_t* num_written);
 
-    Status finish();
+    void finish();
 
     std::vector<DataPage>&& write_data();
 
