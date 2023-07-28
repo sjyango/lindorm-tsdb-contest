@@ -140,7 +140,7 @@ void SegmentWriter::finalize_segment_index() {
     }
 }
 
-void SegmentWriter::clear() {
+void SegmentWriter::close() {
     for (auto& column_writer : _column_writers) {
         column_writer.reset();
     }
@@ -155,7 +155,6 @@ SegmentData SegmentWriter::finalize() {
     finalize_segment_data();
     finalize_segment_index();
     _segment_data._segment_meta._num_rows = _num_rows_written;
-    clear();
     return std::move(_segment_data);
 }
 

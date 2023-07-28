@@ -31,7 +31,7 @@ void ColumnWriter::append_data(const uint8_t** data, size_t num_rows) {
         append_data_in_current_page(data, &num_written);
         remaining -= num_written;
         if (_page_builder->is_page_full()) {
-            finish_current_page();
+            flush_current_page();
         }
     }
 }
@@ -46,7 +46,7 @@ void ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num
     *data += _column.get_type_size() * (*num_written);
 }
 
-void ColumnWriter::finish_current_page() {
+void ColumnWriter::flush_current_page() {
     if (_next_rowid == _first_rowid) {
         return;
     }
@@ -59,7 +59,7 @@ void ColumnWriter::finish_current_page() {
 }
 
 void ColumnWriter::finish() {
-    finish_current_page();
+    flush_current_page();
 }
 
 std::vector<DataPage>&& ColumnWriter::write_data() {

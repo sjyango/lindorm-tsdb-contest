@@ -34,7 +34,8 @@ set(EXECUTABLES
         memtable_test
         short_key_index_test
         ordinal_key_index_test
-        delta_writer_test)
+        delta_writer_test
+        bitmap_test)
 
 foreach(EXECUTABLE ${EXECUTABLES})
     add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)

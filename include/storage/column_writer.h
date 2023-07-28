@@ -36,7 +36,7 @@ public:
         return _column.get_uid();
     }
 
-    void finish_current_page();
+    void flush_current_page();
 
     void append_data(const uint8_t** data, size_t num_rows);
 

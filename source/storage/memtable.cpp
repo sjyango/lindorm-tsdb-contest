@@ -17,7 +17,7 @@
 
 namespace LindormContest::storage {
 
-MemTable::MemTable(const TableSchema* schema) : _schema(schema) {
+MemTable::MemTable(const TableSchema* schema, size_t segment_id) : _schema(schema), _segment_id(segment_id) {
     _arena = std::make_unique<Arena>();
     _row_comparator = std::make_unique<RowInBlockComparator>(_schema);
     _skip_list = std::make_unique<VecTable>(_row_comparator.get(), _arena.get());
@@ -27,6 +27,7 @@ MemTable::MemTable(const TableSchema* schema) : _schema(schema) {
     _output_mutable_block = vectorized::MutableBlock::build_mutable_block(&output_block);
     _row_comparator->set_block(&_input_mutable_block);
     assert(_input_mutable_block.columns() == _schema->num_columns());
+    _segment_writer = std::make_unique<SegmentWriter>(_schema, _segment_id);
 }
 
 MemTable::~MemTable() = default;
@@ -50,7 +51,7 @@ void MemTable::insert(const vectorized::Block&& input_block) {
     }
 }
 
-vectorized::Block MemTable::flush() {
+void MemTable::flush(size_t* num_rows_written_in_table) {
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block.to_block();
     std::vector<size_t> row_pos_vec;
@@ -60,10 +61,41 @@ vectorized::Block MemTable::flush() {
         row_pos_vec.emplace_back(it.key()->_row_pos);
     }
 
-    _skip_list.reset();
     _output_mutable_block.add_rows(&in_block, row_pos_vec.data(),
                                    row_pos_vec.data() + row_pos_vec.size());
-    return _output_mutable_block.to_block();
+    _segment_writer->append_block(std::move(_output_mutable_block.to_block()),
+                                  num_rows_written_in_table);
+}
+
+SegmentData MemTable::finalize() {
+    SegmentData segment_data = _segment_writer->finalize();
+
+    KeyBounds key_bounds;
+    key_bounds.min_key = std::move(_segment_writer->min_encoded_key());
+    key_bounds.max_key = std::move(_segment_writer->max_encoded_key());
+    assert(key_bounds.min_key.compare(key_bounds.max_key) <= 0);
+
+    // SegmentStatistics segstat;
+    // segstat.row_num = row_num;
+    // segstat.data_size = segment_size + (*writer)->get_inverted_index_file_size();
+    // segstat.index_size = index_size + (*writer)->get_inverted_index_file_size();
+    // segstat.key_bounds = key_bounds;
+
+    // if (flush_size) {
+    //     *flush_size = segment_size + index_size;
+    // }
+
+    // add_segment(segid, segstat);
+    return std::move(segment_data);
+}
+
+void MemTable::close() {
+    _row_comparator.reset();
+    _arena.reset();
+    _skip_list.reset();
+    _row_in_blocks.clear();
+    _segment_writer->close();
+    _segment_writer.reset();
 }
 
 }

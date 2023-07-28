@@ -19,6 +19,7 @@
 #include "struct/Schema.h"
 #include "skiplist.h"
 #include "table_schema.h"
+#include "segment_writer.h"
 #include "vec/blocks/block.h"
 #include "vec/blocks/mutable_block.h"
 
@@ -55,21 +56,23 @@ class MemTable {
 public:
     using VecTable = SkipList<RowInBlock*, RowInBlockComparator>;
 
-    MemTable(const TableSchema* schema);
+    MemTable(const TableSchema* schema, size_t segment_id);
 
     ~MemTable();
 
     void insert(const vectorized::Block&& input_block);
 
-    vectorized::Block flush();
+    void flush(size_t* num_rows_written_in_table);
 
-    vectorized::Block close() {
-        return std::move(flush());
-    }
+    SegmentData finalize();
+
+    void close();
 
     size_t rows() const {
         return _rows;
     }
+
+    size_t segment_id() { return _segment_id; };
 
     /// The iterator of memtable, so that the data in this memtable can be visited outside.
     class Iterator {
@@ -96,6 +99,7 @@ public:
 
 private:
     const TableSchema* _schema;
+    size_t _segment_id;
     std::unique_ptr<RowInBlockComparator> _row_comparator;
     std::unique_ptr<Arena> _arena;
     std::unique_ptr<VecTable> _skip_list;
@@ -104,6 +108,7 @@ private:
     int64_t _rows = 0;
     vectorized::MutableBlock _input_mutable_block;
     vectorized::MutableBlock _output_mutable_block;
+    std::unique_ptr<SegmentWriter> _segment_writer;
 }; // class MemTable
 
 }

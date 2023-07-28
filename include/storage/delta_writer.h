@@ -20,7 +20,6 @@
 #include "vec/blocks/block.h"
 #include "memtable.h"
 #include "table_schema.h"
-#include "segment_writer.h"
 
 namespace LindormContest::storage {
 
@@ -42,18 +41,11 @@ public:
 
     void close();
 
-    void reset();
-
     bool need_to_flush();
-
-    SegmentData flush_segment_writer();
-
-    size_t allocate_segment_id() { return _next_segment_id++; };
 
 private:
     String _table_name;
     std::unique_ptr<TableSchema> _schema;
-    std::unique_ptr<SegmentWriter> _segment_writer;
     std::unique_ptr<MemTable> _mem_table;
     std::atomic<size_t> _next_segment_id = 0;
     size_t _num_rows_written_in_table = 0;

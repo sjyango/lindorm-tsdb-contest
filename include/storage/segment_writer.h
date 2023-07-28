@@ -61,7 +61,7 @@ public:
 
     SegmentData finalize();
 
-    void clear();
+    void close();
 
 private:
     void _create_column_writer(const TableColumn& column);
