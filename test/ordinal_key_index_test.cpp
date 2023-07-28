@@ -67,17 +67,28 @@ TEST(OrdinalKeyIndexTest, BasicOrdinalKeyIndexTest) {
     std::shared_ptr<OrdinalIndexPage> page = writer.finalize();
     OrdinalIndexReader reader;
     reader.parse(page.get());
-    OrdinalIndexReader::OrdinalPageIndexIterator iter(&reader);
 
-    for (const auto& item : ordinals) {
-        ASSERT_EQ(*iter, item);
-        ++iter;
+    auto it = ordinals.begin();
+
+    for (auto iter = reader.begin(); iter != reader.end(); ++iter) {
+        ASSERT_EQ(*iter, *it);
+        ++it;
     }
 
     for (size_t i = 0; i < (N / 10); ++i) {
         ordinal_t o = generate_random_ordinal(ordinals.back());
-        ASSERT_EQ(lower_bound(ordinals, o), *reader.lower_bound(o));
-        ASSERT_EQ(upper_bound(ordinals, o), *reader.upper_bound(o));
+        auto lower_bound_lhs = reader.lower_bound(o);
+        auto lower_bound_rhs = lower_bound(ordinals, o);
+        ASSERT_EQ(lower_bound_lhs == reader.end(), lower_bound_rhs == 0);
+        if (lower_bound_lhs != reader.end()) {
+            ASSERT_EQ(*lower_bound_lhs, lower_bound_rhs);
+        }
+        auto upper_bound_lhs = reader.upper_bound(o);
+        auto upper_bound_rhs = upper_bound(ordinals, o);
+        ASSERT_EQ(upper_bound_lhs == reader.end(), upper_bound_rhs == 0);
+        if (upper_bound_lhs != reader.end()) {
+            ASSERT_EQ(*upper_bound_lhs, upper_bound_rhs);
+        }
     }
 }
 

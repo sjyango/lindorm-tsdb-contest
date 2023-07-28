@@ -75,17 +75,28 @@ TEST(ShortKeyIndexTest, BasicShortKeyIndexTest) {
     std::shared_ptr<ShortKeyIndexPage> page = writer.finalize(ss.size());
     ShortKeyIndexReader reader;
     reader.parse(page.get());
-    ShortKeyIndexReader::ShortKeyIndexIterator iter(&reader);
 
-    for (const auto& item : ss) {
-        ASSERT_EQ(*iter, item);
-        ++iter;
+    auto it = ss.begin();
+
+    for (auto iter = reader.begin(); iter != reader.end(); ++iter) {
+        ASSERT_EQ(*iter, *it);
+        ++it;
     }
 
     for (size_t i = 0; i < (N / 10); ++i) {
         std::string key = generate_random_string(17);
-        ASSERT_EQ(lower_bound(ss, key), *reader.lower_bound(key));
-        ASSERT_EQ(upper_bound(ss, key), *reader.upper_bound(key));
+        auto lower_bound_lhs = reader.lower_bound(key);
+        auto lower_bound_rhs = lower_bound(ss, key);
+        ASSERT_EQ(lower_bound_lhs == reader.end(), lower_bound_rhs == "");
+        if (lower_bound_lhs != reader.end()) {
+            ASSERT_EQ(*lower_bound_lhs, lower_bound_rhs);
+        }
+        auto upper_bound_lhs = reader.upper_bound(key);
+        auto upper_bound_rhs = upper_bound(ss, key);
+        ASSERT_EQ(upper_bound_lhs == reader.end(), upper_bound_rhs == "");
+        if (upper_bound_lhs != reader.end()) {
+            ASSERT_EQ(*upper_bound_lhs, upper_bound_rhs);
+        }
     }
 }
 

@@ -97,7 +97,7 @@ public:
         }
 
         ShortKeyIndexIterator& operator--() {
-            --_index;
+            _index--;
             return *this;
         }
 
@@ -118,8 +118,7 @@ public:
         }
 
         Slice operator*() const {
-            auto res = _reader->key(_index);
-            return res;
+            return _reader->key(_index);
         }
 
         // return current block index[size=1024]
