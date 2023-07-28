@@ -20,7 +20,7 @@
 #include "page.h"
 #include "plain_page_builder.h"
 #include "segment_traits.h"
-#include "storage/indexs/ordinal_page_index.h"
+#include "storage/indexs/ordinal_key_index.h"
 #include "table_schema.h"
 #include "vec/blocks/block.h"
 

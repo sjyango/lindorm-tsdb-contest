@@ -14,8 +14,6 @@
 */
 
 #include <string>
-#include <cstdlib>
-#include <ctime>
 #include <random>
 
 #include <gtest/gtest.h>
@@ -30,17 +28,18 @@ using namespace storage;
 using namespace vectorized;
 
 std::string generate_random_string(int length) {
-    static const char alphanum[] =
-            "0123456789"
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "abcdefghijklmnopqrstuvwxyz";
+    const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    std::string random_string;
-    srand(time(nullptr));
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, charset.size() - 1);
+
+    std::string str(length, '\0');
     for (int i = 0; i < length; ++i) {
-        random_string += alphanum[rand() % (sizeof(alphanum) - 1)];
+        str[i] = charset[dis(gen)];
     }
-    return random_string;
+
+    return str;
 }
 
 int32_t generate_random_int32() {

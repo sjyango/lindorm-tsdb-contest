@@ -16,7 +16,6 @@
 cmake_minimum_required(VERSION 2.8.12)
 
 aux_source_directory(. TEST_LIST)
-# add_executable(ut_test ${TEST_LIST})
 
 find_package(Threads REQUIRED)
 
@@ -24,12 +23,24 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/thirdpar
 
 link_directories(${PROJECT_SOURCE_DIR}/thirdparty/gtest/lib)
 
-set(EXECUTABLES demo_test coding_test column_test block_test schema_test arena_test skip_list_test memtable_test)
+set(EXECUTABLES
+        demo_test
+        coding_test
+        column_test
+        block_test
+        schema_test
+        arena_test
+        skip_list_test
+        memtable_test
+        short_key_index_test
+        ordinal_key_index_test)
 
 foreach(EXECUTABLE ${EXECUTABLES})
     add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)
     target_link_libraries(${EXECUTABLE} PRIVATE Threads::Threads gtest gtest_main DBLib)
 endforeach()
 
+#add_executable(ut_test ${TEST_LIST})
+#target_link_libraries(ut_test Threads::Threads gtest gtest_main DBLib)
 
 
