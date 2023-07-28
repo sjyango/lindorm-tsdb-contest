@@ -31,17 +31,11 @@ MemTable::MemTable(const TableSchema* schema) : _schema(schema) {
 
 MemTable::~MemTable() = default;
 
-void MemTable::insert(const vectorized::Block&& input_block, const std::vector<size_t>& row_idxs) {
+void MemTable::insert(const vectorized::Block&& input_block) {
     assert(input_block.columns() == _schema->num_columns());
-    auto num_rows = row_idxs.size();
     size_t cursor_in_mutable_block = _input_mutable_block.rows();
-
-    if (num_rows == 0) {
-        num_rows = input_block.rows();
-        _input_mutable_block.add_rows(&input_block, 0, num_rows);
-    } else {
-        _input_mutable_block.add_rows(&input_block, row_idxs.data(), row_idxs.data() + num_rows);
-    }
+    size_t num_rows = input_block.rows();
+    _input_mutable_block.add_rows(&input_block, 0, num_rows);
 
     for (int i = 0; i < num_rows; i++) {
         _row_in_blocks.emplace_back(std::make_unique<RowInBlock>(cursor_in_mutable_block + i));

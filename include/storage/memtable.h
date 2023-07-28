@@ -59,7 +59,7 @@ public:
 
     ~MemTable();
 
-    void insert(const vectorized::Block&& input_block, const std::vector<size_t>& row_idxs);
+    void insert(const vectorized::Block&& input_block);
 
     vectorized::Block flush();
 

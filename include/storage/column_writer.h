@@ -38,9 +38,7 @@ public:
 
     void finish_current_page();
 
-    ordinal_t get_next_rowid() const { return _next_rowid; }
-
-    void append_data(const uint8_t** ptr, size_t num_rows);
+    void append_data(const uint8_t** data, size_t num_rows);
 
     void append_data_in_current_page(const uint8_t** data, size_t* num_written);
 

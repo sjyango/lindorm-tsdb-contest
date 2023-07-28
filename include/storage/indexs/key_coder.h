@@ -91,6 +91,60 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
 };
 
 template <>
+struct KeyCoderTraits<ColumnType::COLUMN_TYPE_TIMESTAMP> {
+    using KeyType = Int64;
+
+    static void full_encode_ascending(const void* value, std::string* buf) {
+        KeyType key_val;
+        std::memcpy(&key_val, value, sizeof(KeyType));
+        buf->append((char*) &key_val, sizeof(KeyType));
+    }
+
+    static void encode_ascending(const void* value, std::string* buf) {
+        full_encode_ascending(value, buf);
+    }
+
+    static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
+        // decode_ascending only used in orinal index page, maybe should remove it in the future.
+        // currently, we reduce the usage of this method.
+        // if (encoded_key->_size < sizeof(KeyType)) {
+        //     return Status::InvalidArgument("Key is too short", "");
+        // }
+        KeyType key_val;
+        memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
+        memcpy(cell_ptr, &key_val, sizeof(KeyType));
+        encoded_key->remove_prefix(sizeof(KeyType));
+    }
+};
+
+template <>
+struct KeyCoderTraits<ColumnType::COLUMN_TYPE_DOUBLE_FLOAT> {
+    using KeyType = Float64;
+
+    static void full_encode_ascending(const void* value, std::string* buf) {
+        KeyType key_val;
+        std::memcpy(&key_val, value, sizeof(KeyType));
+        buf->append((char*) &key_val, sizeof(KeyType));
+    }
+
+    static void encode_ascending(const void* value, std::string* buf) {
+        full_encode_ascending(value, buf);
+    }
+
+    static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
+        // decode_ascending only used in orinal index page, maybe should remove it in the future.
+        // currently, we reduce the usage of this method.
+        // if (encoded_key->_size < sizeof(KeyType)) {
+        //     return Status::InvalidArgument("Key is too short", "");
+        // }
+        KeyType key_val;
+        memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
+        memcpy(cell_ptr, &key_val, sizeof(KeyType));
+        encoded_key->remove_prefix(sizeof(KeyType));
+    }
+};
+
+template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_STRING> {
     using KeyType = Slice;
 
@@ -136,9 +190,9 @@ public:
 private:
     KeyCoderFactory() {
         _coder_map.emplace(COLUMN_TYPE_INTEGER, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_INTEGER>()));
-        // _coder_map.emplace(COLUMN_TYPE_TIMESTAMP, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_INTEGER>()));
-        // _coder_map.emplace(COLUMN_TYPE_DOUBLE_FLOAT, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_INTEGER>()));
-        _coder_map.emplace(COLUMN_TYPE_STRING, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_INTEGER>()));
+        _coder_map.emplace(COLUMN_TYPE_TIMESTAMP, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>()));
+        _coder_map.emplace(COLUMN_TYPE_DOUBLE_FLOAT, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_DOUBLE_FLOAT>()));
+        _coder_map.emplace(COLUMN_TYPE_STRING, new KeyCoder(KeyCoderTraits<COLUMN_TYPE_STRING>()));
     }
 
     struct EnumClassHash {
@@ -151,7 +205,7 @@ private:
     std::unordered_map<ColumnType, KeyCoder*, EnumClassHash> _coder_map;
 };
 
-const KeyCoder* get_key_coder(ColumnType type) {
+inline const KeyCoder* get_key_coder(ColumnType type) {
     return KeyCoderFactory::instance().get_coder(type);
 }
 

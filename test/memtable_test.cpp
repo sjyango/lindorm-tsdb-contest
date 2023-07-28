@@ -27,7 +27,7 @@ namespace LindormContest::test {
 using namespace storage;
 using namespace vectorized;
 
-std::string generate_random_string(int length) {
+inline std::string generate_random_string(int length) {
     const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
     std::random_device rd;
@@ -42,28 +42,28 @@ std::string generate_random_string(int length) {
     return str;
 }
 
-int32_t generate_random_int32() {
+inline int32_t generate_random_int32() {
     std::random_device rd;
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<int32_t> dis(0, std::numeric_limits<int32_t>::max());
     return dis(gen);
 }
 
-int64_t generate_random_timestamp() {
+inline int64_t generate_random_timestamp() {
     std::random_device rd;
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<int64_t> dis(0, std::numeric_limits<int64_t>::max());
     return dis(gen);
 }
 
-double_t generate_random_float64() {
+inline double_t generate_random_float64() {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<double> dis(0.0, 1.0);
     return dis(gen);
 }
 
-Row generate_row() {
+inline Row generate_row() {
     std::map<std::string, ColumnValue> columns;
     ColumnValue col2_val(generate_random_string(20));
     columns.insert({"col2", col2_val});
@@ -100,7 +100,7 @@ TEST(MemTableTest, BasicMemTableTest) {
     Block new_block = mutable_block.to_block();
     ASSERT_EQ(5, new_block.columns());
     ASSERT_EQ(BLOCK_SIZE, new_block.rows());
-    mem_table->insert(std::move(new_block), {});
+    mem_table->insert(std::move(new_block));
     ASSERT_EQ(BLOCK_SIZE, mem_table->rows());
     Block flush_block = mem_table->flush();
     ASSERT_EQ(BLOCK_SIZE, flush_block.rows());
@@ -130,7 +130,7 @@ TEST(MemTableTest, MultiMemTableTest) {
     Block new_block = mutable_block.to_block();
     ASSERT_EQ(5, new_block.columns());
     ASSERT_EQ(BLOCK_SIZE * 2, new_block.rows());
-    mem_table->insert(std::move(new_block), {});
+    mem_table->insert(std::move(new_block));
     ASSERT_EQ(BLOCK_SIZE, mem_table->rows());
     Block flush_block = mem_table->flush();
     ASSERT_EQ(BLOCK_SIZE, flush_block.rows());
@@ -177,7 +177,7 @@ TEST(MemTableTest, ContentMemTableTest) {
     Block new_block = mutable_block.to_block();
     ASSERT_EQ(5, new_block.columns());
     ASSERT_EQ(BLOCK_SIZE, new_block.rows());
-    mem_table->insert(std::move(new_block), {});
+    mem_table->insert(std::move(new_block));
     ASSERT_EQ(BLOCK_SIZE, mem_table->rows());
     Block flush_block = mem_table->flush();
 

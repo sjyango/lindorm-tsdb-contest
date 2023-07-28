@@ -19,6 +19,7 @@
 
 #include "Root.h"
 #include "struct/ColumnValue.h"
+#include "common/slice.h"
 
 namespace LindormContest::storage {
 
@@ -28,7 +29,7 @@ enum class EncodingType {
 };
 
 enum class CompressionType {
-    UNKNOWN_ENCODING,
+    UNKNOWN_COMPRESSION,
     NO_COMPRESSION
 };
 
@@ -168,9 +169,9 @@ struct ColumnMeta {
 struct SegmentMeta {
     UInt32 _version = 1;
     std::unordered_map<UInt32, ColumnMeta> _column_metas; // column_id -> ColumnMeta
-    UInt32 _num_rows;
-    CompressionType _compression_type;
-    std::shared_ptr<ShortKeyIndexPage> _short_key_index;
+    UInt32 _num_rows = 0;
+    CompressionType _compression_type = CompressionType::UNKNOWN_COMPRESSION;
+    std::shared_ptr<ShortKeyIndexPage> _short_key_index = nullptr;
 };
 
 struct SegmentData : public std::vector<std::vector<DataPage>> {

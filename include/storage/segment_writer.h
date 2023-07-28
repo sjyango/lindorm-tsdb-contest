@@ -29,7 +29,7 @@ class SegmentWriter {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentWriter(const String& root_path, const TableSchema* schema, size_t segment_id);
+    SegmentWriter(const TableSchema* schema, size_t segment_id);
 
     ~SegmentWriter();
 
@@ -71,7 +71,6 @@ private:
     std::string _encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos);
 
     size_t _segment_id;
-    const String& _root_path;
     const TableSchema* _schema;
     size_t _num_key_columns;
     size_t _num_short_key_columns;
@@ -86,10 +85,10 @@ private:
     String _min_key;
     String _max_key;
     SegmentData _segment_data;
+    BlockDataConvertor _data_convertor;
     std::vector<const KeyCoder*> _key_coders;
     std::vector<std::unique_ptr<ColumnWriter>> _column_writers;
     std::unique_ptr<ShortKeyIndexWriter> _short_key_index_writer;
-    std::unique_ptr<BlockDataConvertor> _data_convertor;
 };
 
 }

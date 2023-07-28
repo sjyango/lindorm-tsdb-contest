@@ -13,27 +13,26 @@
 * limitations under the License.
 */
 
+#include <optional>
+
 #include "storage/delta_writer.h"
 
 namespace LindormContest::storage {
 
-std::unique_ptr<DeltaWriter> DeltaWriter::open(
-        const String& root_path, const String& table_name,
-        const Schema& schema, std::unordered_map<std::string, std::vector<SegmentData>>* segment_datas) {
-    return std::move(std::make_unique<DeltaWriter>(root_path, table_name, schema, segment_datas));
+std::unique_ptr<DeltaWriter> DeltaWriter::open(const String& table_name, const Schema& schema) {
+    return std::move(std::make_unique<DeltaWriter>(table_name, schema));
 }
 
-DeltaWriter::DeltaWriter(const String& root_path, const String& table_name,
-                         const Schema& schema, std::unordered_map<std::string, std::vector<SegmentData>>* segment_datas)
-        : _root_path(root_path), _table_name(table_name), _segment_datas(segment_datas) {
+DeltaWriter::DeltaWriter(const String& table_name, const Schema& schema)
+        : _table_name(table_name) {
     _schema = std::make_unique<TableSchema>(schema);
     _mem_table = std::make_unique<MemTable>(_schema.get());
-    _segment_writer = std::make_unique<SegmentWriter>(root_path, _schema.get(), allocate_segment_id());
+    _segment_writer = std::make_unique<SegmentWriter>(_schema.get(), allocate_segment_id());
 }
 
 DeltaWriter::~DeltaWriter() = default;
 
-void DeltaWriter::append(const WriteRequest& w_req) {
+std::optional<SegmentData> DeltaWriter::append(const WriteRequest& w_req) {
     std::unique_ptr<vectorized::MutableBlock> input_block =
             std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
     assert(input_block->columns() == w_req.rows[0].columns.size() + 2); // 2 means vin + timestamp
@@ -42,34 +41,37 @@ void DeltaWriter::append(const WriteRequest& w_req) {
         input_block->add_row(row);
     }
 
-    write(std::move(input_block->to_block()), {});
+    std::optional<SegmentData> segment_data = write(std::move(input_block->to_block()));
     input_block.reset();
+    return std::move(segment_data);
 }
 
 bool DeltaWriter::need_to_flush() {
     return _mem_table->rows() >= MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-void DeltaWriter::write(const vectorized::Block&& block, const std::vector<size_t>& row_idxs) {
-    _mem_table->insert(std::move(block), row_idxs);
+std::optional<SegmentData> DeltaWriter::write(const vectorized::Block&& block) {
+    _mem_table->insert(std::move(block));
     if (need_to_flush()) {
-        flush();
+        return std::move(flush());
     }
+    return std::nullopt;
 }
 
 void DeltaWriter::reset() {
     _mem_table = std::make_unique<MemTable>(_schema.get()); // reset mem_table
-    _segment_writer = std::make_unique<SegmentWriter>(_root_path, _schema.get(), allocate_segment_id());
+    _segment_writer = std::make_unique<SegmentWriter>(_schema.get(), allocate_segment_id());
 }
 
-void DeltaWriter::flush() {
+std::optional<SegmentData> DeltaWriter::flush() {
     vectorized::Block block = std::move(_mem_table->flush());
     if (block.empty()) {
-        return;
+        return std::nullopt;
     }
-    _segment_writer->append_block(std::move(block), &_num_rows_written);
-    flush_segment_writer();
+    _segment_writer->append_block(std::move(block), &_num_rows_written_in_table);
+    SegmentData segment_data = flush_segment_writer();
     reset();
+    return segment_data;
 }
 
 void DeltaWriter::close() {
@@ -77,23 +79,13 @@ void DeltaWriter::close() {
     if (block.empty()) {
         return;
     }
-    _segment_writer->append_block(std::move(block), &_num_rows_written);
+    _segment_writer->append_block(std::move(block), &_num_rows_written_in_table);
     _mem_table.reset(); // reset mem_table
     _segment_writer.reset(); // reset segment_writer
 }
 
-void DeltaWriter::flush_segment_writer() {
-    size_t segment_id = _segment_writer->segment_id();
-    size_t num_rows = _segment_writer->num_rows_written();
-    if (num_rows == 0) {
-        return;
-    }
-    // size_t segment_size;
-    // size_t index_size;
-    (*_segment_datas)[_table_name].emplace_back(std::move(_segment_writer->finalize()));
-    // if (!res.ok()) {
-    //     return void::Corruption("failed to finalize segment");
-    // }
+SegmentData DeltaWriter::flush_segment_writer() {
+    SegmentData segment_data = _segment_writer->finalize();
 
     KeyBounds key_bounds;
     key_bounds.min_key = std::move(_segment_writer->min_encoded_key());
@@ -111,6 +103,7 @@ void DeltaWriter::flush_segment_writer() {
     // }
 
     // add_segment(segid, segstat);
+    return std::move(segment_data);
 }
 
 }

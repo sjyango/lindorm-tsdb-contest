@@ -33,11 +33,11 @@ public:
     Block() = default;
 
     Block(std::initializer_list<ColumnWithTypeAndName> il) : _data {il} {
-        initialize__index_by_name();
+        initialize_index_by_name();
     }
 
     Block(const ColumnsWithTypeAndName& columns) : _data {columns} {
-        initialize__index_by_name();
+        initialize_index_by_name();
     }
 
     Block(Block&& block)
@@ -49,10 +49,11 @@ public:
 
     bool operator!=(const Block& rhs) const;
 
-    void initialize__index_by_name() {
+    void initialize_index_by_name() {
         for (size_t i = 0, size = _data.size(); i < size; ++i) {
-            _index_by_name[_data[i]._column->get_name()] = i;
+            _index_by_name.emplace(_data[i]._column->get_name(), i);
         }
+        assert(_index_by_name.size() == _data.size());
     }
 
     void reserve(size_t count) {

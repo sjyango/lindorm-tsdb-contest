@@ -5,6 +5,8 @@
 // the interface semantics correctly.
 //
 
+#include <optional>
+
 #include "TSDBEngineImpl.h"
 
 namespace LindormContest {
@@ -38,7 +40,7 @@ int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &sche
         return -1;
     }
     _schemas.insert({tableName, schema});
-    _delta_writers.insert({tableName, storage::DeltaWriter::open(dataDirPath, tableName, schema, &_segment_datas)});
+    _delta_writers.insert({tableName, storage::DeltaWriter::open(tableName, schema)});
     INFO_LOG("Created new table [%s]", tableName.c_str())
     return 0;
 }
@@ -54,7 +56,16 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         return -1;
     }
     auto& delta_writer = _delta_writers[writeRequest.tableName];
-    delta_writer->append(writeRequest);
+    std::optional<SegmentData> segment_data = delta_writer->append(writeRequest);
+    if (segment_data.has_value()) {
+        SegmentData data = std::move(*segment_data);
+        auto it = _segment_datas.find(writeRequest.tableName);
+        if (it == _segment_datas.end()) {
+            ERR_LOG("No such table [%s], cannot upsert to", writeRequest.tableName.c_str())
+            return -1;
+        }
+        (*it).second.push_back(std::move(data));
+    }
     return 0;
 }
 

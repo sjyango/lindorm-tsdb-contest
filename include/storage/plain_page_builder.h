@@ -62,15 +62,19 @@ public:
     }
 
     void reset() override {
-        _buffer.reserve(_data_page_size + 1024);
         _count = 0;
-        _buffer.clear();
+        _buffer = std::string();
+        _buffer.reserve(_data_page_size + 1024);
         _buffer.resize(PLAIN_PAGE_HEADER_SIZE);
     }
 
-    size_t count() const override { return _count; }
+    size_t count() const override {
+        return _count;
+    }
 
-    size_t size() const override { return _buffer.size(); }
+    size_t size() const override {
+        return _buffer.size();
+    }
 
     void get_first_value(void* value) const override {
         if (_count == 0) {
