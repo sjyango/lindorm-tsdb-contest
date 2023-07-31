@@ -17,7 +17,7 @@
 
 namespace LindormContest::storage {
 
-MemTable::MemTable(const TableSchema* schema, size_t segment_id) : _schema(schema), _segment_id(segment_id) {
+MemTable::MemTable(TableSchemaSPtr schema, size_t segment_id) : _schema(schema), _segment_id(segment_id) {
     _arena = std::make_unique<Arena>();
     _row_comparator = std::make_unique<RowInBlockComparator>(_schema);
     _skip_list = std::make_unique<VecTable>(_row_comparator.get(), _arena.get());
@@ -67,13 +67,12 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
                                   num_rows_written_in_table);
 }
 
-SegmentData MemTable::finalize() {
-    SegmentData segment_data = _segment_writer->finalize();
-
-    KeyBounds key_bounds;
-    key_bounds.min_key = std::move(_segment_writer->min_encoded_key());
-    key_bounds.max_key = std::move(_segment_writer->max_encoded_key());
-    assert(key_bounds.min_key.compare(key_bounds.max_key) <= 0);
+SegmentSPtr MemTable::finalize() {
+    return _segment_writer->finalize();
+    // KeyBounds key_bounds;
+    // key_bounds.min_key = std::move(_segment_writer->min_encoded_key());
+    // key_bounds.max_key = std::move(_segment_writer->max_encoded_key());
+    // assert(key_bounds.min_key.compare(key_bounds.max_key) <= 0);
 
     // SegmentStatistics segstat;
     // segstat.row_num = row_num;
@@ -86,7 +85,7 @@ SegmentData MemTable::finalize() {
     // }
 
     // add_segment(segid, segstat);
-    return std::move(segment_data);
+
 }
 
 void MemTable::close() {

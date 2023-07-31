@@ -16,12 +16,12 @@
 #pragma once
 
 #include "Root.h"
-#include "vec/blocks/block.h"
-#include "table_schema.h"
 #include "column_writer.h"
 #include "data_convertor.h"
-#include "storage/indexs/short_key_index.h"
 #include "storage/indexs/key_coder.h"
+#include "storage/indexs/short_key_index.h"
+#include "table_schema.h"
+#include "vec/blocks/block.h"
 
 namespace LindormContest::storage {
 
@@ -29,7 +29,7 @@ class SegmentWriter {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentWriter(const TableSchema* schema, size_t segment_id);
+    SegmentWriter(TableSchemaSPtr schema, size_t segment_id);
 
     ~SegmentWriter();
 
@@ -55,11 +55,7 @@ public:
 
     void append_block(vectorized::Block&& block, size_t* num_rows_written);
 
-    void finalize_segment_data();
-
-    void finalize_segment_index();
-
-    SegmentData finalize();
+    SegmentSPtr finalize();
 
     void close();
 
@@ -71,7 +67,7 @@ private:
     std::string _encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos);
 
     size_t _segment_id;
-    const TableSchema* _schema;
+    TableSchemaSPtr _schema;
     size_t _num_key_columns;
     size_t _num_short_key_columns;
     size_t _short_key_row_pos = 0;
@@ -84,7 +80,7 @@ private:
     bool _is_first_row = true;
     String _min_key;
     String _max_key;
-    SegmentData _segment_data;
+    SegmentSPtr _segment_data;
     BlockDataConvertor _data_convertor;
     std::vector<const KeyCoder*> _key_coders;
     std::vector<std::unique_ptr<ColumnWriter>> _column_writers;

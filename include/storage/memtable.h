@@ -33,7 +33,7 @@ struct RowInBlock {
 
 class RowInBlockComparator {
 public:
-    RowInBlockComparator(const TableSchema* schema) : _schema(schema) {}
+    RowInBlockComparator(TableSchemaSPtr schema) : _schema(schema) {}
 
     // call set_block before operator().
     // only first time insert block to create _input_mutable_block,
@@ -48,7 +48,7 @@ public:
     }
 
 private:
-    const TableSchema* _schema;
+    TableSchemaSPtr _schema;
     vectorized::MutableBlock* _block; // corresponds to MemTable::_input_mutable_block
 };
 
@@ -56,7 +56,7 @@ class MemTable {
 public:
     using VecTable = SkipList<RowInBlock*, RowInBlockComparator>;
 
-    MemTable(const TableSchema* schema, size_t segment_id);
+    MemTable(TableSchemaSPtr schema, size_t segment_id);
 
     ~MemTable();
 
@@ -64,7 +64,7 @@ public:
 
     void flush(size_t* num_rows_written_in_table);
 
-    SegmentData finalize();
+    SegmentSPtr finalize();
 
     void close();
 
@@ -98,7 +98,7 @@ public:
     };
 
 private:
-    const TableSchema* _schema;
+    TableSchemaSPtr _schema;
     size_t _segment_id;
     std::unique_ptr<RowInBlockComparator> _row_comparator;
     std::unique_ptr<Arena> _arena;

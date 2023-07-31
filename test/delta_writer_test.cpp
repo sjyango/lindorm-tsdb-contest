@@ -100,7 +100,7 @@ TEST(DeltaWriterTest, BasicDeltaWriterTest) {
     schema.columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
     std::unique_ptr<DeltaWriter> delta_writer = DeltaWriter::open(TABLE_NAME, schema);
     WriteRequest wq = generate_write_request(TABLE_NAME);
-    std::optional<SegmentData> segment_data = delta_writer->append(wq);
+    std::optional<SegmentSPtr> segment_data = delta_writer->append(wq);
     ASSERT_TRUE(segment_data.has_value());
 }
 

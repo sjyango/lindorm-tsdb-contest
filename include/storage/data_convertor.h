@@ -160,7 +160,7 @@ private:
     using ColumnDataConvertorSPtr = std::shared_ptr<ColumnDataConvertor>;
 
     ColumnDataConvertorSPtr _create_column_data_convertor(const TableColumn& column) {
-        switch (column.get_type()) {
+        switch (column.get_column_type()) {
         case COLUMN_TYPE_INTEGER:
             return std::make_shared<NumberColumnDataConvertor<Int32>>();
         case COLUMN_TYPE_DOUBLE_FLOAT:

@@ -54,6 +54,8 @@ using String = std::string;
 using rowid_t = uint32_t;
 using ordinal_t = uint64_t;
 
+using ColumnId = uint32_t;
+
 #define ERR_LOG(str, ...) {                                  \
     fprintf(stderr, "%s:%d. [ERROR]: ", __FILE__, __LINE__); \
     fprintf(stderr, str, ##__VA_ARGS__);                     \
@@ -67,3 +69,50 @@ using ordinal_t = uint64_t;
 }
 
 }
+
+
+// class SegmentReader1 {
+// public:
+//     SegmentReader1(SegmentSPtr segment_data, SchemaSPtr schema)
+//             : _segment_data(segment_data), _schema(schema) {
+//         _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
+//         _short_key_index_reader->parse(_segment_data->_short_key_index_page.get());
+//         for (const auto& col_id : _schema->column_ids()) {
+//             _column_iters.emplace(col_id, std::make_shared<ColumnIterator>(
+//                                                   _segment_data->at(col_id), _segment_data->_num_rows));
+//         }
+//     }
+//
+//     // void new_iterator(SchemaSPtr schema, std::unique_ptr<RowwiseIterator>* iter) {
+//     //     assert(_short_key_index_page);
+//     //     _short_key_index_reader->parse(_short_key_index_page.get());
+//     //     iter->reset(new SegmentIterator(this->shared_from_this(), schema));
+//     //     iter->get()->init();
+//     // }
+//
+//     void new_iterator(SchemaSPtr schema, std::unique_ptr<RowwiseIterator>* iter) {
+//         iter->reset(new SegmentIterator(this->shared_from_this(), schema));
+//     }
+//
+//     uint32_t segment_id() const {
+//         return _segment_data->_segment_id;
+//     }
+//
+//     uint32_t num_rows() const {
+//         return _segment_data->_num_rows;
+//     }
+//
+//     std::shared_ptr<BaseColumnIterator> get_column_iterator(ColumnId col_id) {
+//         return _column_iters[col_id];
+//     }
+//
+//     const ShortKeyIndexReader* get_short_key_index() const {
+//         return _short_key_index_reader.get();
+//     }
+//
+// private:
+//     SegmentSPtr _segment_data;
+//     SchemaSPtr _schema;
+//     std::unordered_map<ColumnId, std::shared_ptr<ColumnIterator>> _column_iters;
+//     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
+// };

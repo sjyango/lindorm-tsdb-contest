@@ -15,11 +15,8 @@
 
 #pragma once
 
-#include <unordered_map>
-
-#include "Root.h"
-#include "struct/ColumnValue.h"
-#include "common/slice.h"
+#include "storage/table_schema.h"
+#include "common/data_type_factory.h"
 
 namespace LindormContest::storage {
 
@@ -89,20 +86,12 @@ struct PageFooter {
 };
 
 struct DataPageMeta : public PageFooter {
-    UInt64 _first_ordinal;
-    UInt64 _num_values;
+    ordinal_t _first_ordinal;
+    UInt64 _num_rows;
 
-    DataPageMeta(size_t uncompressed_size, UInt64 first_ordinal, UInt64 num_values)
+    DataPageMeta(size_t uncompressed_size, ordinal_t first_ordinal, UInt64 num_rows)
             : PageFooter(PageType::DATA_PAGE, uncompressed_size),
-              _first_ordinal(first_ordinal), _num_values(num_values) {}
-};
-
-struct DataPage {
-    OwnedSlice _data;
-    DataPageMeta _meta;
-
-    DataPage(OwnedSlice&& data, DataPageMeta meta)
-            : _data(std::move(data)), _meta(meta) {}
+              _first_ordinal(first_ordinal), _num_rows(num_rows) {}
 };
 
 struct IndexPageFooter : public PageFooter {
@@ -152,35 +141,83 @@ struct OrdinalIndexPage : public PageFooter {
 
 struct ColumnMeta {
     UInt32 _column_id;
-    ColumnType _type;
-    UInt32 _type_size;
-    EncodingType _encoding_type;
-    CompressionType _compression_type;
+    const DataType* _type;
+    // EncodingType _encoding_type;
+    // CompressionType _compression_type;
     std::shared_ptr<OrdinalIndexPage> _ordinal_index;
 
-    ColumnMeta(UInt32 column_id, ColumnType type,
-               UInt32 type_size, EncodingType encoding_type,
-               CompressionType compression_type,
-               std::shared_ptr<OrdinalIndexPage> ordinal_index)
-            : _column_id(column_id), _type(type), _type_size(type_size), _encoding_type(encoding_type),
-              _compression_type(compression_type), _ordinal_index(ordinal_index) {}
+    // ColumnMeta(UInt32 column_id, const DataType* type,
+    //            EncodingType encoding_type, CompressionType compression_type,
+    //            std::shared_ptr<OrdinalIndexPage> ordinal_index)
+    //         : _column_id(column_id), _type(type), _encoding_type(encoding_type),
+    //           _compression_type(compression_type), _ordinal_index(ordinal_index) {}
+
+    const ColumnType get_column_type() const {
+        return _type->column_type();
+    }
+
+    const size_t get_type_size() const {
+        return _type->type_size();
+    }
 };
 
-struct SegmentMeta {
-    UInt32 _version = 1;
-    std::unordered_map<UInt32, ColumnMeta> _column_metas; // column_id -> ColumnMeta
+struct DataPage {
+    OwnedSlice _data;
+    DataPageMeta _meta;
+    std::shared_ptr<ColumnMeta> _column_meta;
+    ordinal_t _offset_in_page;
+
+    DataPage(OwnedSlice&& data, DataPageMeta meta)
+            : _data(std::move(data)), _meta(meta), _offset_in_page(0) {}
+
+    bool contains(ordinal_t ordinal) const {
+        return ordinal >= _meta._first_ordinal && ordinal < (_meta._first_ordinal + _meta._num_rows);
+    }
+
+    ordinal_t get_first_ordinal() const {
+        return _meta._first_ordinal;
+    }
+
+    bool has_remaining() const {
+        return _offset_in_page < _meta._num_rows;
+    }
+
+    size_t remaining() const {
+        return _meta._num_rows - _offset_in_page;
+    }
+};
+
+struct ColumnData;
+
+using ColumnSPtr = std::shared_ptr<ColumnData>;
+
+struct ColumnData {
+    ColumnMeta _column_meta;
+    std::vector<DataPage> _data_pages;
+
+    ColumnData(ColumnMeta&& column_meta) : _column_meta(std::move(column_meta)) {}
+
+    ColumnData(ColumnMeta&& column_meta, std::vector<DataPage>&& data_pages)
+            : _column_meta(std::move(column_meta)), _data_pages(std::move(data_pages)) {}
+
+    size_t get_type_size() const {
+        return _column_meta.get_type_size();
+    }
+};
+
+struct SegmentData;
+
+using SegmentSPtr = std::shared_ptr<SegmentData>;
+
+struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_from_this<SegmentData> {
+    UInt32 _version;
+    UInt32 _segment_id;
     UInt32 _num_rows = 0;
-    CompressionType _compression_type = CompressionType::UNKNOWN_COMPRESSION;
-    std::shared_ptr<ShortKeyIndexPage> _short_key_index = nullptr;
-};
+    TableSchemaSPtr _table_schema;
+    std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
 
-struct SegmentData : public std::vector<std::vector<DataPage>> {
-    SegmentMeta _segment_meta;
-};
-
-struct KeyBounds {
-    String min_key;
-    String max_key;
+    SegmentData(UInt32 version, UInt32 segment_id, UInt32 num_rows, TableSchemaSPtr table_schema)
+            : _version(version), _segment_id(segment_id), _num_rows(num_rows), _table_schema(table_schema) {}
 };
 
 }

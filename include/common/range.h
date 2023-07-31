@@ -63,7 +63,7 @@ public:
 
     RowRange() : _from(0), _to(0) {}
 
-    RowRange(int64_t from, int64_t to) : _from(from), _to(to) {}
+    RowRange(size_t from, size_t to) : _from(from), _to(to) {}
 
     bool is_valid() const { return _from < _to; }
 
@@ -173,7 +173,7 @@ public:
         *result = std::move(tmp_range);
     }
 
-    static BitMap ranges_to_roaring(const RowRanges& ranges) {
+    static BitMap ranges_to_bitmap(const RowRanges& ranges) {
         BitMap result(ranges._ranges.back().to());
         for (auto it = ranges._ranges.begin(); it != ranges._ranges.end(); ++it) {
             result.add_range(it->from(), it->to());

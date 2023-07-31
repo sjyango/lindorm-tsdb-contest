@@ -150,6 +150,10 @@ public:
         return Slice(_owned_data.get(), _size);
     }
 
+    const UInt8* data() const {
+        return _owned_data.get();
+    }
+
     size_t size() const { return _size; }
 
 private:

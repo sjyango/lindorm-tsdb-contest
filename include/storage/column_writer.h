@@ -16,7 +16,7 @@
 #pragma once
 
 #include "Root.h"
-#include "plain_page_builder.h"
+#include "page_decoder.h"
 #include "segment_traits.h"
 #include "storage/indexs/ordinal_key_index.h"
 #include "table_schema.h"
@@ -32,10 +32,6 @@ public:
 
     ~ColumnWriter();
 
-    UInt32 get_uid() const {
-        return _column.get_uid();
-    }
-
     void flush_current_page();
 
     void append_data(const uint8_t** data, size_t num_rows);
@@ -46,9 +42,7 @@ public:
 
     void finish();
 
-    std::vector<DataPage>&& write_data();
-
-    std::shared_ptr<OrdinalIndexPage> write_ordinal_index();
+    ColumnSPtr write_data();
 
     // uint64_t estimate_buffer_size();
 
@@ -65,12 +59,12 @@ public:
     // Status write_bloom_filter_index();
 
 private:
-    const TableColumn& _column;
+    ColumnSPtr _column_data;
     // UInt64 _data_size;
     ordinal_t _first_rowid = 0;
     ordinal_t _next_rowid = 0;
 
-    std::unique_ptr<PageBuilder> _page_builder;
+    std::unique_ptr<PageEncoder> _page_encoder;
     std::vector<DataPage> _data_pages;
     std::unique_ptr<OrdinalIndexWriter> _ordinal_index_writer;
 

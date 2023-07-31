@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "Root.h"
+#include "common/data_type_factory.h"
 #include "common/slice.h"
 #include "struct/ColumnValue.h"
 #include "struct/Schema.h"
@@ -29,19 +30,8 @@ namespace LindormContest::storage {
 class TableColumn {
 public:
     TableColumn(UInt32 uid, String col_name, ColumnType type, bool is_key = false)
-            : _uid(uid), _col_name(col_name), _type(type), _is_key(is_key) {
-        if (_type == COLUMN_TYPE_INTEGER) {
-            _SIZE_OF_TYPE = sizeof(Int32);
-        } else if (_type == COLUMN_TYPE_DOUBLE_FLOAT) {
-            _SIZE_OF_TYPE = sizeof(Float64);
-        } else if (_type == COLUMN_TYPE_STRING) {
-            _SIZE_OF_TYPE = sizeof(Slice);
-        } else if (_type == COLUMN_TYPE_TIMESTAMP) {
-            _SIZE_OF_TYPE = sizeof(Int64);
-        } else {
-            _SIZE_OF_TYPE = 0;
-        }
-    }
+            : _type(DataTypeFactory::instance().get_column_data_type(type)),
+              _uid(uid), _col_name(col_name), _is_key(is_key) {}
 
     UInt32 get_uid() const { return _uid; }
 
@@ -51,11 +41,13 @@ public:
 
     void set_name(String col_name) { _col_name = col_name; }
 
-    ColumnType get_type() const { return _type; }
+    const DataType* get_data_type() const { return _type; }
 
-    void set_type(ColumnType type) { _type = type; }
+    ColumnType get_column_type() const { return _type->column_type(); }
 
-    UInt32 get_type_size() const { return _SIZE_OF_TYPE; }
+    void set_type(const DataType* type) { _type = type; }
+
+    UInt32 get_type_size() const { return _type->type_size(); }
 
     bool is_key() const { return _is_key; }
 
@@ -66,7 +58,7 @@ public:
         if (a._col_name != b._col_name) {
             return false;
         }
-        if (a._type != b._type)  {
+        if (a._type->column_type() != b._type->column_type())  {
             return false;
         }
         if (a._is_key != b._is_key) {
@@ -82,11 +74,13 @@ public:
 private:
     UInt32 _uid;
     String _col_name;
-    ColumnType _type;
+    const DataType* _type;
     bool _is_key = false;
-    size_t _SIZE_OF_TYPE;
 };
 
+class TableSchema;
+
+using TableSchemaSPtr = std::shared_ptr<const TableSchema>;
 
 class TableSchema {
 public:
@@ -111,6 +105,10 @@ public:
         _num_key_columns = 2; // vin + timestamp
         _num_columns = _num_key_columns + schema.columnTypeMap.size();
         assert(column_index == _num_columns);
+
+        for (UInt32 i = 0; i < _cols.size(); ++i) {
+            assert(i == _cols[i].get_uid());
+        }
     }
 
     size_t num_columns() const { return _num_columns; }
@@ -166,8 +164,8 @@ public:
         vectorized::Block block;
         for (int i = 0; i < return_columns.size(); ++i) {
             const auto& col = _cols[return_columns[i]];
-            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
-            block.insert({ptr, col.get_type(), col.get_name()});
+            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_column_type(), col.get_name());
+            block.insert({ptr, col.get_column_type(), col.get_name()});
         }
         return block;
     }
@@ -175,8 +173,8 @@ public:
     vectorized::Block create_block() const {
         vectorized::Block block;
         for (const auto& col : _cols) {
-            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_type(), col.get_name());
-            block.insert({ptr, col.get_type(), col.get_name()});
+            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_column_type(), col.get_name());
+            block.insert({ptr, col.get_column_type(), col.get_name()});
         }
         return block;
     }

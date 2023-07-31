@@ -17,7 +17,7 @@
 
 namespace LindormContest::storage {
 
-SegmentWriter::SegmentWriter(const TableSchema* schema, size_t segment_id)
+SegmentWriter::SegmentWriter(TableSchemaSPtr schema, size_t segment_id)
         : _schema(schema), _segment_id(segment_id) {
     _num_key_columns = _schema->num_key_columns();
     _num_short_key_columns = _schema->num_short_key_columns();
@@ -26,22 +26,12 @@ SegmentWriter::SegmentWriter(const TableSchema* schema, size_t segment_id)
     _short_key_index_writer = std::make_unique<ShortKeyIndexWriter>(_segment_id);
 
     for (const auto& column : _schema->columns()) {
-        ColumnMeta meta(
-                column.get_uid(),
-                column.get_type(),
-                column.get_type_size(),
-                EncodingType::PLAIN_ENCODING,
-                CompressionType::NO_COMPRESSION,
-                nullptr
-                );
-        _segment_data._segment_meta._compression_type = CompressionType::NO_COMPRESSION;
-        _segment_data._segment_meta._column_metas.emplace(column.get_uid(), std::move(meta));
         _create_column_writer(column);
     }
 
     for (size_t cid = 0; cid < _num_key_columns; ++cid) {
         const auto& column = _schema->column(cid);
-        _key_coders.push_back(get_key_coder(column.get_type()));
+        _key_coders.push_back(get_key_coder(column.get_column_type()));
     }
 }
 
@@ -119,27 +109,6 @@ String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_
     return encoded_keys;
 }
 
-void SegmentWriter::finalize_segment_data() {
-    for (auto& column_writer : _column_writers) {
-        column_writer->finish();
-    }
-
-    for (auto& column_writer : _column_writers) {
-        _segment_data.emplace_back(std::move(column_writer->write_data()));
-    }
-}
-
-void SegmentWriter::finalize_segment_index() {
-    _segment_data._segment_meta._short_key_index = _short_key_index_writer->finalize(_num_rows_written);
-    for (const auto& column_writer : _column_writers) {
-        auto it = _segment_data._segment_meta._column_metas.find(column_writer->get_uid());
-        if (it == _segment_data._segment_meta._column_metas.end()) {
-            throw std::logic_error("column_writer is not found");
-        }
-        it->second._ordinal_index = column_writer->write_ordinal_index();
-    }
-}
-
 void SegmentWriter::close() {
     for (auto& column_writer : _column_writers) {
         column_writer.reset();
@@ -151,10 +120,16 @@ void SegmentWriter::close() {
     _num_rows_written = 0;
 }
 
-SegmentData SegmentWriter::finalize() {
-    finalize_segment_data();
-    finalize_segment_index();
-    _segment_data._segment_meta._num_rows = _num_rows_written;
+SegmentSPtr SegmentWriter::finalize() {
+    for (auto& column_writer : _column_writers) {
+        column_writer->finish();
+    }
+
+    for (auto& column_writer : _column_writers) {
+        _segment_data->emplace_back(column_writer->write_data());
+    }
+    _segment_data->_short_key_index_page = _short_key_index_writer->finalize(_num_rows_written);
+    _segment_data->_num_rows = _num_rows_written;
     return std::move(_segment_data);
 }
 

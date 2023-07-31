@@ -56,15 +56,14 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         return -1;
     }
     auto& delta_writer = _delta_writers[writeRequest.tableName];
-    std::optional<SegmentData> segment_data = delta_writer->append(writeRequest);
+    std::optional<SegmentSPtr> segment_data = delta_writer->append(writeRequest);
     if (segment_data.has_value()) {
-        SegmentData data = std::move(*segment_data);
         auto it = _segment_datas.find(writeRequest.tableName);
         if (it == _segment_datas.end()) {
             ERR_LOG("No such table [%s], cannot upsert to", writeRequest.tableName.c_str())
             return -1;
         }
-        (*it).second.push_back(std::move(data));
+        (*it).second.push_back(*segment_data);
     }
     return 0;
 }

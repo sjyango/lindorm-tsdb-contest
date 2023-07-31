@@ -33,11 +33,11 @@ public:
 
     ~DeltaWriter();
 
-    std::optional<SegmentData> append(const WriteRequest& w_req);
+    std::optional<SegmentSPtr> append(const WriteRequest& w_req);
 
-    std::optional<SegmentData> write(const vectorized::Block&& block);
+    std::optional<SegmentSPtr> write(const vectorized::Block&& block);
 
-    std::optional<SegmentData> flush();
+    std::optional<SegmentSPtr> flush();
 
     void close();
 
@@ -45,7 +45,7 @@ public:
 
 private:
     String _table_name;
-    std::unique_ptr<TableSchema> _schema;
+    std::shared_ptr<TableSchema> _schema;
     std::unique_ptr<MemTable> _mem_table;
     std::atomic<size_t> _next_segment_id = 0;
     size_t _num_rows_written_in_table = 0;

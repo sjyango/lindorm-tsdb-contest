@@ -97,6 +97,11 @@ public:
         _offsets.push_back(new_size);
     }
 
+    void reserve(size_t n) override {
+        _offsets.reserve(n);
+        _chars.reserve(n);
+    }
+
     void insert_from(const IColumn& src, size_t n) override;
 
     void insert_range_from(const IColumn& src, size_t start, size_t length) override;
@@ -107,6 +112,8 @@ public:
     int compare_at(size_t n, size_t m, const IColumn& rhs) const override;
 
     MutableColumnSPtr clone_resized(size_t s) const override;
+
+    void insert_binary_data(const char* data, const uint32_t* offsets, const size_t num) override;
 
 protected:
     Offsets _offsets;

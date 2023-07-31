@@ -83,4 +83,12 @@ MutableColumnSPtr ColumnNumber<T>::clone_resized(size_t to_size) const {
     return res;
 }
 
+template <typename T>
+void ColumnNumber<T>::insert_many_data(const uint8_t* p, size_t num) {
+    const T* data = reinterpret_cast<const T*>(p);
+    for (int i = 0; i < num; ++i) {
+        _data.push_back(data[i]);
+    }
+}
+
 }

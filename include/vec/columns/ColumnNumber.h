@@ -102,6 +102,10 @@ public:
         _data.push_back(static_cast<const ColumnNumber&>(src)._data[n]);
     }
 
+    void reserve(size_t n) override {
+        _data.reserve(n);
+    }
+
     void insert_range_from(const IColumn& src, size_t start, size_t length) override;
 
     void insert_indices_from(const IColumn& src, const size_t* indices_begin, const size_t* indices_end) override;
@@ -109,6 +113,8 @@ public:
     int compare_at(size_t n, size_t m, const IColumn& rhs_) const override;
 
     MutableColumnSPtr clone_resized(size_t to_size) const override;
+
+    void insert_many_data(const uint8_t* data, size_t num) override;
 
 private:
     Container _data;

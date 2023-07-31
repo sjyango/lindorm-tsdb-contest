@@ -114,6 +114,8 @@ public:
 
     void insert(const ColumnWithTypeAndName& elem);
 
+    void insert(ColumnWithTypeAndName&& elem);
+
     void erase(size_t position);
 
     void erase(const std::set<size_t>& positions);
@@ -129,6 +131,18 @@ public:
         return _data[position];
     }
 
+    void clear_column_data() {
+        for (auto& elem : _data) {
+            IColumn& column = const_cast<IColumn&>(*elem._column);
+            column.clear();
+        }
+    }
+
+    int compare_column_at(size_t n, size_t m, size_t col_idx, const Block& rhs) const {
+        return get_by_position(col_idx)._column->compare_at(
+                n, m, *(rhs.get_by_position(col_idx)._column));
+    }
+
     SMutableColumns mutate_columns();
 
     Block copy_block() const;
@@ -136,6 +150,8 @@ public:
     Block copy_block(const std::vector<int>& column_uids) const;
 
     Block clone_without_columns() const;
+
+    int compare_at(size_t n, size_t m, size_t num_columns, const Block& rhs) const;
 
     Container::iterator begin() { return _data.begin(); }
 
@@ -155,5 +171,25 @@ private:
     Container _data;
     IndexByName _index_by_name;
 };
+
+struct IteratorRowRef {
+    std::shared_ptr<Block> block;
+    int row_pos;
+    bool is_same;
+
+    template <typename T>
+    int compare(const IteratorRowRef& rhs, const T& compare_arguments) const {
+        return block->compare_at(row_pos, rhs.row_pos, compare_arguments, *rhs.block);
+    }
+
+    void reset() {
+        block = nullptr;
+        row_pos = -1;
+        is_same = false;
+    }
+};
+
+using BlockView = std::vector<IteratorRowRef>;
+using BlockUPtr = std::unique_ptr<Block>;
 
 }

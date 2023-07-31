@@ -86,7 +86,7 @@ TEST(MemTableTest, BasicMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema.get(), 0);
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
     Block block = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
 
@@ -115,7 +115,7 @@ TEST(MemTableTest, MultiMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema.get(), 0);
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
     Block block = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
 
@@ -146,7 +146,7 @@ TEST(MemTableTest, ContentMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema.get(), 0);
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
     Block block1 = table_schema->create_block();
     Block block2 = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block1);

@@ -109,8 +109,13 @@ public:
             return _index - other._index;
         }
 
+        inline void next() {
+            assert(_index < _reader->_num_items);
+            _index++;
+        }
+
         inline bool valid() const {
-            return _index >= 0 && _index < _reader->num_items();
+            return _index >= 0 && _index < _reader->_num_items;
         }
 
         ordinal_t operator*() const {
@@ -126,15 +131,15 @@ public:
         size_t _index;
     };
 
-    OrdinalIndexReader() : _parsed(false) {}
+    OrdinalIndexReader() : _parsed(false), _num_items(0) {}
 
     void parse(const OrdinalIndexPage* page) {
-        _page = page;
         Slice data = page->_data.slice();
-        _ordinals.resize(page->_num_items);
-        _indexs.resize(page->_num_items);
+        _num_items = page->_num_items;
+        _ordinals.resize(_num_items + 1);
+        _indexs.resize(_num_items);
 
-        for (int i = 0; i < page->_num_items; ++i) {
+        for (int i = 0; i < _num_items; ++i) {
             ordinal_t ordinal;
             UInt32 index;
             if (!get_varint64(&data, &ordinal)) {
@@ -151,6 +156,7 @@ public:
             throw std::logic_error("Still has data after parse all key offset");
         }
         _parsed = true;
+        // _ordinals[_num_items] = _num_values;
     }
 
     inline OrdinalPageIndexIterator begin() const {
@@ -158,7 +164,7 @@ public:
     }
 
     inline OrdinalPageIndexIterator end() const {
-        return OrdinalPageIndexIterator(this, num_items());
+        return OrdinalPageIndexIterator(this, _num_items);
     }
 
     ordinal_t get_first_ordinal(size_t index) const {
@@ -167,11 +173,6 @@ public:
 
     ordinal_t get_last_ordinal(size_t index) const {
         return get_first_ordinal(index + 1) - 1;
-    }
-
-    UInt32 num_items() const {
-        assert(_parsed);
-        return _page->_num_items;
     }
 
     OrdinalPageIndexIterator lower_bound(ordinal_t ordinal) const {
@@ -183,6 +184,30 @@ public:
     OrdinalPageIndexIterator upper_bound(ordinal_t ordinal) const {
         assert(_parsed);
         return _seek<false>(ordinal);
+    }
+
+    bool is_parsed() const {
+        return _parsed;
+    }
+
+    OrdinalPageIndexIterator seek_at_or_before(ordinal_t ordinal) {
+        int32_t left = 0;
+        int32_t right = _num_items - 1;
+        while (left < right) {
+            int32_t mid = (left + right + 1) / 2;
+            if (_ordinals[mid] < ordinal) {
+                left = mid;
+            } else if (_ordinals[mid] > ordinal) {
+                right = mid - 1;
+            } else {
+                left = mid;
+                break;
+            }
+        }
+        if (_ordinals[left] > ordinal) {
+            return end();
+        }
+        return OrdinalPageIndexIterator(this, left);
     }
 
 private:
@@ -197,9 +222,9 @@ private:
     }
 
     bool _parsed;
-    const OrdinalIndexPage* _page;
     std::vector<ordinal_t> _ordinals; // _ordinals[i] = first ordinal of the i-th data page,
     std::vector<UInt32> _indexs;
+    int _num_items;
     // ordinal_t _num_values; // equals to 1 + 'last ordinal of last data pages'
 };
 

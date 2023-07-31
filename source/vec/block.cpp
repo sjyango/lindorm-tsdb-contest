@@ -55,6 +55,11 @@ void Block::insert(const ColumnWithTypeAndName& elem) {
     _data.emplace_back(elem);
 }
 
+void Block::insert(ColumnWithTypeAndName&& elem) {
+    _index_by_name.emplace(elem._name, _data.size());
+    _data.emplace_back(elem);
+}
+
 void Block::erase(size_t position) {
     if (_data.empty()) {
         std::cerr << "Block is empty" << std::endl;
@@ -130,6 +135,22 @@ Block Block::clone_without_columns() const {
         res.insert({nullptr, _data[i]._type, _data[i]._name});
     }
     return res;
+}
+
+int Block::compare_at(size_t n, size_t m, size_t num_columns, const Block& rhs) const {
+    assert(columns() >= num_columns);
+    assert(rhs.columns() >= num_columns);
+    assert(n <= rows());
+    assert(m <= rhs.rows());
+
+    for (size_t i = 0; i < num_columns; ++i) {
+        assert(get_by_position(i)._type == rhs.get_by_position(i)._type);
+        auto res = get_by_position(i)._column->compare_at(n, m, *(rhs.get_by_position(i)._column));
+        if (res) {
+            return res;
+        }
+    }
+    return 0;
 }
 
 }
