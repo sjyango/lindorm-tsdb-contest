@@ -140,20 +140,18 @@ void ColumnString::insert_binary_data(const char* data, const uint32_t* offsets,
         return;
     }
     const auto old_size = _chars.size();
-    const auto begin_offset = offsets[0];
-    const size_t total_mem_size = offsets[num] - begin_offset;
+    const size_t total_mem_size = offsets[num - 1];
     if (total_mem_size > 0) {
         _chars.resize(total_mem_size + old_size);
-        memcpy(_chars.data() + old_size, data + begin_offset, total_mem_size);
+        memcpy(_chars.data() + old_size, data, total_mem_size);
     }
     const auto old_rows = _offsets.size();
-    auto tail_offset = _offsets.back();
+    auto tail_offset = old_rows == 0 ? 0 : _offsets.back();
     assert(tail_offset == old_size);
     _offsets.resize(old_rows + num);
-    auto* offsets_ptr = &_offsets[old_rows];
 
     for (size_t i = 0; i < num; ++i) {
-        offsets_ptr[i] = tail_offset + offsets[i + 1] - begin_offset;
+        _offsets[old_rows + i] = tail_offset + offsets[i];
     }
     assert(_chars.size() == _offsets.back());
 }

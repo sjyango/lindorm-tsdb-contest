@@ -142,21 +142,15 @@ struct OrdinalIndexPage : public PageFooter {
 struct ColumnMeta {
     UInt32 _column_id;
     const DataType* _type;
+    std::shared_ptr<OrdinalIndexPage> _ordinal_index;
     // EncodingType _encoding_type;
     // CompressionType _compression_type;
-    std::shared_ptr<OrdinalIndexPage> _ordinal_index;
 
-    // ColumnMeta(UInt32 column_id, const DataType* type,
-    //            EncodingType encoding_type, CompressionType compression_type,
-    //            std::shared_ptr<OrdinalIndexPage> ordinal_index)
-    //         : _column_id(column_id), _type(type), _encoding_type(encoding_type),
-    //           _compression_type(compression_type), _ordinal_index(ordinal_index) {}
-
-    const ColumnType get_column_type() const {
+    ColumnType get_column_type() const {
         return _type->column_type();
     }
 
-    const size_t get_type_size() const {
+    size_t get_type_size() const {
         return _type->type_size();
     }
 };
@@ -164,11 +158,9 @@ struct ColumnMeta {
 struct DataPage {
     OwnedSlice _data;
     DataPageMeta _meta;
-    std::shared_ptr<ColumnMeta> _column_meta;
-    ordinal_t _offset_in_page;
 
     DataPage(OwnedSlice&& data, DataPageMeta meta)
-            : _data(std::move(data)), _meta(meta), _offset_in_page(0) {}
+            : _data(std::move(data)), _meta(meta) {}
 
     bool contains(ordinal_t ordinal) const {
         return ordinal >= _meta._first_ordinal && ordinal < (_meta._first_ordinal + _meta._num_rows);
@@ -176,14 +168,6 @@ struct DataPage {
 
     ordinal_t get_first_ordinal() const {
         return _meta._first_ordinal;
-    }
-
-    bool has_remaining() const {
-        return _offset_in_page < _meta._num_rows;
-    }
-
-    size_t remaining() const {
-        return _meta._num_rows - _offset_in_page;
     }
 };
 
@@ -215,9 +199,6 @@ struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_f
     UInt32 _num_rows = 0;
     TableSchemaSPtr _table_schema;
     std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
-
-    SegmentData(UInt32 version, UInt32 segment_id, UInt32 num_rows, TableSchemaSPtr table_schema)
-            : _version(version), _segment_id(segment_id), _num_rows(num_rows), _table_schema(table_schema) {}
 };
 
 }

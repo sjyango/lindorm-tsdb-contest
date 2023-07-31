@@ -125,7 +125,7 @@ public:
         std::memcpy(_owned_data.get(), _data, _size);
     }
 
-    OwnedSlice(String&& src) {
+    OwnedSlice(const String& src) {
         _owned_data = std::make_unique<UInt8[]>(src.size());
         _size = src.size();
         std::memcpy(_owned_data.get(), src.data(), _size);

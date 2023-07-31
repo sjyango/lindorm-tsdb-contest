@@ -13,33 +13,13 @@
 * limitations under the License.
 */
 
-#pragma once
+#include <gtest/gtest.h>
 
-#include "Root.h"
-#include "struct/ColumnValue.h"
-#include "vec/columns/IColumn.h"
+namespace LindormContest::test {
 
-namespace LindormContest::vectorized {
+TEST(PageTest, PlainPageTest) {
 
-class IDataType;
+}
 
-using DataTypePtr = std::shared_ptr<const IDataType>;
-using DataTypes = std::vector<DataTypePtr>;
+}
 
-class IDataType {
-public:
-    IDataType() = default;
-
-    virtual ~IDataType() = default;
-
-    IDataType(const IDataType&) = delete;
-
-    IDataType(IDataType&&) = delete;
-
-    virtual ColumnType get_type() const {
-        return COLUMN_TYPE_UNINITIALIZED;
-    }
-};
-
-
-} // namespace LindormContest::vectorized

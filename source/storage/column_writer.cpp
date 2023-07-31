@@ -23,8 +23,19 @@ ColumnWriter::ColumnWriter(const TableColumn& column) {
     column_meta._type = column.get_data_type();
     column_meta._ordinal_index = nullptr;
     _column_data = std::make_shared<ColumnData>(std::move(column_meta));
-    _page_encoder = std::make_unique<PlainPageEncoder>(column, DEFAULT_PAGE_SIZE);
     _ordinal_index_writer = std::make_unique<OrdinalIndexWriter>();
+    switch (_column_data->_column_meta.get_column_type()) {
+    case COLUMN_TYPE_STRING:
+        _page_encoder = std::make_unique<BinaryPlainPageEncoder>();
+        break;
+    case COLUMN_TYPE_INTEGER:
+    case COLUMN_TYPE_TIMESTAMP:
+    case COLUMN_TYPE_DOUBLE_FLOAT:
+        _page_encoder = std::make_unique<PlainPageEncoder>(column);
+        break;
+    default:
+        _page_encoder = nullptr;
+    }
 }
 
 ColumnWriter::~ColumnWriter() = default;
@@ -43,7 +54,7 @@ void ColumnWriter::append_data(const uint8_t** data, size_t num_rows) {
 
 void ColumnWriter::append_data_in_current_page(const uint8_t* data, size_t* num_written) {
     _page_encoder->add(data, num_written);
-    _next_rowid += *num_written;
+    _next_ordinal += *num_written;
 }
 
 void ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num_written) {
@@ -52,15 +63,15 @@ void ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num
 }
 
 void ColumnWriter::flush_current_page() {
-    if (_next_rowid == _first_rowid) {
+    if (_next_ordinal == _first_ordinal) {
         return;
     }
     OwnedSlice page_data = _page_encoder->finish();
     _page_encoder->reset();
-    DataPageMeta data_meta(page_data.size(), _first_rowid, _next_rowid - _first_rowid);
+    DataPageMeta data_meta(page_data.size(), _first_ordinal, _next_ordinal - _first_ordinal);
     DataPage page(std::move(page_data), data_meta);
     _data_pages.emplace_back(std::move(page));
-    _first_rowid = _next_rowid;
+    _first_ordinal = _next_ordinal;
 }
 
 void ColumnWriter::finish() {
@@ -69,43 +80,11 @@ void ColumnWriter::finish() {
 
 ColumnSPtr ColumnWriter::write_data() {
     for (size_t index = 0; index < _data_pages.size(); ++index) {
-        const auto& page = _data_pages[index];
-        _ordinal_index_writer->append_entry(page._meta._first_ordinal, index);
+        _ordinal_index_writer->append_entry(_data_pages[index]._meta._first_ordinal, index);
     }
     _column_data->_column_meta._ordinal_index = _ordinal_index_writer->finalize();
     _column_data->_data_pages = std::move(_data_pages);
     return _column_data;
 }
-
-// write a data page into file and update ordinal index
-// Status ColumnWriter::_write_data_page(Page* page) {
-//    PagePointer pp;
-//    std::vector<Slice> compressed_body;
-//    for (auto& data : page->data) {
-//        compressed_body.push_back(data.slice());
-//    }
-//    RETURN_IF_ERROR(PageIO::write_page(_file_writer, compressed_body, page->footer, &pp));
-//    _ordinal_index_builder->append_entry(page->footer.data_page_footer().first_ordinal(), pp);
-//    return Status::OK();
-// }
-
-//uint64_t ColumnWriter::estimate_buffer_size() {
-//    uint64_t size = _data_size;
-//    size += _page_builder->size();
-//    if (is_nullable()) {
-//        size += _null_bitmap_builder->size();
-//    }
-//    size += _ordinal_index_builder->size();
-//    if (_opts.need_zone_map) {
-//        size += _zone_map_index_builder->size();
-//    }
-//    if (_opts.need_bitmap_index) {
-//        size += _bitmap_index_builder->size();
-//    }
-//    if (_opts.need_bloom_filter) {
-//        size += _bloom_filter_index_builder->size();
-//    }
-//    return size;
-//}
 
 }

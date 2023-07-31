@@ -33,6 +33,10 @@ SegmentWriter::SegmentWriter(TableSchemaSPtr schema, size_t segment_id)
         const auto& column = _schema->column(cid);
         _key_coders.push_back(get_key_coder(column.get_column_type()));
     }
+
+    _segment_data = std::make_shared<SegmentData>();
+    _segment_data->_segment_id = segment_id;
+    _segment_data->_table_schema = schema;
 }
 
 SegmentWriter::~SegmentWriter() = default;
@@ -59,7 +63,6 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
 
     // convert column data from engine format to storage layer format
     std::vector<ColumnDataConvertor*> key_columns;
-    // key_columns.resize(_num_short_key_columns);
 
     for (size_t cid = 0; cid < _column_writers.size(); ++cid) {
         auto converted_result = _data_convertor.convert_column_data(cid);

@@ -69,23 +69,6 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
 
 SegmentSPtr MemTable::finalize() {
     return _segment_writer->finalize();
-    // KeyBounds key_bounds;
-    // key_bounds.min_key = std::move(_segment_writer->min_encoded_key());
-    // key_bounds.max_key = std::move(_segment_writer->max_encoded_key());
-    // assert(key_bounds.min_key.compare(key_bounds.max_key) <= 0);
-
-    // SegmentStatistics segstat;
-    // segstat.row_num = row_num;
-    // segstat.data_size = segment_size + (*writer)->get_inverted_index_file_size();
-    // segstat.index_size = index_size + (*writer)->get_inverted_index_file_size();
-    // segstat.key_bounds = key_bounds;
-
-    // if (flush_size) {
-    //     *flush_size = segment_size + index_size;
-    // }
-
-    // add_segment(segid, segstat);
-
 }
 
 void MemTable::close() {

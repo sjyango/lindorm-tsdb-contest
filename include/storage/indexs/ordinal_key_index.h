@@ -32,8 +32,6 @@ public:
     ~OrdinalIndexWriter() = default;
 
     void append_entry(ordinal_t ordinal, UInt32 index) {
-        // put_fixed64_le(&_buffer, ordinal);
-        // put_fixed32_le(&_buffer, index);
         put_varint64_varint32(&_buffer, ordinal, index);
         _num_items++;
     }
@@ -53,7 +51,7 @@ public:
     }
 
     std::shared_ptr<OrdinalIndexPage> finalize() {
-        OwnedSlice data(std::move(_buffer));
+        OwnedSlice data(_buffer);
         return std::make_shared<OrdinalIndexPage>(_buffer.size(), _num_items, std::move(data));
     }
 

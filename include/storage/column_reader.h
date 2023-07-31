@@ -55,9 +55,8 @@ public:
 
 class ColumnReader : public BaseColumnReader {
 public:
-    ColumnReader(ColumnSPtr column_data, uint64_t num_rows)
-            : _column_data(column_data), _num_rows(num_rows),
-              _current_ordinal(0), _data_page(nullptr) {
+    ColumnReader(ColumnSPtr column_data)
+            : _column_data(column_data), _current_ordinal(0), _data_page(nullptr), _offset_in_page(0) {
         _ordinal_index_reader = std::make_unique<OrdinalIndexReader>();
         _ordinal_index_reader->parse(_column_data->_column_meta._ordinal_index.get());
         switch (_column_data->_column_meta.get_column_type()) {
@@ -102,19 +101,18 @@ public:
         size_t remaining = *n;
 
         while (remaining > 0) {
-            if (!_data_page->has_remaining()) {
+            if (!_has_remaining()) {
                 bool eos = false;
                 _load_next_page(&eos);
                 if (eos) {
                     break;
                 }
             }
-            // number of rows to be read from this page
-            size_t num_rows_in_page = std::min(remaining, _data_page->remaining());
+            size_t num_rows_in_page = std::min(remaining, _remaining());
             size_t num_rows_to_read = num_rows_in_page;
             _page_decoder->next_batch(&num_rows_to_read, dst);
             assert(num_rows_to_read == num_rows_in_page);
-            _data_page->_offset_in_page += num_rows_to_read;
+            _offset_in_page += num_rows_to_read;
             _current_ordinal += num_rows_to_read;
             remaining -= num_rows_in_page;
         }
@@ -130,7 +128,7 @@ public:
         while (remaining > 0) {
             seek_to_ordinal(rowids[total_read_count]);
             // number of rows to be read from this page
-            num_rows_to_read = std::min(remaining, _data_page->remaining());
+            num_rows_to_read = std::min(remaining, _remaining());
             _page_decoder->read_by_rowids(&rowids[total_read_count],_data_page->get_first_ordinal(),
                                           &num_rows_to_read, dst);
             total_read_count += num_rows_to_read;
@@ -143,12 +141,12 @@ public:
     }
 
 private:
-    void _seek_to_pos_in_page(ordinal_t offset_in_page) const {
-        if (_data_page->_offset_in_page == offset_in_page) {
+    void _seek_to_pos_in_page(ordinal_t offset_in_page) {
+        if (_offset_in_page == offset_in_page) {
             return;
         }
         _page_decoder->seek_to_position_in_page(offset_in_page);
-        _data_page->_offset_in_page = offset_in_page;
+        _offset_in_page = offset_in_page;
     }
 
     void _load_next_page(bool* eos) {
@@ -162,13 +160,21 @@ private:
         *eos = false;
     }
 
+    bool _has_remaining() const {
+        return _offset_in_page < _data_page->_meta._num_rows;
+    }
+
+    size_t _remaining() const {
+        return _data_page->_meta._num_rows - _offset_in_page;
+    }
+
     ColumnSPtr _column_data;
-    uint64_t _num_rows;
     std::unique_ptr<PageDecoder> _page_decoder;
     std::unique_ptr<OrdinalIndexReader> _ordinal_index_reader;
     OrdinalPageIndexIterator _ordinal_index_iter;
-    ordinal_t _current_ordinal;
     DataPage* _data_page;
+    ordinal_t _current_ordinal; // global ordinal
+    ordinal_t _offset_in_page; // local ordinal in page
 };
 
 class EmptyColumnReader : public BaseColumnReader {

@@ -102,21 +102,18 @@ public:
             : _column_data(column_data), _num_elems(0), _offsets_pos(0), _cur_idx(0) {}
 
     DataPage* decode(size_t page_index) override {
+        assert(page_index < _column_data->_data_pages.size());
         _data = _column_data->_data_pages[page_index]._data.slice();
-        if (_data._size < sizeof(uint32_t)) {
-            throw std::runtime_error("file corruption: not enough bytes for trailer in BinaryPlainPageDecoder");
-        }
+        assert(_data._size >= BINARY_PLAIN_PAGE_HEADER_SIZE);
         _num_elems = decode_fixed32_le(
                 reinterpret_cast<const uint8_t*>(_data._data + (_data._size - sizeof(uint32_t))));
         _offsets_pos = _data._size - (_num_elems + 1) * sizeof(uint32_t);
-        if (_offsets_pos > _data._size - sizeof(uint32_t)) {
-            throw std::runtime_error("file corruption: offsets pos beyonds data_size");
-        }
+        seek_to_position_in_page(0);
         return &_column_data->_data_pages[page_index];
     }
 
     void seek_to_position_in_page(size_t pos) override {
-        assert(pos <= _num_elems);
+        assert(_num_elems > 0 && pos < _num_elems);
         _cur_idx = pos;
     }
 
@@ -126,19 +123,14 @@ public:
             return;
         }
         const size_t max_fetch = std::min(*n, static_cast<size_t>(_num_elems - _cur_idx));
-        uint32_t last_offset = _guarded_offset(_cur_idx);
-        uint32_t offsets[max_fetch + 1];
-        offsets[0] = last_offset;
+        uint32_t start_offset = _cur_idx == 0 ? 0 : _get_offset(_cur_idx);
+        uint32_t offsets[max_fetch];
 
-        for (int i = 0; i < max_fetch - 1; i++, _cur_idx++) {
-            const uint32_t start_offset = last_offset;
-            last_offset = _guarded_offset(_cur_idx + 1);
-            offsets[i + 1] = last_offset;
+        for (int i = 0; i < max_fetch; ++i) {
+            offsets[i] = _get_offset(++_cur_idx) - start_offset;
         }
 
-        _cur_idx++;
-        offsets[max_fetch] = _offset(_cur_idx);
-        dst->insert_binary_data(_data._data, offsets, max_fetch);
+        dst->insert_binary_data(_data._data + start_offset, offsets, max_fetch);
         *n = max_fetch;
     }
 
@@ -208,18 +200,11 @@ public:
     // }
 
 private:
-    static constexpr size_t SIZE_OF_INT32 = sizeof(uint32_t);
-    // Return the offset within '_data' where the string value with index 'idx' can be found.
-    uint32_t _offset(size_t idx) const {
-        if (idx >= _num_elems) {
-            return _offsets_pos;
+    uint32_t _get_offset(size_t idx) const {
+        if (idx == 0) {
+            return 0;
         }
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(_data._data + _offsets_pos + idx * SIZE_OF_INT32);
-        return decode_fixed32_le(p);
-    }
-
-    uint32_t _guarded_offset(size_t idx) const {
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(_data._data + _offsets_pos + idx * SIZE_OF_INT32);
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(_data._data + _offsets_pos + (idx - 1) * sizeof(uint32_t));
         return decode_fixed32_le(p);
     }
 
@@ -238,31 +223,22 @@ public:
     ~PlainPageDecoder() override = default;
 
     DataPage* decode(size_t page_index) override {
+        assert(page_index < _column_data->_data_pages.size());
         _data = _column_data->_data_pages[page_index]._data.slice();
-        if (_data._size < PLAIN_PAGE_HEADER_SIZE) {
-            throw std::runtime_error("file corruption: not enough bytes for header in PlainPageDecoder");
-        }
+        assert(_data._size >= PLAIN_PAGE_HEADER_SIZE);
         _num_elems = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data._data));
-        if (_data._size != (PLAIN_PAGE_HEADER_SIZE + _num_elems * _get_type_size())) {
-            throw std::runtime_error("file corruption: unexpected data size");
-        }
+        assert(_data._size == (PLAIN_PAGE_HEADER_SIZE + _num_elems * _get_type_size()));
         seek_to_position_in_page(0);
         return &_column_data->_data_pages[page_index];
     }
 
     void seek_to_position_in_page(size_t pos) override {
-        if (_num_elems == 0) {
-            assert(0 == pos);
-            throw std::runtime_error("invalid pos");
-        }
-        assert(pos < _num_elems);
+        assert(_num_elems > 0 && pos < _num_elems);
         _cur_idx = pos;
     }
 
     void seek_at_or_after_value(const void* value, bool* exact_match) override {
-        if (_num_elems == 0) {
-            throw std::runtime_error("page is empty");
-        }
+        assert(_num_elems > 0);
         size_t left = 0;
         size_t right = _num_elems;
         const void* mid_value;
@@ -281,7 +257,7 @@ public:
         }
 
         if (left >= _num_elems) {
-            throw std::runtime_error("all value small than the value");
+            throw std::logic_error("all value small than the value");
         }
         const void* find_value = _data._data + PLAIN_PAGE_HEADER_SIZE + left * _get_type_size();
         if (_get_type()->cmp(find_value, value) == 0) {

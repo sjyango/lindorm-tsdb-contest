@@ -85,10 +85,9 @@ MutableColumnSPtr ColumnNumber<T>::clone_resized(size_t to_size) const {
 
 template <typename T>
 void ColumnNumber<T>::insert_many_data(const uint8_t* p, size_t num) {
-    const T* data = reinterpret_cast<const T*>(p);
-    for (int i = 0; i < num; ++i) {
-        _data.push_back(data[i]);
-    }
+    size_t old_size = _data.size();
+    _data.resize(old_size + num);
+    std::memcpy(_data.data() + old_size * sizeof(T), p, num * sizeof(T));
 }
 
 }

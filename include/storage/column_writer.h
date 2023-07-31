@@ -24,8 +24,6 @@
 
 namespace LindormContest::storage {
 
-static constexpr size_t DEFAULT_PAGE_SIZE = 1024 * 1024; // default size: 1M
-
 class ColumnWriter {
 public:
     ColumnWriter(const TableColumn& column);
@@ -44,35 +42,14 @@ public:
 
     ColumnSPtr write_data();
 
-    // uint64_t estimate_buffer_size();
-
-    // Status write_ordinal_index();
-
-    // Status write_zone_map();
-
-    // Status write_bitmap_index();
-
-    // Status write_inverted_index();
-
-    // size_t get_inverted_index_size();
-
-    // Status write_bloom_filter_index();
-
 private:
     ColumnSPtr _column_data;
-    // UInt64 _data_size;
-    ordinal_t _first_rowid = 0;
-    ordinal_t _next_rowid = 0;
+    ordinal_t _first_ordinal = 0;
+    ordinal_t _next_ordinal = 0;
 
     std::unique_ptr<PageEncoder> _page_encoder;
     std::vector<DataPage> _data_pages;
     std::unique_ptr<OrdinalIndexWriter> _ordinal_index_writer;
-
-    // io::FileWriter* _file_writer = nullptr;
-    // std::unique_ptr<ZoneMapIndexWriter> _zone_map_index_builder;
-    // std::unique_ptr<BitmapIndexWriter> _bitmap_index_builder;
-    // std::unique_ptr<InvertedIndexColumnWriter> _inverted_index_builder;
-    // std::unique_ptr<BloomFilterIndexWriter> _bloom_filter_index_builder;
 };
 
 }
