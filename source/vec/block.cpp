@@ -153,4 +153,87 @@ int Block::compare_at(size_t n, size_t m, size_t num_columns, const Block& rhs) 
     return 0;
 }
 
+
+
+Row Block::to_row(size_t num_row) const {
+    assert(num_row < rows());
+    Row row;
+    Vin vin {reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(num_row)};
+    int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(0)._column).get(num_row);
+    std::map<std::string, ColumnValue> columns;
+
+    for (const auto& col : *this) {
+        switch (col._type) {
+        case COLUMN_TYPE_INTEGER: {
+            ColumnValue value = ColumnValue(reinterpret_cast<const ColumnInt32&>(*col._column).get(num_row));
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        case COLUMN_TYPE_DOUBLE_FLOAT: {
+            ColumnValue value = ColumnValue(reinterpret_cast<const ColumnFloat64&>(*col._column).get(num_row));
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        case COLUMN_TYPE_STRING: {
+            ColumnValue value = ColumnValue(reinterpret_cast<const ColumnString&>(*col._column).get(num_row));
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        default: {
+            throw std::runtime_error("unknown column type");
+        }
+        }
+    }
+
+    row.vin = vin;
+    row.timestamp = timestamp;
+    row.columns = std::move(columns);
+    return std::move(row);
+}
+
+// [start_row, end_row)
+std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
+    assert(start_row >= 0 && end_row <= rows() && start_row < end_row);
+    size_t num_rows = rows();
+    std::vector<Row> rows;
+
+    for (int i = start_row; i < end_row; ++i) {
+        Row row;
+        Vin vin {reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(i)};
+        int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(0)._column).get(i);
+        std::map<std::string, ColumnValue> columns;
+
+        for (const auto& col : *this) {
+            switch (col._type) {
+            case COLUMN_TYPE_INTEGER: {
+                ColumnValue value = ColumnValue(reinterpret_cast<const ColumnInt32&>(*col._column).get(i));
+                columns.emplace(col._name, std::move(value));
+                break;
+            }
+            case COLUMN_TYPE_DOUBLE_FLOAT: {
+                ColumnValue value = ColumnValue(reinterpret_cast<const ColumnFloat64&>(*col._column).get(i));
+                columns.emplace(col._name, std::move(value));
+                break;
+            }
+            case COLUMN_TYPE_STRING: {
+                ColumnValue value = ColumnValue(reinterpret_cast<const ColumnString&>(*col._column).get(i));
+                columns.emplace(col._name, std::move(value));
+                break;
+            }
+            default: {
+                throw std::runtime_error("unknown column type");
+            }
+            }
+        }
+
+        row.vin = vin;
+        row.timestamp = timestamp;
+        row.columns = std::move(columns);
+        rows.emplace_back(std::move(row));
+    }
+
+    assert(rows.size() == num_rows);
+    return std::move(rows);
+}
+
 }

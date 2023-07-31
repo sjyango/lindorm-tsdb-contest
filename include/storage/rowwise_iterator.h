@@ -19,7 +19,7 @@
 #include <queue>
 
 #include "Root.h"
-#include "storage/schema.h"
+#include "storage/partial_schema.h"
 #include "vec/columns/ColumnFactory.h"
 
 namespace LindormContest::vectorized {
@@ -63,7 +63,9 @@ public:
     // Input options may contain scan range in which this scan.
     // Return void::OK() if init successfully,
     // Return other error otherwise
-    virtual void init() = 0;
+    virtual void init() {
+        throw std::runtime_error("next_batch to be implemented");
+    }
 
     // If there is any valid data, this function will load data
     // into input batch with void::OK() returned
@@ -82,7 +84,7 @@ public:
     }
 
     // return schema for this Iterator
-    virtual const Schema& schema() const = 0;
+    virtual PartialSchemaSPtr schema() const = 0;
 
     // return rows merged count by iterator
     virtual uint64_t merged_rows() const { return 0; }
@@ -110,9 +112,9 @@ public:
     void block_reset(std::shared_ptr<vectorized::Block>& block) {
         if (block == nullptr) {
             block = std::make_shared<vectorized::Block>();
-            const Schema& schema = _iter->schema();
-            const auto& column_ids = schema.column_ids();
-            for (const auto& table_column : schema.columns()) {
+            PartialSchemaSPtr schema = _iter->schema();
+            const auto& column_ids = schema->column_ids();
+            for (const auto& table_column : schema->columns()) {
                 vectorized::MutableColumnSPtr column = vectorized::ColumnFactory::instance().create_column(
                         table_column.get_column_type(), table_column.get_name());
                 // column->reserve(_block_row_max);
@@ -132,9 +134,9 @@ public:
     }
 
     bool compare(const MergeIteratorContext& rhs) const {
-        assert(_iter->schema().num_key_columns() == rhs._iter->schema().num_key_columns());
+        assert(_iter->schema()->num_key_columns() == rhs._iter->schema()->num_key_columns());
         int res = _block->compare_at(_index_in_block, rhs._index_in_block,
-                                     _iter->schema().num_key_columns(), *rhs._block);
+                                     _iter->schema()->num_key_columns(), *rhs._block);
         if (res != 0) {
             return res > 0;
         }
@@ -153,7 +155,7 @@ public:
         // copy a row to dst block column by column
         size_t start = _index_in_block - _cur_batch_num + 1 - advanced;
 
-        for (size_t i = 0; i < _iter->schema().num_columns(); ++i) {
+        for (size_t i = 0; i < _iter->schema()->num_columns(); ++i) {
             auto& s_col = src.get_by_position(i);
             auto& d_col = dst.get_by_position(i);
             vectorized::ColumnSPtr s_cp = s_col._column;
@@ -172,7 +174,7 @@ public:
         auto start = _index_in_block;
         _index_in_block += count - 1;
 
-        for (size_t i = 0; i < _iter->schema().num_columns(); ++i) {
+        for (size_t i = 0; i < _iter->schema()->num_columns(); ++i) {
             auto& s_col = src.get_by_position(i);
             auto& d_col = dst.get_by_position(i);
 
@@ -404,7 +406,7 @@ private:
 
 class MergeIterator : public RowwiseIterator {
 public:
-    MergeIterator(std::vector<RowwiseIteratorUPtr>&& segment_iters, SchemaSPtr schema, RowSourcesBuffer* row_sources_buffer)
+    MergeIterator(std::vector<RowwiseIteratorUPtr>&& segment_iters, PartialSchemaSPtr schema, RowSourcesBuffer* row_sources_buffer)
             : _segment_iters(std::move(segment_iters)),
               _schema(schema),
               _row_sources_buffer(row_sources_buffer) {}
@@ -484,8 +486,8 @@ public:
         _row_sources_buffer->append(tmp_row_sources);
     }
 
-    const Schema& schema() const override {
-        return *_schema;
+    PartialSchemaSPtr schema() const override {
+        return _schema;
     }
 
     uint64_t merged_rows() const override {
@@ -504,7 +506,7 @@ private:
                                            MergeContextComparator>;
 
     MergeHeap _merge_heap;
-    SchemaSPtr _schema;
+    PartialSchemaSPtr _schema;
     std::vector<MergeIteratorContext*> _segment_iter_ctx;
     RowSourcesBuffer* _row_sources_buffer;
     uint32_t _merged_rows = 0;

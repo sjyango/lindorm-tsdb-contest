@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "Root.h"
+#include "struct/Row.h"
 #include "vec/columns/IColumn.h"
 #include "vec/columns/column_with_type_and_name.h"
 
@@ -142,6 +143,11 @@ public:
         return get_by_position(col_idx)._column->compare_at(
                 n, m, *(rhs.get_by_position(col_idx)._column));
     }
+
+    Row to_row(size_t num_row) const;
+
+    // [start_row, end_row)
+    std::vector<Row> to_rows(size_t start_row, size_t end_row) const;
 
     SMutableColumns mutate_columns();
 

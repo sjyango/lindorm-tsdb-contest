@@ -15,11 +15,14 @@
 
 #include <gtest/gtest.h>
 
+#include "TSDBEngineImpl.h"
+
 namespace LindormContest::test {
 
-TEST(HelloTest, BasicAssertions) {
-    EXPECT_STRNE("hello", "world");
-    EXPECT_EQ(7 * 6, 42);
+TEST(DemoTest, BasicDemoTest) {
+    static const std::string PATH = "/home/ysj/lindorm-tsdb-contest-cpp/data";
+    std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(PATH);
+    ASSERT_EQ(0, demo->connect());
 }
 
 }

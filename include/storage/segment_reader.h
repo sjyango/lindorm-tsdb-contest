@@ -27,26 +27,25 @@ class Block;
 
 namespace LindormContest::storage {
 
-class SegmentReader {
+class SegmentReader : public RowwiseIterator {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentReader(SegmentSPtr segment_data, SchemaSPtr schema, const String& key)
+    SegmentReader(SegmentSPtr segment_data, PartialSchemaSPtr schema, const String& key)
             : _segment_data(segment_data), _schema(schema), _key(key) {
         _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
         _short_key_index_reader->parse(_segment_data->_short_key_index_page.get());
         for (const auto& col_id : _schema->column_ids()) {
-            _column_readers.emplace(col_id, std::make_shared<ColumnReader>(
-                                                  _segment_data->at(col_id), _segment_data->_num_rows));
+            _column_readers.emplace(col_id, std::make_shared<ColumnReader>(_segment_data->at(col_id)));
         }
         const auto& short_key_column = schema->column(0);
         _short_key_column = vectorized::ColumnFactory::instance().create_column(short_key_column.get_column_type(), short_key_column.get_name());
         _return_columns = std::move(schema->create_block().mutate_columns());
     }
 
-    ~SegmentReader() = default;
+    ~SegmentReader() override = default;
 
-    void next_batch(vectorized::Block* block) {
+    void next_batch(vectorized::Block* block) override {
         block->clear();
         _read_columns_by_index(_get_row_range_by_key(_key));
         std::vector<ColumnId> col_ids = _schema->column_ids();
@@ -57,8 +56,8 @@ public:
         assert(_schema->num_columns() == block->columns());
     }
 
-    const Schema& schema() const {
-        return *_schema;
+    PartialSchemaSPtr schema() const override {
+        return _schema;
     }
 
     uint64_t segment_id() const {
@@ -157,7 +156,7 @@ private:
     }
 
     SegmentSPtr _segment_data;
-    SchemaSPtr _schema;
+    PartialSchemaSPtr _schema;
     std::unordered_map<ColumnId, std::shared_ptr<ColumnReader>> _column_readers;
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
     vectorized::MutableColumnSPtr _short_key_column;

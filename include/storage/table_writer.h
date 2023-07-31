@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "Root.h"
 #include "struct/Requests.h"
 #include "vec/blocks/block.h"
@@ -25,13 +27,11 @@ namespace LindormContest::storage {
 
 static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 10000;
 
-class DeltaWriter {
+class TableWriter {
 public:
-    static std::unique_ptr<DeltaWriter> open(const String& table_name, const Schema& schema);
+    TableWriter(const String& table_name, TableSchemaSPtr schema);
 
-    DeltaWriter(const String& table_name, const Schema& schema);
-
-    ~DeltaWriter();
+    ~TableWriter();
 
     std::optional<SegmentSPtr> append(const WriteRequest& w_req);
 
@@ -39,13 +39,11 @@ public:
 
     std::optional<SegmentSPtr> flush();
 
-    void close();
-
     bool need_to_flush();
 
 private:
     String _table_name;
-    std::shared_ptr<TableSchema> _schema;
+    TableSchemaSPtr _schema;
     std::unique_ptr<MemTable> _mem_table;
     std::atomic<size_t> _next_segment_id = 0;
     size_t _num_rows_written_in_table = 0;

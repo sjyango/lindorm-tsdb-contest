@@ -124,8 +124,18 @@ public:
 
     const TableColumn& column_by_name(const std::string& field_name) const {
         assert(_field_name_to_index.count(field_name) != 0);
-        const auto& found = _field_name_to_index.find(field_name);
-        return _cols[found->second];
+        const auto& it = _field_name_to_index.find(field_name);
+        return _cols[it->second];
+    }
+
+    std::vector<TableColumn> column_by_names(const std::set<std::string>& field_names) const {
+        std::vector<TableColumn> columns;
+        for (const auto& field_name : field_names) {
+            assert(_field_name_to_index.count(field_name) != 0);
+            const auto& it = _field_name_to_index.find(field_name);
+            columns.emplace_back(_cols[it->second]);
+        }
+        return std::move(columns);
     }
 
     bool have_column(const std::string& field_name) const {

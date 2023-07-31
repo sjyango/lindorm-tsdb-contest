@@ -11,12 +11,26 @@
 
 #include "Root.h"
 #include "TSDBEngine.hpp"
-#include "storage/delta_writer.h"
 #include "storage/segment_traits.h"
+#include "storage/table_writer.h"
+#include "storage/table_reader.h"
+#include "struct/Schema.h"
 
 namespace LindormContest {
 
 using namespace storage;
+
+struct Table;
+
+using TableSPtr = std::shared_ptr<Table>;
+
+struct Table {
+    std::string _table_name;
+    TableSchemaSPtr _table_schema;
+    std::unique_ptr<TableWriter> _table_writer;
+    std::unique_ptr<TableReader> _table_reader;
+    std::vector<SegmentSPtr> _table_data;
+};
 
 class TSDBEngineImpl : public TSDBEngine {
 public:
@@ -43,9 +57,7 @@ public:
 
 private:
     bool _connected = false;
-    std::unordered_map<std::string, Schema> _schemas;
-    std::unordered_map<std::string, std::unique_ptr<DeltaWriter>> _delta_writers;
-    std::unordered_map<std::string, std::vector<SegmentSPtr>> _segment_datas;
+    std::unordered_map<std::string, TableSPtr> _tables;
 }; // End class TSDBEngineImpl.
 
 }

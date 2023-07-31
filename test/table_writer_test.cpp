@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "storage/segment_traits.h"
-#include "storage/delta_writer.h"
+#include "storage/table_writer.h"
 
 namespace LindormContest::test {
 
@@ -92,15 +92,16 @@ inline WriteRequest generate_write_request(std::string table_name) {
     return WriteRequest {table_name, std::move(rows)};
 }
 
-TEST(DeltaWriterTest, BasicDeltaWriterTest) {
+TEST(TableWriterTest, BasicTableWriterTest) {
     static const std::string TABLE_NAME = "test";
     Schema schema;
     schema.columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
     schema.columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
     schema.columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
-    std::unique_ptr<DeltaWriter> delta_writer = DeltaWriter::open(TABLE_NAME, schema);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(TABLE_NAME, table_schema);
     WriteRequest wq = generate_write_request(TABLE_NAME);
-    std::optional<SegmentSPtr> segment_data = delta_writer->append(wq);
+    std::optional<SegmentSPtr> segment_data = table_writer->append(wq);
     ASSERT_TRUE(segment_data.has_value());
 }
 

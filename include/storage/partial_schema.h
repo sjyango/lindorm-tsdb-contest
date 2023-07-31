@@ -27,32 +27,32 @@ namespace LindormContest::storage {
 // multiple columns, some of which are key-columns (the rest are value-columns).
 // NOTE: If both key-columns and value-columns exist, then the key-columns
 // must be placed before value-columns.
-class Schema;
+class PartialSchema;
 
-using SchemaSPtr = std::shared_ptr<const Schema>;
+using PartialSchemaSPtr = std::shared_ptr<const PartialSchema>;
 
-class Schema {
+class PartialSchema {
 public:
-    Schema(TableSchemaSPtr table_schema) {
+    PartialSchema(TableSchemaSPtr table_schema) {
         _num_key_columns = table_schema->num_key_columns();
         for (const auto& col : table_schema->columns()) {
             _cols.emplace(col.get_uid(), col);
         }
     }
 
-    Schema(const std::vector<TableColumn>& columns) {
+    PartialSchema(const std::vector<TableColumn>& columns) {
         _num_key_columns = 2; // vin + timestamp
         for (const auto& col : columns) {
             _cols.emplace(col.get_uid(), col);
         }
     }
 
-    Schema(const Schema& other) {
+    PartialSchema(const PartialSchema& other) {
         _cols = other._cols;
         _num_key_columns = other._num_key_columns;
     }
 
-    Schema& operator=(const Schema& other) {
+    PartialSchema& operator=(const PartialSchema& other) {
         if (this != &other) {
             _cols = other._cols;
             _num_key_columns = other._num_key_columns;
@@ -60,7 +60,7 @@ public:
         return *this;
     }
 
-    ~Schema() = default;
+    ~PartialSchema() = default;
 
     size_t num_key_columns() const {
         return _num_key_columns;
@@ -113,22 +113,6 @@ public:
         }
         return block;
     }
-
-    // ColumnId column_id(ColumnId cid) const {
-    //     auto it = _cols.find(cid);
-    //     if (it == _cols.end()) {
-    //         std::runtime_error("Column doesn't exist");
-    //     }
-    //     return it->second.get_uid();
-    // }
-    //
-    // int32_t unique_id(ColumnId cid) const {
-    //     auto it = _cols.find(cid);
-    //     if (it == _cols.end()) {
-    //         std::runtime_error("Column doesn't exist");
-    //     }
-    //     return it->second.get_uid();
-    // }
 
 private:
     size_t _num_key_columns;
