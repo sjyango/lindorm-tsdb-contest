@@ -52,7 +52,7 @@ public:
 
     virtual size_t count() const = 0;
 
-    virtual UInt64 size() const = 0;
+    virtual size_t size() const = 0;
 
     virtual void get_first_value(void* value) const = 0;
 
@@ -114,7 +114,7 @@ public:
         return _offsets.size();
     }
 
-    uint64_t size() const override {
+    size_t size() const override {
         return _size;
     }
 

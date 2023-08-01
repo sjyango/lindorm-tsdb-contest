@@ -35,7 +35,8 @@ set(EXECUTABLES
         short_key_index_test
         ordinal_key_index_test
         table_writer_test
-        page_test)
+        page_test
+        io_test)
 
 foreach(EXECUTABLE ${EXECUTABLES})
     add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)

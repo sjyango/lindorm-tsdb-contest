@@ -20,7 +20,7 @@
 namespace LindormContest::test {
 
 TEST(DemoTest, BasicDemoTest) {
-    static const std::string PATH = "/home/ysj/lindorm-tsdb-contest-cpp/data";
+    static const std::string PATH = "/home/ysj/lindorm-tsdb-contest-mac";
     std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(PATH);
     ASSERT_EQ(0, demo->connect());
 }
