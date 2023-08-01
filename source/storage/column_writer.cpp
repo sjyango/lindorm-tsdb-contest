@@ -68,7 +68,7 @@ void ColumnWriter::flush_current_page() {
     }
     OwnedSlice page_data = _page_encoder->finish();
     _page_encoder->reset();
-    DataPageMeta data_meta(page_data.size(), _first_ordinal, _next_ordinal - _first_ordinal);
+    DataPageFooter data_meta(page_data.size(), _first_ordinal, _next_ordinal - _first_ordinal);
     DataPage page(std::move(page_data), data_meta);
     _data_pages.emplace_back(std::move(page));
     _first_ordinal = _next_ordinal;

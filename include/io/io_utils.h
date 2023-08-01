@@ -60,4 +60,55 @@ struct FileDescription {
     int64_t _mtime = 0;
 };
 
+struct PagePointer {
+    UInt64 _offset;
+    UInt32 _size;
+
+    PagePointer() : _offset(0), _size(0) {}
+
+    PagePointer(UInt64 offset, UInt32 size) : _offset(offset), _size(size) {}
+
+    void reset() {
+        _offset = 0;
+        _size = 0;
+    }
+
+    void serialize(std::string* buf) const {
+        put_fixed64_le(buf, _offset);
+        put_fixed32_le(buf, _size);
+    }
+
+    void deserialize(const uint8_t*& data) {
+        _offset = *reinterpret_cast<const uint64_t*>(data);
+        _size = *reinterpret_cast<const uint32_t*>(data + sizeof(uint64_t));
+        data += sizeof(uint64_t) + sizeof(uint32_t);
+    }
+
+    // const UInt8* decode_from(const UInt8* data, const UInt8* limit) {
+    //     data = decode_varint64_ptr(data, limit, &_offset);
+    //     if (data == nullptr) {
+    //         return nullptr;
+    //     }
+    //     return decode_varint32_ptr(data, limit, &_size);
+    // }
+    //
+    // bool decode_from(Slice* input) {
+    //     bool result = get_varint64(input, &_offset);
+    //     if (!result) {
+    //         return false;
+    //     }
+    //     return get_varint32(input, &_size);
+    // }
+    //
+    // void encode_to(String* dst) const {
+    //     put_varint64_varint32(dst, _offset, _size);
+    // }
+
+    bool operator==(const PagePointer& other) const {
+        return _offset == other._offset && _size == other._size;
+    }
+
+    bool operator!=(const PagePointer& other) const { return !(*this == other); }
+};
+
 }

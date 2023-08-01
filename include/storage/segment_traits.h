@@ -17,6 +17,8 @@
 
 #include "storage/table_schema.h"
 #include "common/data_type_factory.h"
+#include "common/coding.h"
+#include "io/io_utils.h"
 
 namespace LindormContest::storage {
 
@@ -25,92 +27,154 @@ enum class EncodingType {
     PLAIN_ENCODING
 };
 
-enum class CompressionType {
-    UNKNOWN_COMPRESSION,
-    NO_COMPRESSION
+enum class CompressionType : uint32_t {
+    UNKNOWN_COMPRESSION = 0,
+    NO_COMPRESSION = 1
 };
 
-enum class PageType {
-    UNKNOWN_PAGE,
-    DATA_PAGE,
-    INDEX_PAGE,
-    SHORT_KEY_PAGE
-};
-
-struct PagePointer {
-    UInt64 _offset;
-    UInt32 _size;
-
-    PagePointer() : _offset(0), _size(0) {}
-
-    PagePointer(UInt64 offset, UInt32 size) : _offset(offset), _size(size) {}
-
-    void reset() {
-        _offset = 0;
-        _size = 0;
-    }
-
-    // const UInt8* decode_from(const UInt8* data, const UInt8* limit) {
-    //     data = decode_varint64_ptr(data, limit, &_offset);
-    //     if (data == nullptr) {
-    //         return nullptr;
-    //     }
-    //     return decode_varint32_ptr(data, limit, &_size);
-    // }
-    //
-    // bool decode_from(Slice* input) {
-    //     bool result = get_varint64(input, &_offset);
-    //     if (!result) {
-    //         return false;
-    //     }
-    //     return get_varint32(input, &_size);
-    // }
-    //
-    // void encode_to(String* dst) const {
-    //     put_varint64_varint32(dst, _offset, _size);
-    // }
-
-    bool operator==(const PagePointer& other) const {
-        return _offset == other._offset && _size == other._size;
-    }
-
-    bool operator!=(const PagePointer& other) const { return !(*this == other); }
+enum class PageType : uint32_t {
+    UNKNOWN_PAGE = 0,
+    DATA_PAGE = 1,
+    INDEX_PAGE = 2,
+    SHORT_KEY_PAGE = 3
 };
 
 struct PageFooter {
     PageType _page_type;
-    size_t _uncompressed_size;
+    uint32_t _uncompressed_size;
 
-    PageFooter(PageType page_type, size_t uncompressed_size)
+    PageFooter(PageType page_type, uint32_t uncompressed_size)
             : _page_type(page_type), _uncompressed_size(uncompressed_size) {}
+
+    virtual void serialize(std::string* buf) const {
+        // 8 Bytes = _page_type(4) + _uncompressed_size(4)
+        put_fixed32_le(buf, static_cast<uint32_t>(_page_type));
+        put_fixed32_le(buf, _uncompressed_size);
+    }
+
+    virtual void deserialize(const uint8_t*& data) {
+        _page_type = static_cast<PageType>(*reinterpret_cast<const uint32_t*>(data));
+        _uncompressed_size = *reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t));
+        data += 2 * sizeof(uint32_t);
+    }
 };
 
-struct DataPageMeta : public PageFooter {
+struct DataPageFooter : public PageFooter {
     ordinal_t _first_ordinal;
-    UInt64 _num_rows;
+    uint32_t _num_rows;
 
-    DataPageMeta(size_t uncompressed_size, ordinal_t first_ordinal, UInt64 num_rows)
+    DataPageFooter(size_t uncompressed_size, ordinal_t first_ordinal, UInt64 num_rows)
             : PageFooter(PageType::DATA_PAGE, uncompressed_size),
               _first_ordinal(first_ordinal), _num_rows(num_rows) {}
+
+    void serialize(std::string* buf) const override {
+        // 20 Bytes = PageFooter(8) + _first_ordinal(8) + _num_rows(4)
+        PageFooter::serialize(buf);
+        put_fixed64_le(buf, _first_ordinal);
+        put_fixed32_le(buf, _num_rows);
+    }
+
+    void deserialize(const uint8_t*& data) override {
+        PageFooter::deserialize(data);
+        _first_ordinal = *reinterpret_cast<const uint64_t*>(data);
+        _num_rows = *reinterpret_cast<const uint32_t*>(data + sizeof(uint64_t));
+        data += sizeof(uint64_t) + sizeof(uint32_t);
+    }
 };
 
 struct IndexPageFooter : public PageFooter {
-    enum class IndexPageType {
-        UNKNOWN_INDEX_PAGE_TYPE,
-        LEAF,
-        INTERNAL
-    };
+    uint32_t _num_entries;
 
-    UInt32 _num_entries;
-    IndexPageType _type;
+    IndexPageFooter(PageType page_type, size_t uncompressed_size, uint64_t num_entries)
+            : PageFooter(page_type, uncompressed_size), _num_entries(num_entries) {}
+
+    void serialize(std::string* buf) const override {
+        // 12 Bytes = PageFooter(8) + _num_entries(4)
+        PageFooter::serialize(buf);
+        put_fixed32_le(buf, _num_entries);
+    }
+
+    void deserialize(const uint8_t*& data) override {
+        PageFooter::deserialize(data);
+        _num_entries = *reinterpret_cast<const uint32_t*>(data);
+        data += sizeof(uint32_t);
+    }
 };
 
-enum class ColumnIndexType {
+struct ShortKeyFooter : public PageFooter {
+    uint32_t _num_items;
+    uint32_t _key_bytes;
+    uint32_t _offset_bytes;
+    uint32_t _num_segment_rows;
+
+    ShortKeyFooter(PageType page_type, size_t uncompressed_size,
+                   uint32_t num_items, uint32_t key_bytes,
+                   uint32_t offset_bytes, uint32_t num_segment_rows)
+            : PageFooter(page_type, uncompressed_size), _num_items(num_items),
+              _key_bytes(key_bytes), _offset_bytes(offset_bytes),
+              _num_segment_rows(num_segment_rows) {}
+
+    void serialize(std::string* buf) const override {
+        // 24 Bytes = PageFooter(8) + _num_items(4) + _key_bytes(4) + _offset_bytes(4) + _num_segment_rows(4)
+        PageFooter::serialize(buf);
+        put_fixed32_le(buf, _num_items);
+        put_fixed32_le(buf, _key_bytes);
+        put_fixed32_le(buf, _offset_bytes);
+        put_fixed32_le(buf, _num_segment_rows);
+    }
+
+    void deserialize(const uint8_t*& data) override {
+        PageFooter::deserialize(data);
+        _num_items = *reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t));
+        _key_bytes = *reinterpret_cast<const uint32_t*>(data + 1 * sizeof(uint32_t));
+        _offset_bytes = *reinterpret_cast<const uint32_t*>(data + 2 * sizeof(uint32_t));
+        _num_segment_rows = *reinterpret_cast<const uint32_t*>(data + 3 * sizeof(uint32_t));
+        data += 4 * sizeof(uint32_t);
+    }
+};
+
+enum class ColumnIndexType : uint32_t {
     UNKNOWN_INDEX_TYPE,
     ORDINAL_INDEX,
     ZONE_MAP_INDEX,
     BITMAP_INDEX,
     BLOOM_FILTER_INDEX
+};
+
+struct ColumnIndexMeta {
+    ColumnIndexType _type;
+
+    ColumnIndexMeta() = default;
+
+    ColumnIndexMeta(ColumnIndexType type) : _type(type) {}
+
+    virtual void serialize(std::string* buf) const {
+        // 4 Bytes = _type(4)
+        put_fixed32_le(buf, static_cast<uint32_t>(_type));
+    }
+
+    virtual void deserialize(const uint8_t*& data) {
+        _type = static_cast<ColumnIndexType>(*reinterpret_cast<const uint32_t*>(data));
+        data += sizeof(uint32_t);
+    }
+};
+
+struct OrdinalIndexMeta : public ColumnIndexMeta {
+    io::PagePointer _page_pointer;
+
+    OrdinalIndexMeta(io::PagePointer page_pointer)
+            : ColumnIndexMeta(ColumnIndexType::ORDINAL_INDEX), _page_pointer(page_pointer) {}
+
+    void serialize(std::string* buf) const override {
+        // 16 Bytes = _type(4) + _page_pointer(12)
+        ColumnIndexMeta::serialize(buf);
+        _page_pointer.serialize(buf);
+    }
+
+    void deserialize(const uint8_t*& data) override {
+        ColumnIndexMeta::deserialize(data);
+        _page_pointer.deserialize(data);
+    }
 };
 
 struct ShortKeyIndexPage : public PageFooter {
@@ -140,34 +204,75 @@ struct OrdinalIndexPage : public PageFooter {
 };
 
 struct ColumnMeta {
-    UInt32 _column_id;
+    uint32_t _column_id;
     const DataType* _type;
-    std::shared_ptr<OrdinalIndexPage> _ordinal_index;
-    // EncodingType _encoding_type;
-    // CompressionType _compression_type;
+    EncodingType _encoding_type;
+    CompressionType _compression_type;
+    std::vector<ColumnIndexMeta> _indexes;
 
-    ColumnType get_column_type() const {
-        return _type->column_type();
+    ColumnMeta() = default;
+
+    ColumnMeta(uint32_t column_id, const DataType* type,
+               EncodingType encoding_type, CompressionType compression_type)
+            : _column_id(column_id), _type(type),
+              _encoding_type(encoding_type), _compression_type(compression_type) {}
+
+    void serialize(std::string* buf) const {
+        put_fixed32_le(buf, _column_id);
+        put_fixed32_le(buf, static_cast<uint32_t>(_type->column_type()));
+        put_fixed32_le(buf, static_cast<uint32_t>(_encoding_type));
+        put_fixed32_le(buf, static_cast<uint32_t>(_compression_type));
+
+        for (const auto& index : _indexes) {
+            index.serialize(buf);
+        }
     }
 
-    size_t get_type_size() const {
-        return _type->type_size();
+    void deserialize(const uint8_t*& data, uint32_t num_columns) {
+        _column_id = *reinterpret_cast<const uint32_t*>(data);
+        _type = DataTypeFactory::instance().get_column_data_type(
+                static_cast<ColumnType>(*reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t))));
+        _encoding_type = static_cast<EncodingType>(*reinterpret_cast<const uint32_t*>(data + 2 * sizeof(uint32_t)));
+        _compression_type = static_cast<CompressionType>(*reinterpret_cast<const uint32_t*>(data + 3 * sizeof(uint32_t)));
+        data += 4 * sizeof(uint32_t);
+
+        for (int i = 0; i < num_columns; ++i) {
+            ColumnIndexMeta meta;
+            meta.deserialize(data);
+            _indexes.emplace_back(meta);
+        }
     }
 };
 
+// struct ColumnMeta {
+//     UInt32 _column_id;
+//     const DataType* _type;
+//     std::shared_ptr<OrdinalIndexPage> _ordinal_index;
+//     // EncodingType _encoding_type;
+//     // CompressionType _compression_type;
+//
+//     ColumnType get_column_type() const {
+//         return _type->column_type();
+//     }
+//
+//     size_t get_type_size() const {
+//         return _type->type_size();
+//     }
+// };
+
 struct DataPage {
     OwnedSlice _data;
-    DataPageMeta _meta;
+    DataPageFooter _footer;
 
-    DataPage(OwnedSlice&& data, DataPageMeta meta)
-            : _data(std::move(data)), _meta(meta) {}
+    DataPage(OwnedSlice&& data, DataPageFooter footer)
+            : _data(std::move(data)), _footer(footer) {}
 
     bool contains(ordinal_t ordinal) const {
-        return ordinal >= _meta._first_ordinal && ordinal < (_meta._first_ordinal + _meta._num_rows);
+        return ordinal >= _footer._first_ordinal && ordinal < (_footer._first_ordinal + _footer._num_rows);
     }
 
     ordinal_t get_first_ordinal() const {
-        return _meta._first_ordinal;
+        return _footer._first_ordinal;
     }
 };
 
@@ -199,6 +304,13 @@ struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_f
     UInt32 _num_rows = 0;
     TableSchemaSPtr _table_schema;
     std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
+};
+
+struct SegmentFooter {
+    std::vector<ColumnMeta> columns;
+    uint32_t _num_rows;
+    CompressionType _compression_type;
+    io::PagePointer _short_key_index_page;
 };
 
 }
