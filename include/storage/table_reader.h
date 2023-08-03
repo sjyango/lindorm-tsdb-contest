@@ -29,26 +29,24 @@ namespace LindormContest::storage {
 
 class TableReader {
 public:
-    TableReader() = default;
+    TableReader(io::FileSystemSPtr fs, io::Path table_path)
+            : _fs(fs), _table_path(table_path), _inited(false) {}
 
     ~TableReader() = default;
 
-    void init(std::vector<SegmentSPtr>& segment_datas, const String& table_name, PartialSchemaSPtr schema, const String& key) {
-        _segment_datas = segment_datas;
-        _table_name = table_name;
+    void init(PartialSchemaSPtr schema, const String& key) {
+
         _schema = schema;
         std::vector<RowwiseIteratorUPtr> segment_iters;
-        for (auto& segment_data : _segment_datas) {
-            RowwiseIteratorUPtr segment_iter = std::make_unique<SegmentReader>(segment_data, _schema, key);
-            segment_iters.emplace_back(std::move(segment_iter));
-        }
+        // for (auto& segment_data : _segment_datas) {
+        //     RowwiseIteratorUPtr segment_iter = std::make_unique<SegmentReader>(segment_data, _schema, key);
+        //     segment_iters.emplace_back(std::move(segment_iter));
+        // }
         _table_iter = std::make_unique<MergeIterator>(std::move(segment_iters), _schema, nullptr);
         _inited = true;
     }
 
     void reset() {
-        _segment_datas.clear();
-        _table_name.clear();
         _schema.reset();
         _table_iter.reset();
         _inited = false;
@@ -81,8 +79,8 @@ private:
     }
 
     bool _inited = false;
-    std::vector<SegmentSPtr> _segment_datas;
-    String _table_name;
+    io::FileSystemSPtr _fs;
+    io::Path _table_path;
     PartialSchemaSPtr _schema;
     std::unique_ptr<RowwiseIterator> _table_iter;
 };

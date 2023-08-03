@@ -20,43 +20,27 @@
 #include "compression.h"
 #include "file_writer.h"
 #include "io/io_utils.h"
+#include "storage/segment_traits.h"
 
 namespace LindormContest::io {
 
 class PageIO {
 public:
-    // Compress `body' using `codec' into `compressed_body'.
-    // The size of returned `compressed_body' is 0 when the body is not compressed, this
-    // could happen when `codec' is null or space saving is less than `min_space_saving'.
-    static void compress_page_body(CompressionEncoder* codec, double min_space_saving,
-                                     const std::vector<Slice>& body, OwnedSlice* compressed_body);
-    
-    // Encode page from `body' and `footer' and write to `file'.
-    // `body' could be either uncompressed or compressed.
-    // On success, the file pointer to the written page is stored in `result'.
-    static void write_page(io::FileWriter* writer, const std::vector<Slice>& body,
-                             const PageFooter& footer, PagePointer* result);
+    static void compress_page_body(CompressionUtil* compression_util, const Slice& body,
+                                   double min_space_saving, OwnedSlice* compressed_body);
 
-    // Convenient function to compress page body and write page in one go.
-    static void compress_and_write_page(BlockCompressionCodec* codec, double min_space_saving,
-                                          io::FileWriter* writer, const std::vector<Slice>& body,
-                                          const PageFooterPB& footer, PagePointer* result) {
-        DCHECK_EQ(footer.uncompressed_size(), Slice::compute_total_size(body));
-        OwnedSlice compressed_body;
-        RETURN_IF_ERROR(compress_page_body(codec, min_space_saving, body, &compressed_body));
-        if (compressed_body.slice().empty()) { // uncompressed
-            return write_page(writer, body, footer, result);
-        }
-        return write_page(writer, {compressed_body.slice()}, footer, result);
-    }
+    static void write_page(io::FileWriter* writer, OwnedSlice&& body,
+                           const storage::PageFooter& footer, PagePointer* result);
 
-    // Read and parse a page according to `opts'.
-    // On success
-    //     `handle' holds the memory of page data,
+    static void compress_and_write_page(CompressionUtil* compression_util, io::FileWriter* writer, OwnedSlice&& body,
+                                        double min_space_saving, const storage::PageFooter& footer, PagePointer* result);
+
+    //     `result' holds the memory of page data,
     //     `body' points to page body,
     //     `footer' stores the page footer.
-    static void read_and_decompress_page(const PageReadOptions& opts, PageHandle* handle,
-                                           Slice* body, PageFooterPB* footer);
+    static void read_and_decompress_page(CompressionUtil* compression_util,
+                                         const PagePointer& page_pointer, FileReaderSPtr file_reader,
+                                         Slice* body, storage::PageFooter& footer, OwnedSlice* result);
 };
 
 }

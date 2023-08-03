@@ -94,7 +94,7 @@ public:
         for (size_t pos = _row_pos, i = 0; i < _num_rows; ++i) {
             const char* data = char_data + column.offset_at(pos + i);
             size_t size = column.size_at(pos + i);
-            _data.emplace_back(const_cast<char*>(data), size);
+            _data.emplace_back(data, size);
         }
 
         assert(_data.size() == _num_rows);

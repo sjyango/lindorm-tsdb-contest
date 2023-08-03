@@ -45,7 +45,7 @@ Block MutableBlock::to_block(int start_column) {
 Block MutableBlock::to_block(int start_column, int end_column) {
     ColumnsWithTypeAndName columns_with_type_and_name;
     for (int i = start_column; i < end_column; ++i) {
-        columns_with_type_and_name.emplace_back(_data[i], _data_types[i], _names[i]);
+        columns_with_type_and_name.emplace_back(std::move(_data[i]), _data_types[i], _names[i]);
     }
     return {columns_with_type_and_name};
 }
@@ -63,7 +63,9 @@ void MutableBlock::add_row(const LindormContest::Row& row) {
     vin_col.push_string(row.vin.vin, 17);
     ColumnInt64& timestamp_col = reinterpret_cast<ColumnInt64&>(*_data[_index_by_name["timestamp"]]);
     timestamp_col.push_number(row.timestamp);
+
     for (const auto& pair : row.columns) {
+        // KEY: columnFieldName, VALVE: column data.
         assert(_index_by_name.count(pair.first) != 0);
         int res;
         switch (pair.second.columnType) {
@@ -71,7 +73,6 @@ void MutableBlock::add_row(const LindormContest::Row& row) {
             ColumnInt32& int_col = reinterpret_cast<ColumnInt32&>(*_data[_index_by_name[pair.first]]);
             Int32 int_val;
             res = pair.second.getIntegerValue(int_val);
-            assert(res == 0);
             int_col.push_number(int_val);
             break;
         }
@@ -79,7 +80,6 @@ void MutableBlock::add_row(const LindormContest::Row& row) {
             ColumnFloat64& double_col = reinterpret_cast<ColumnFloat64&>(*_data[_index_by_name[pair.first]]);
             Float64 double_val;
             res = pair.second.getDoubleFloatValue(double_val);
-            assert(res == 0);
             double_col.push_number(double_val);
             break;
         }
@@ -87,16 +87,18 @@ void MutableBlock::add_row(const LindormContest::Row& row) {
             ColumnString& str_col = reinterpret_cast<ColumnString&>(*_data[_index_by_name[pair.first]]);
             std::pair<int32_t, const char *> str_val;
             res = pair.second.getStringValue(str_val);
-            assert(res == 0);
             str_col.push_string(str_val.second, str_val.first);
             break;
         }
-        default: {}
+        default: {
+            res = 1;
         }
+        }
+        assert(res == 0);
     }
 }
 
-void MutableBlock::add_rows(const Block* block, const size_t* row_begin, const size_t* row_end) {
+void MutableBlock::append_block(const Block* block, const size_t* row_begin, const size_t* row_end) {
     assert(columns() <= block->columns());
     auto block_columns = block->get_columns();
     for (int i = 0; i < _data.size(); ++i) {
@@ -105,7 +107,7 @@ void MutableBlock::add_rows(const Block* block, const size_t* row_begin, const s
     }
 }
 
-void MutableBlock::add_rows(const Block* block, size_t row_begin, size_t length) {
+void MutableBlock::append_block(const Block* block, size_t row_begin, size_t length) {
     assert(columns() <= block->columns());
     auto block_columns = block->get_columns();
     for (int i = 0; i < _data.size(); ++i) {

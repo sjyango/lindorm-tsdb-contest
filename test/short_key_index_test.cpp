@@ -62,20 +62,25 @@ inline Slice upper_bound(const std::vector<std::string>& ss, const String& key) 
 TEST(ShortKeyIndexTest, BasicShortKeyIndexTest) {
     const size_t N = 10000;
     std::vector<std::string> ss;
+
     for (size_t i = 0; i < N; ++i) {
         ss.emplace_back(generate_random_string(17));
     }
+
     std::sort(ss.begin(), ss.end(), [](const Slice& lhs, const Slice& rhs) -> bool {
         return lhs.compare(rhs) < 0;
     });
-    ShortKeyIndexWriter writer(0);
+    ShortKeyIndexWriter writer;
+
     for (const auto& key : ss) {
         writer.add_item(key);
     }
-    std::shared_ptr<ShortKeyIndexPage> page = writer.finalize(ss.size());
-    ShortKeyIndexReader reader;
-    reader.parse(page.get());
 
+    OwnedSlice short_key_index_body;
+    ShortKeyIndexFooter footer;
+    writer.finalize(N, &short_key_index_body, &footer);
+    ShortKeyIndexReader reader;
+    reader.load(short_key_index_body.slice(), footer);
     auto it = ss.begin();
 
     for (auto iter = reader.begin(); iter != reader.end(); ++iter) {

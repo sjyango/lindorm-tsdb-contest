@@ -34,7 +34,7 @@ TEST(SchemaTest, BasicSchemaTest) {
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
     ASSERT_EQ(5, table_schema->num_columns());
     ASSERT_EQ(2, table_schema->num_key_columns());
-    ASSERT_EQ(1, table_schema->num_short_key_columns());
+    ASSERT_EQ(2, table_schema->num_short_key_columns());
     TableColumn col0 = {0, "vin", ColumnType::COLUMN_TYPE_STRING, true};
     TableColumn col1 = {1, "timestamp", ColumnType::COLUMN_TYPE_TIMESTAMP, true};
     TableColumn col2 = {2, "col2", ColumnType::COLUMN_TYPE_STRING, false};

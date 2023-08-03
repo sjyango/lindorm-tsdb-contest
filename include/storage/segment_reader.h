@@ -31,12 +31,17 @@ class SegmentReader : public RowwiseIterator {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentReader(SegmentSPtr segment_data, PartialSchemaSPtr schema, const String& key)
-            : _segment_data(segment_data), _schema(schema), _key(key) {
-        _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
-        _short_key_index_reader->parse(_segment_data->_short_key_index_page.get());
+    SegmentReader(io::FileSystemSPtr fs, const std::string& segment_path,
+                  TableSchemaSPtr table_schema, PartialSchemaSPtr schema)
+            :  _table_schema(table_schema), _schema(schema) {
+        io::FileDescription fd;
+        fd._path = segment_path;
+        _file_reader = std::move(fs->open_file(fd));
+        _parse_footer();
+        _load_short_key_index();
         for (const auto& col_id : _schema->column_ids()) {
-            _column_readers.emplace(col_id, std::make_shared<ColumnReader>(_segment_data->at(col_id)));
+            _column_readers.emplace(col_id, std::make_unique<ColumnReader>(
+                                                    _footer._column_metas[col_id], _footer._num_rows, _file_reader));
         }
         const auto& short_key_column = schema->column(0);
         _short_key_column = vectorized::ColumnFactory::instance().create_column(short_key_column.get_column_type(), short_key_column.get_name());
@@ -47,7 +52,7 @@ public:
 
     void next_batch(vectorized::Block* block) override {
         block->clear();
-        _read_columns_by_index(_get_row_range_by_key(_key));
+        _read_columns_by_index(_get_row_range_by_key("_key"));
         std::vector<ColumnId> col_ids = _schema->column_ids();
         for (size_t i = 0; i < col_ids.size(); ++i) {
             const TableColumn& column = _schema->column(col_ids[i]);
@@ -60,15 +65,45 @@ public:
         return _schema;
     }
 
-    uint64_t segment_id() const {
-        return _segment_data->_segment_id;
-    }
-
     uint32_t num_rows() const {
-        return _segment_data->_num_rows;
+        return _footer._num_rows;
     }
 
 private:
+    void _parse_footer() {
+        // Footer => SegmentFooter + SegmentFooterSize
+        size_t file_size = _file_reader->size();
+        if (file_size < 4) {
+            throw std::runtime_error("Bad segment file");
+        }
+        uint32_t footer_size;
+        size_t bytes_read = 0;
+        _file_reader->read_at(file_size - 4, Slice((char*)&footer_size, 4), &bytes_read);
+        assert(bytes_read == 4);
+        if (file_size < 4 + footer_size) {
+            throw std::runtime_error("Bad segment file");
+        }
+        std::string footer_buffer;
+        footer_buffer.resize(footer_size);
+        _file_reader->read_at(file_size - 4 - footer_size, footer_buffer, &bytes_read);
+        assert(bytes_read == footer_size);
+        const uint8_t* footer_start = reinterpret_cast<const uint8_t*>(footer_buffer.c_str());
+        _footer.deserialize(footer_start, _table_schema->num_columns());
+        assert(_footer._column_metas.size() == _table_schema->num_columns());
+    }
+
+    void _load_short_key_index() {
+        OwnedSlice data;
+        Slice body;
+        ShortKeyIndexFooter footer;
+        io::PagePointer page_pointer = _footer._short_key_index_page_pointer;
+        io::PageIO::read_and_decompress_page(nullptr, page_pointer,
+                                             _file_reader, &body, footer, &data);
+        assert(footer._page_type == PageType::SHORT_KEY_PAGE);
+        _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
+        _short_key_index_reader->load(body, footer);
+    }
+
     // calculate row ranges that fall into requested key using short key index
     RowRange _get_row_range_by_key(const String& key) {
         size_t lower_ordinal = 0;
@@ -90,6 +125,9 @@ private:
         if (start_iter.valid()) {
             start_group_index = start_iter.index();
             if (start_group_index > 0) {
+                // Because previous block may contain this key, so we should set rowid to
+                // last block's first row.
+                // 比如某一个ordinal index项为xxx666，但它之间的几条数据也都是xxx666，碰巧查询条件为xxx666，那么需要包含当前group的前一个group的数据
                 start_group_index--;
             }
         } else {
@@ -155,13 +193,16 @@ private:
         }
     }
 
-    SegmentSPtr _segment_data;
     PartialSchemaSPtr _schema;
-    std::unordered_map<ColumnId, std::shared_ptr<ColumnReader>> _column_readers;
+    TableSchemaSPtr _table_schema;
+    io::FileReaderSPtr _file_reader;
+    SegmentFooter _footer;
+    std::unordered_map<uint32_t, std::unique_ptr<ColumnReader>> _column_readers;
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
+    ShortKeyIndexFooter _short_key_index_footer;
     vectorized::MutableColumnSPtr _short_key_column;
     vectorized::SMutableColumns _return_columns;
-    const String& _key;
+    // const String& _key;
 };
 
 }

@@ -118,6 +118,11 @@ inline bool operator!=(const Slice& x, const Slice& y) { return !(x == y); }
 class OwnedSlice {
 public:
     OwnedSlice() = default;
+
+    OwnedSlice(size_t size) {
+        _owned_data = std::make_unique<UInt8[]>(size);
+        _size = size;
+    }
     
     OwnedSlice(const UInt8* _data, size_t size) {
         _owned_data = std::make_unique<UInt8[]>(size);
@@ -156,9 +161,13 @@ public:
 
     size_t size() const { return _size; }
 
-private:
-    std::unique_ptr<UInt8[]> _owned_data;
-    size_t _size;
+    void resize(size_t n) {
+        assert(n <= _size);
+        _size = n;
+    }
+
+    std::unique_ptr<uint8_t[]> _owned_data = nullptr;
+    size_t _size = 0;
 };
 
 }

@@ -25,8 +25,7 @@ namespace LindormContest::storage {
 
 class ShortKeyIndexWriter {
 public:
-    ShortKeyIndexWriter(UInt32 segment_id)
-            : _segment_id(segment_id), _num_items(0) {}
+    ShortKeyIndexWriter() : _num_items(0) {}
 
     void add_item(const String& key) {
         put_varint32(&_offset_buffer, _key_buffer.size());
@@ -38,24 +37,20 @@ public:
         return _key_buffer.size() + _offset_buffer.size();
     }
 
-    std::shared_ptr<ShortKeyIndexPage> finalize(UInt32 num_segment_rows) {
-        size_t key_size = _key_buffer.size();
-        size_t offset_size = _offset_buffer.size();
-        _key_buffer.append(_offset_buffer);
-        OwnedSlice data(std::move(_key_buffer));
-        return std::make_shared<ShortKeyIndexPage>(
-                        key_size + offset_size,
-                        _num_items,
-                        key_size,
-                        offset_size,
-                        _segment_id,
-                        num_segment_rows,
-                        std::move(data)
-                );
+    void finalize(uint32_t num_segment_rows, OwnedSlice* body, ShortKeyIndexFooter* footer) {
+        footer->_page_type = PageType::SHORT_KEY_PAGE;
+        footer->_uncompressed_size = _key_buffer.size() + _offset_buffer.size();
+        footer->_num_items = _num_items;
+        footer->_key_bytes = _key_buffer.size();
+        footer->_offset_bytes = _offset_buffer.size();
+        footer->_num_segment_rows = num_segment_rows;
+        body->_owned_data = std::make_unique<uint8_t[]>(_key_buffer.size() + _offset_buffer.size());
+        body->_size = _key_buffer.size() + _offset_buffer.size();
+        std::memcpy(body->_owned_data.get(), _key_buffer.c_str(), _key_buffer.size());
+        std::memcpy(body->_owned_data.get() + _key_buffer.size(), _offset_buffer.c_str(), _offset_buffer.size());
     }
 
 private:
-    UInt32 _segment_id;
     size_t _num_items;
     String _key_buffer;
     String _offset_buffer;
@@ -133,27 +128,24 @@ public:
 
     ShortKeyIndexReader() : _parsed(false) {}
 
-    void parse(const ShortKeyIndexPage* page) {
-        _page = page;
-        Slice data = page->_data.slice();
-        assert(data.size() == (page->_key_bytes + page->_offset_bytes));
-        // set index buffer
-        _short_key_data = Slice(data._data, page->_key_bytes);
-        // parse offset information
-        Slice offset_slice(data._data + page->_key_bytes, page->_offset_bytes);
+    void load(const Slice& body, const ShortKeyIndexFooter& footer) {
+        _footer = footer;
+        assert(body._size == (_footer._key_bytes + _footer._offset_bytes));
+        _short_key_data = Slice(body._data, _footer._key_bytes);
+        Slice offset_slice(body._data + _footer._key_bytes, _footer._offset_bytes);
+        _offsets.resize(_footer._num_items + 1);
         // +1 for record total length
-        _offsets.resize(page->_num_items + 1);
-        
-        for (UInt32 i = 0; i < page->_num_items; ++i) {
-            UInt32 offset = 0;
+
+        for (uint32_t i = 0; i < _footer._num_items; ++i) {
+            uint32_t offset = 0;
             if (!get_varint32(&offset_slice, &offset)) {
                 throw std::logic_error("Fail to get varint from index offset buffer");
             }
-            assert(offset <= page->_key_bytes);
+            assert(offset <= _footer._key_bytes);
             _offsets[i] = offset;
         }
 
-        _offsets[page->_num_items] = page->_key_bytes;
+        _offsets[_footer._num_items] = _footer._key_bytes;
         if (offset_slice._size != 0) {
             throw std::logic_error("Still has data after parse all key offset");
         }
@@ -188,7 +180,7 @@ public:
 
     UInt32 num_items() const {
         assert(_parsed);
-        return _page->_num_items;
+        return _footer._num_items;
     }
 
     Slice key(size_t index) const {
@@ -211,8 +203,8 @@ private:
     }
 
     bool _parsed;
-    const ShortKeyIndexPage* _page;
-    std::vector<UInt32> _offsets;
+    ShortKeyIndexFooter _footer;
+    std::vector<uint32_t> _offsets;
     Slice _short_key_data;
 };
 

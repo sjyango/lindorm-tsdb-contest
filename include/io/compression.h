@@ -21,9 +21,9 @@
 
 namespace LindormContest::io {
 
-class CompressionEncoder {
+class CompressionUtil {
 public:
-    virtual ~CompressionEncoder() = default;
+    virtual ~CompressionUtil() = default;
     
     virtual void init() {
         throw std::runtime_error("init doesn't implement");
@@ -40,8 +40,7 @@ public:
     // Default implementation will merge input list into a big buffer and call
     // compress(Slice) to finish compression. If compression type support digesting
     // slice one by one, it should reimplement this function.
-    virtual void compress(const std::vector<Slice>& input, size_t uncompressed_size,
-                            std::string* output) {
+    virtual void compress(const Slice& input, size_t uncompressed_size, std::string* output) {
         throw std::runtime_error("compress doesn't implement");
     }
 
@@ -56,20 +55,13 @@ public:
     virtual size_t max_compressed_len(size_t len) {
         throw std::runtime_error("max_compressed_len doesn't implement");
     }
-
-    virtual bool exceed_max_compress_len(size_t uncompressed_size) {
-        if (uncompressed_size > std::numeric_limits<int32_t>::max()) {
-            return true;
-        }
-        return false;
-    }
 };
 
 
-inline void get_compression_encoder(storage::CompressionType type, CompressionEncoder** compression_encoder) {
+inline void get_compression_util(storage::CompressionType type, CompressionUtil** compression_util) {
     switch (type) {
     case storage::CompressionType::NO_COMPRESSION:
-        *compression_encoder = nullptr;
+        *compression_util = nullptr;
         break;
     default:
         return;

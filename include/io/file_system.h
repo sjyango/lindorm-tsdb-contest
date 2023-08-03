@@ -26,9 +26,9 @@ namespace LindormContest::io {
 
 class FileSystem : public std::enable_shared_from_this<FileSystem> {
 public:
-    static FileSystemSPtr create(Path&& path);
+    static FileSystemSPtr create(Path path);
 
-    FileSystem(Path&& root_path) : _root_path(std::move(root_path)) {}
+    FileSystem(Path root_path) : _root_path(root_path) {}
 
     ~FileSystem() = default;
 

@@ -159,8 +159,8 @@ private:
 
 class PlainPageEncoder : public PageEncoder {
 public:
-    PlainPageEncoder(const TableColumn& column)
-            : _column(column), _count(0) {
+    PlainPageEncoder(size_t type_size)
+            : _type_size(type_size), _count(0) {
         // Reserve enough space for the page, plus a bit of slop since
         // we often overrun the page by a few values.
         _buffer.reserve(PLAIN_PAGE_SIZE + 1024);
@@ -179,17 +179,17 @@ public:
             return;
         }
         size_t old_size = _buffer.size();
-        _buffer.resize(old_size + (*count) * _column.get_type_size());
-        std::memcpy(&_buffer[old_size], data, (*count) * _column.get_type_size());
+        _buffer.resize(old_size + (*count) * _type_size);
+        std::memcpy(&_buffer[old_size], data, (*count) * _type_size);
         _count += *count;
     }
 
     OwnedSlice finish() override {
         encode_fixed32_le((UInt8*) _buffer.data(), _count); // encode header, record total counts
         if (_count > 0) {
-            _first_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE], _column.get_type_size());
-            _last_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE + (_count - 1) * _column.get_type_size()],
-                               _column.get_type_size());
+            _first_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE], _type_size);
+            _last_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE + (_count - 1) * _type_size],
+                               _type_size);
         }
         return _buffer;
     }
@@ -213,18 +213,18 @@ public:
         if (_count == 0) {
             throw std::logic_error("page is empty");
         }
-        std::memcpy(value, _first_value.data(), _column.get_type_size());
+        std::memcpy(value, _first_value.data(), _type_size);
     }
 
     void get_last_value(void* value) const override {
         if (_count == 0) {
             throw std::logic_error("page is empty");
         }
-        std::memcpy(value, _last_value.data(), _column.get_type_size());
+        std::memcpy(value, _last_value.data(), _type_size);
     }
 
 private:
-    const TableColumn& _column;
+    size_t _type_size;
     String _buffer;
     size_t _count;
     String _first_value;

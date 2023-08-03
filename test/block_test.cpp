@@ -98,7 +98,7 @@ TEST(BlockTest, MutableBlockTest) {
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
     ASSERT_EQ(6, mutable_block.columns());
     ASSERT_EQ(2, mutable_block.rows());
-    mutable_block.add_rows(&block, 0, block.rows());
+    mutable_block.append_block(&block, 0, block.rows());
     ASSERT_EQ(4, mutable_block.rows());
     Block new_block = mutable_block.to_block();
     ASSERT_EQ(4, new_block.rows());

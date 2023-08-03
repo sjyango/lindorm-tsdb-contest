@@ -15,81 +15,101 @@
 
 #include <random>
 #include <algorithm>
+#include <filesystem>
+#include <unordered_map>
 
 #include <gtest/gtest.h>
 
 #include "common/slice.h"
 #include "storage/indexs/ordinal_key_index.h"
+#include "io/file_writer.h"
+#include "io/file_reader.h"
 
 namespace LindormContest::test {
 
 using namespace storage;
 
-inline ordinal_t generate_random_ordinal(size_t range) {
+inline std::string generate_random_string(int length) {
+    const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(1, range);
+    std::uniform_int_distribution<> dis(0, charset.size() - 1);
+
+    std::string str(length, '\0');
+    for (int i = 0; i < length; ++i) {
+        str[i] = charset[dis(gen)];
+    }
+
+    return str;
+}
+
+inline int32_t generate_random_int32() {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<int32_t> dis(0, std::numeric_limits<int32_t>::max());
     return dis(gen);
 }
 
-inline ordinal_t lower_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
-    for (const auto& item : ordinals) {
-        if (item >= ordinal) {
-            return item;
-        }
+io::FileWriterPtr generate_file_writer() {
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path file_path = root_path / io::Path("ordinal_index_test.dat");
+    io::FileSystemSPtr fs = io::FileSystem::create(root_path);
+    if (fs->exists(file_path)) {
+        fs->delete_file(file_path);
     }
-    return 0;
+    assert(!fs->exists(file_path));
+    return fs->create_file(file_path);
 }
 
-inline ordinal_t upper_bound(const std::vector<ordinal_t>& ordinals, ordinal_t ordinal) {
-    for (const auto& item : ordinals) {
-        if (item > ordinal) {
-            return item;
-        }
-    }
-    return 0;
+io::FileReaderSPtr generate_file_reader() {
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path file_path = root_path / io::Path("ordinal_index_test.dat");
+    io::FileSystemSPtr fs = io::FileSystem::create(root_path);
+    assert(fs->exists(file_path));
+    return fs->open_file(file_path);
 }
 
 TEST(OrdinalKeyIndexTest, BasicOrdinalKeyIndexTest) {
-    const size_t N = 10000;
-    ordinal_t ordinal = 0;
-    UInt32 index = 0;
+    const int N = 10000;
+    io::FileWriterPtr file_writer = generate_file_writer();
     OrdinalIndexWriter writer;
+    OrdinalIndexReader reader;
+    std::unordered_map<uint64_t, io::PagePointer> maps;
     std::vector<ordinal_t> ordinals;
 
-    for (size_t i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++i) {
+        size_t ordinal = i * 1024;
+        io::PagePointer pointer(static_cast<uint64_t>(generate_random_int32() % 10000),
+                                static_cast<uint32_t>(generate_random_int32() % 10000));
+        maps.emplace(ordinal, pointer);
         ordinals.push_back(ordinal);
-        writer.append_entry(ordinal, index);
-        ordinal += generate_random_ordinal(2000);
-        index++;
+        writer.append_entry(ordinal, pointer);
     }
 
-    std::shared_ptr<OrdinalIndexPage> page = writer.finalize();
-    OrdinalIndexReader reader;
-    reader.parse(page.get());
-
-    auto it = ordinals.begin();
+    OrdinalIndexMeta meta;
+    writer.finish(file_writer.get(), &meta);
+    file_writer->finalize();
+    file_writer->close();
+    io::FileReaderSPtr file_reader = generate_file_reader();
+    reader.load(file_reader, &meta, N);
 
     for (auto iter = reader.begin(); iter != reader.end(); ++iter) {
-        ASSERT_EQ(*iter, *it);
-        ++it;
+        io::PagePointer lhs = iter.page_pointer();
+        io::PagePointer rhs = maps.at(iter.first_ordinal());
+        ASSERT_EQ(lhs, rhs);
     }
 
-    for (size_t i = 0; i < (N / 10); ++i) {
-        ordinal_t o = generate_random_ordinal(ordinals.back());
-        auto lower_bound_lhs = reader.lower_bound(o);
-        auto lower_bound_rhs = lower_bound(ordinals, o);
-        ASSERT_EQ(lower_bound_lhs == reader.end(), lower_bound_rhs == 0);
-        if (lower_bound_lhs != reader.end()) {
-            ASSERT_EQ(*lower_bound_lhs, lower_bound_rhs);
+    for (size_t i = 0; i < N; ++i) {
+        ordinal_t o = generate_random_int32() % (N * 1024);
+        auto iter = reader.seek_at_or_before(o);
+        auto it = std::upper_bound(ordinals.begin(), ordinals.end(), o);
+        if (it != ordinals.begin()) {
+            --it;
         }
-        auto upper_bound_lhs = reader.upper_bound(o);
-        auto upper_bound_rhs = upper_bound(ordinals, o);
-        ASSERT_EQ(upper_bound_lhs == reader.end(), upper_bound_rhs == 0);
-        if (upper_bound_lhs != reader.end()) {
-            ASSERT_EQ(*upper_bound_lhs, upper_bound_rhs);
-        }
+        ASSERT_EQ(iter.page_pointer(), maps.at(*it));
     }
+    file_reader->close();
 }
 
 }

@@ -19,14 +19,14 @@
 
 namespace LindormContest::storage {
 
-TableWriter::TableWriter(const String& table_name, TableSchemaSPtr schema)
-        : _table_name(table_name), _schema(schema) {
-    _mem_table = std::make_unique<MemTable>(_schema, _next_segment_id++);
+TableWriter::TableWriter(io::FileSystemSPtr fs, io::Path table_path, TableSchemaSPtr schema)
+        : _fs(fs), _table_path(table_path), _schema(schema) {
+    _init_mem_table();
 }
 
 TableWriter::~TableWriter() = default;
 
-std::optional<SegmentSPtr> TableWriter::append(const WriteRequest& w_req) {
+void TableWriter::append(const WriteRequest& w_req) {
     std::unique_ptr<vectorized::MutableBlock> input_block =
             std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
     assert(input_block->columns() == w_req.rows[0].columns.size() + 2); // 2 means vin + timestamp
@@ -35,33 +35,36 @@ std::optional<SegmentSPtr> TableWriter::append(const WriteRequest& w_req) {
         input_block->add_row(row);
     }
 
-    std::optional<SegmentSPtr> segment_data = write(std::move(input_block->to_block()));
+    write(std::move(input_block->to_block()));
     input_block.reset();
-    return segment_data;
 }
 
 bool TableWriter::need_to_flush() {
     return _mem_table->rows() >= MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-std::optional<SegmentSPtr> TableWriter::write(const vectorized::Block&& block) {
+void TableWriter::write(const vectorized::Block&& block) {
     _mem_table->insert(std::move(block));
     if (need_to_flush()) {
-        return flush();
+        flush();
     }
-    return std::nullopt;
 }
 
-std::optional<SegmentSPtr> TableWriter::flush() {
+void TableWriter::flush() {
     size_t num_rows_written_in_table = 0;
     _mem_table->flush(&num_rows_written_in_table);
     if (num_rows_written_in_table == 0) {
-        return std::nullopt;
+        return;
     }
+    _mem_table->finalize();
+    _init_mem_table();
+}
 
-    SegmentSPtr segment_data = _mem_table->finalize();
-    _mem_table = std::make_unique<MemTable>(_schema, _next_segment_id++); // reset mem_table
-    return segment_data;
+void TableWriter::_init_mem_table() {
+    size_t segment_id = _next_segment_id++;
+    io::Path segment_path = _table_path / io::Path("segment_" + std::to_string(segment_id) + ".dat");
+    _file_writer = _fs->create_file(segment_path);
+    _mem_table = std::make_unique<MemTable>(_file_writer.get(), _schema, segment_id);
 }
 
 }

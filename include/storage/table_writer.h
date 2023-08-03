@@ -22,6 +22,9 @@
 #include "vec/blocks/block.h"
 #include "memtable.h"
 #include "table_schema.h"
+#include "io/io_utils.h"
+#include "io/file_system.h"
+#include "io/file_writer.h"
 
 namespace LindormContest::storage {
 
@@ -29,24 +32,27 @@ static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 10000;
 
 class TableWriter {
 public:
-    TableWriter(const String& table_name, TableSchemaSPtr schema);
+    TableWriter(io::FileSystemSPtr fs, io::Path table_path, TableSchemaSPtr schema);
 
     ~TableWriter();
 
-    std::optional<SegmentSPtr> append(const WriteRequest& w_req);
+    void append(const WriteRequest& w_req);
 
-    std::optional<SegmentSPtr> write(const vectorized::Block&& block);
+    void write(const vectorized::Block&& block);
 
-    std::optional<SegmentSPtr> flush();
+    void flush();
 
     bool need_to_flush();
 
 private:
-    String _table_name;
+    void _init_mem_table();
+
+    io::FileSystemSPtr _fs;
+    io::Path _table_path;
+    io::FileWriterPtr _file_writer;
     TableSchemaSPtr _schema;
     std::unique_ptr<MemTable> _mem_table;
     std::atomic<size_t> _next_segment_id = 0;
-    size_t _num_rows_written_in_table = 0;
 };
 
 }

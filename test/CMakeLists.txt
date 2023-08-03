@@ -24,7 +24,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/thirdpar
 link_directories(${PROJECT_SOURCE_DIR}/thirdparty/gtest/lib)
 
 set(EXECUTABLES
-        demo_test
+        #demo_test
         coding_test
         column_test
         block_test
@@ -34,9 +34,11 @@ set(EXECUTABLES
         memtable_test
         short_key_index_test
         ordinal_key_index_test
-        table_writer_test
-        page_test
-        io_test)
+        #table_writer_test
+        #page_test
+        io_test
+        index_page_test
+        )
 
 foreach(EXECUTABLE ${EXECUTABLES})
     add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)

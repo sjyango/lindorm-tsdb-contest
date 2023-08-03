@@ -15,12 +15,15 @@
 
 #include <string>
 #include <random>
+#include <filesystem>
 
 #include <gtest/gtest.h>
 
 #include "struct/Row.h"
 #include "storage/table_schema.h"
 #include "storage/memtable.h"
+#include "io/file_writer.h"
+#include "io/file_system.h"
 
 namespace LindormContest::test {
 
@@ -63,6 +66,18 @@ inline double_t generate_random_float64() {
     return dis(gen);
 }
 
+inline io::FileWriterPtr generate_file_writer() {
+    size_t segment_id = 0;
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path segment_path = root_path / io::Path("segment_" + std::to_string(segment_id) + ".dat");
+    io::FileSystemSPtr fs = io::FileSystem::create(root_path);
+    if (fs->exists(segment_path)) {
+        fs->delete_file(segment_path);
+    }
+    assert(!fs->exists(segment_path));
+    return fs->create_file(segment_path);
+}
+
 inline Row generate_row() {
     std::map<std::string, ColumnValue> columns;
     ColumnValue col2_val(generate_random_string(20));
@@ -86,7 +101,8 @@ TEST(MemTableTest, BasicMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(file_writer.get(), table_schema, 0);
     Block block = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
 
@@ -115,7 +131,8 @@ TEST(MemTableTest, MultiMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(file_writer.get(), table_schema, 0);
     Block block = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
 
@@ -146,7 +163,8 @@ TEST(MemTableTest, ContentMemTableTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(table_schema, 0);
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(file_writer.get(), table_schema, 0);
     Block block1 = table_schema->create_block();
     Block block2 = table_schema->create_block();
     MutableBlock mutable_block = MutableBlock::build_mutable_block(&block1);
@@ -184,7 +202,6 @@ TEST(MemTableTest, ContentMemTableTest) {
     size_t flush_row_nums = 0;
     mem_table->flush(&flush_row_nums);
     ASSERT_EQ(BLOCK_SIZE, flush_row_nums);
-    // ASSERT_EQ(target_block, flush_block);
 }
 
 }

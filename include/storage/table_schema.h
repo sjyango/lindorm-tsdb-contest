@@ -29,13 +29,13 @@ namespace LindormContest::storage {
 
 class TableColumn {
 public:
-    TableColumn(UInt32 uid, String col_name, ColumnType type, bool is_key = false)
+    TableColumn(uint32_t uid, String col_name, ColumnType type, bool is_key = false)
             : _type(DataTypeFactory::instance().get_column_data_type(type)),
               _uid(uid), _col_name(col_name), _is_key(is_key) {}
 
-    UInt32 get_uid() const { return _uid; }
+    uint32_t get_uid() const { return _uid; }
 
-    void set_uid(UInt32 uid) { _uid = uid; }
+    void set_uid(uint32_t uid) { _uid = uid; }
 
     String get_name() const { return _col_name; }
 
@@ -47,7 +47,7 @@ public:
 
     void set_type(const DataType* type) { _type = type; }
 
-    UInt32 get_type_size() const { return _type->type_size(); }
+    uint32_t get_type_size() const { return _type->type_size(); }
 
     bool is_key() const { return _is_key; }
 
@@ -72,7 +72,7 @@ public:
     }
 
 private:
-    UInt32 _uid;
+    uint32_t _uid;
     String _col_name;
     const DataType* _type;
     bool _is_key = false;
@@ -106,7 +106,7 @@ public:
         _num_columns = _num_key_columns + schema.columnTypeMap.size();
         assert(column_index == _num_columns);
 
-        for (UInt32 i = 0; i < _cols.size(); ++i) {
+        for (uint32_t i = 0; i < _cols.size(); ++i) {
             assert(i == _cols[i].get_uid());
         }
     }
@@ -115,7 +115,7 @@ public:
 
     size_t num_key_columns() const { return _num_key_columns; }
 
-    size_t num_short_key_columns() const { return 1; }
+    size_t num_short_key_columns() const { return _num_key_columns; }
 
     const TableColumn& column(size_t ordinal) const {
         assert(ordinal < _num_columns);
@@ -145,14 +145,14 @@ public:
         return true;
     }
 
-    bool have_column(UInt32 uid) const {
+    bool have_column(uint32_t uid) const {
         if (!_field_id_to_index.count(uid)) {
             return false;
         }
         return true;
     }
 
-    const TableColumn& column_by_uid(UInt32 col_uid) const {
+    const TableColumn& column_by_uid(uint32_t col_uid) const {
         assert(_field_id_to_index.count(col_uid) != 0);
         const auto& found = _field_id_to_index.find(col_uid);
         return _cols[found->second];
@@ -170,7 +170,7 @@ public:
         _cols.clear();
     }
 
-    vectorized::Block create_block(const std::vector<UInt32>& return_columns) const {
+    vectorized::Block create_block(const std::vector<uint32_t>& return_columns) const {
         vectorized::Block block;
         for (int i = 0; i < return_columns.size(); ++i) {
             const auto& col = _cols[return_columns[i]];

@@ -20,8 +20,8 @@
 
 namespace LindormContest::io {
 
-FileSystemSPtr FileSystem::create(Path&& path) {
-    return std::make_shared<FileSystem>(std::move(path));
+FileSystemSPtr FileSystem::create(Path path) {
+    return std::make_shared<FileSystem>(path);
 }
 
 FileWriterPtr FileSystem::create_file(const Path& file) {

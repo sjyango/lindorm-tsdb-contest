@@ -15,6 +15,8 @@
 #include "storage/table_writer.h"
 #include "storage/table_reader.h"
 #include "struct/Schema.h"
+#include "io/file_system.h"
+#include "io/io_utils.h"
 
 namespace LindormContest {
 
@@ -29,7 +31,6 @@ struct Table {
     TableSchemaSPtr _table_schema;
     std::unique_ptr<TableWriter> _table_writer;
     std::unique_ptr<TableReader> _table_reader;
-    std::vector<SegmentSPtr> _table_data;
 };
 
 class TSDBEngineImpl : public TSDBEngine {
@@ -57,6 +58,7 @@ public:
 
 private:
     bool _connected = false;
+    io::FileSystemSPtr _fs;
     std::unordered_map<std::string, TableSPtr> _tables;
 }; // End class TSDBEngineImpl.
 

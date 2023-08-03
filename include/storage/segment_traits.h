@@ -43,6 +43,8 @@ struct PageFooter {
     PageType _page_type;
     uint32_t _uncompressed_size;
 
+    PageFooter() = default;
+
     PageFooter(PageType page_type, uint32_t uncompressed_size)
             : _page_type(page_type), _uncompressed_size(uncompressed_size) {}
 
@@ -62,6 +64,8 @@ struct PageFooter {
 struct DataPageFooter : public PageFooter {
     ordinal_t _first_ordinal;
     uint32_t _num_rows;
+
+    DataPageFooter() = default;
 
     DataPageFooter(size_t uncompressed_size, ordinal_t first_ordinal, UInt64 num_rows)
             : PageFooter(PageType::DATA_PAGE, uncompressed_size),
@@ -85,6 +89,8 @@ struct DataPageFooter : public PageFooter {
 struct IndexPageFooter : public PageFooter {
     uint32_t _num_entries;
 
+    IndexPageFooter() = default;
+
     IndexPageFooter(PageType page_type, size_t uncompressed_size, uint64_t num_entries)
             : PageFooter(page_type, uncompressed_size), _num_entries(num_entries) {}
 
@@ -101,13 +107,15 @@ struct IndexPageFooter : public PageFooter {
     }
 };
 
-struct ShortKeyFooter : public PageFooter {
+struct ShortKeyIndexFooter : public PageFooter {
     uint32_t _num_items;
     uint32_t _key_bytes;
     uint32_t _offset_bytes;
     uint32_t _num_segment_rows;
 
-    ShortKeyFooter(PageType page_type, size_t uncompressed_size,
+    ShortKeyIndexFooter() = default;
+
+    ShortKeyIndexFooter(PageType page_type, size_t uncompressed_size,
                    uint32_t num_items, uint32_t key_bytes,
                    uint32_t offset_bytes, uint32_t num_segment_rows)
             : PageFooter(page_type, uncompressed_size), _num_items(num_items),
@@ -162,6 +170,8 @@ struct ColumnIndexMeta {
 struct OrdinalIndexMeta : public ColumnIndexMeta {
     io::PagePointer _page_pointer;
 
+    OrdinalIndexMeta() = default;
+
     OrdinalIndexMeta(io::PagePointer page_pointer)
             : ColumnIndexMeta(ColumnIndexType::ORDINAL_INDEX), _page_pointer(page_pointer) {}
 
@@ -177,21 +187,21 @@ struct OrdinalIndexMeta : public ColumnIndexMeta {
     }
 };
 
-struct ShortKeyIndexPage : public PageFooter {
-    UInt32 _num_items;
-    UInt32 _key_bytes;
-    UInt32 _offset_bytes;
-    UInt32 _segment_id;
-    UInt32 _num_segment_rows;
-    OwnedSlice _data;
-
-    ShortKeyIndexPage(size_t uncompressed_size, UInt32 num_items,
-                      UInt32 key_bytes, UInt32 offset_bytes,
-                      UInt32 segment_id, UInt32 num_segment_rows, OwnedSlice&& data)
-            : PageFooter(PageType::SHORT_KEY_PAGE, uncompressed_size),
-              _num_items(num_items), _key_bytes(key_bytes), _offset_bytes(offset_bytes),
-              _segment_id(segment_id), _num_segment_rows(num_segment_rows), _data(std::move(data)) {}
-};
+// struct ShortKeyIndexPage : public PageFooter {
+//     UInt32 _num_items;
+//     UInt32 _key_bytes;
+//     UInt32 _offset_bytes;
+//     UInt32 _segment_id;
+//     UInt32 _num_segment_rows;
+//     OwnedSlice _data;
+//
+//     ShortKeyIndexPage(size_t uncompressed_size, UInt32 num_items,
+//                       UInt32 key_bytes, UInt32 offset_bytes,
+//                       UInt32 segment_id, UInt32 num_segment_rows, OwnedSlice&& data)
+//             : PageFooter(PageType::SHORT_KEY_PAGE, uncompressed_size),
+//               _num_items(num_items), _key_bytes(key_bytes), _offset_bytes(offset_bytes),
+//               _segment_id(segment_id), _num_segment_rows(num_segment_rows), _data(std::move(data)) {}
+// };
 
 struct OrdinalIndexPage : public PageFooter {
     ColumnIndexType _index_type;
@@ -203,9 +213,13 @@ struct OrdinalIndexPage : public PageFooter {
               _index_type(ColumnIndexType::ORDINAL_INDEX), _num_items(num_items), _data(std::move(data)) {}
 };
 
+struct ColumnMeta;
+
+using ColumnMetaSPtr = std::shared_ptr<ColumnMeta>;
+
 struct ColumnMeta {
     uint32_t _column_id;
-    const DataType* _type;
+    const DataType* _type = nullptr;
     EncodingType _encoding_type;
     CompressionType _compression_type;
     std::vector<ColumnIndexMeta> _indexes;
@@ -216,6 +230,14 @@ struct ColumnMeta {
                EncodingType encoding_type, CompressionType compression_type)
             : _column_id(column_id), _type(type),
               _encoding_type(encoding_type), _compression_type(compression_type) {}
+
+    size_t get_type_size() const {
+        return _type->type_size();
+    }
+
+    ColumnType get_column_type() const {
+        return _type->column_type();
+    }
 
     void serialize(std::string* buf) const {
         put_fixed32_le(buf, _column_id);
@@ -228,7 +250,7 @@ struct ColumnMeta {
         }
     }
 
-    void deserialize(const uint8_t*& data, uint32_t num_columns) {
+    void deserialize(const uint8_t*& data) {
         _column_id = *reinterpret_cast<const uint32_t*>(data);
         _type = DataTypeFactory::instance().get_column_data_type(
                 static_cast<ColumnType>(*reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t))));
@@ -236,11 +258,9 @@ struct ColumnMeta {
         _compression_type = static_cast<CompressionType>(*reinterpret_cast<const uint32_t*>(data + 3 * sizeof(uint32_t)));
         data += 4 * sizeof(uint32_t);
 
-        for (int i = 0; i < num_columns; ++i) {
-            ColumnIndexMeta meta;
-            meta.deserialize(data);
-            _indexes.emplace_back(meta);
-        }
+        OrdinalIndexMeta meta;
+        meta.deserialize(data);
+        _indexes.emplace_back(meta);
     }
 };
 
@@ -260,12 +280,44 @@ struct ColumnMeta {
 //     }
 // };
 
-struct DataPage {
-    OwnedSlice _data;
-    DataPageFooter _footer;
+// struct DataPage {
+//     OwnedSlice _data;
+//     DataPageFooter _footer;
+//
+//     DataPage(OwnedSlice&& data, DataPageFooter footer)
+//             : _data(std::move(data)), _footer(footer) {}
+//
+//     bool contains(ordinal_t ordinal) const {
+//         return ordinal >= _footer._first_ordinal && ordinal < (_footer._first_ordinal + _footer._num_rows);
+//     }
+//
+//     ordinal_t get_first_ordinal() const {
+//         return _footer._first_ordinal;
+//     }
+// };
 
-    DataPage(OwnedSlice&& data, DataPageFooter footer)
-            : _data(std::move(data)), _footer(footer) {}
+struct DataPage {
+public:
+    DataPage() = default;
+
+    DataPage(size_t size) : _data(size) {}
+
+    DataPage(DataPage&& page)
+            : _data(std::move(page._data)), _footer(std::move(page._footer)) {}
+
+    ~DataPage() = default;
+
+    char* data() {
+        return (char*)_data.data();
+    }
+
+    size_t size() {
+        return _data.size();
+    }
+
+    Slice slice() const {
+        return _data.slice();
+    }
 
     bool contains(ordinal_t ordinal) const {
         return ordinal >= _footer._first_ordinal && ordinal < (_footer._first_ordinal + _footer._num_rows);
@@ -274,6 +326,14 @@ struct DataPage {
     ordinal_t get_first_ordinal() const {
         return _footer._first_ordinal;
     }
+
+    void reset_size(size_t n) {
+        assert(n <= _data.size());
+        _data.resize(n);
+    }
+
+    OwnedSlice _data;
+    DataPageFooter _footer;
 };
 
 struct ColumnData;
@@ -294,23 +354,50 @@ struct ColumnData {
     }
 };
 
-struct SegmentData;
-
-using SegmentSPtr = std::shared_ptr<SegmentData>;
-
-struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_from_this<SegmentData> {
-    UInt32 _version;
-    UInt32 _segment_id;
-    UInt32 _num_rows = 0;
-    TableSchemaSPtr _table_schema;
-    std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
-};
+// struct SegmentData;
+//
+// using SegmentSPtr = std::shared_ptr<SegmentData>;
+//
+// struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_from_this<SegmentData> {
+//     UInt32 _version;
+//     UInt32 _segment_id;
+//     UInt32 _num_rows = 0;
+//     TableSchemaSPtr _table_schema;
+//     // std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
+// };
 
 struct SegmentFooter {
-    std::vector<ColumnMeta> columns;
+    SegmentFooter() = default;
+
+    ~SegmentFooter() = default;
+
     uint32_t _num_rows;
     CompressionType _compression_type;
-    io::PagePointer _short_key_index_page;
+    io::PagePointer _short_key_index_page_pointer;
+    std::vector<ColumnMetaSPtr> _column_metas;
+
+    void serialize(std::string* buf) const {
+        put_fixed32_le(buf, _num_rows);
+        put_fixed32_le(buf, static_cast<uint32_t>(_compression_type));
+        _short_key_index_page_pointer.serialize(buf);
+
+        for (const auto& column_meta : _column_metas) {
+            column_meta->serialize(buf);
+        }
+    }
+
+    void deserialize(const uint8_t*& data, size_t num_columns) {
+        _num_rows = *reinterpret_cast<const uint32_t*>(data);
+        _compression_type = static_cast<CompressionType>(*reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t)));
+        data += 2 * sizeof(uint32_t);
+        _short_key_index_page_pointer.deserialize(data);
+
+        for (int i = 0; i < num_columns; ++i) {
+            auto meta = std::make_shared<ColumnMeta>();
+            meta->deserialize(data);
+            _column_metas.emplace_back(meta);
+        }
+    }
 };
 
 }

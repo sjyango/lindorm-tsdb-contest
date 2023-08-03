@@ -20,6 +20,9 @@
 #include "Root.h"
 #include "common/coding.h"
 #include "storage/segment_traits.h"
+#include "storage/indexs/index_page.h"
+#include "storage/indexs/key_coder.h"
+#include "io/page_io.h"
 
 namespace LindormContest::storage {
 
@@ -27,37 +30,35 @@ namespace LindormContest::storage {
 // the `first value ordinal` and `file pointer` for each data page.
 class OrdinalIndexWriter {
 public:
-    OrdinalIndexWriter() = default;
+    OrdinalIndexWriter() {
+        _page_encoder = std::make_unique<IndexPageEncoder>();
+    }
 
     ~OrdinalIndexWriter() = default;
 
-    void append_entry(ordinal_t ordinal, UInt32 index) {
-        put_varint64_varint32(&_buffer, ordinal, index);
-        _num_items++;
+    void append_entry(ordinal_t ordinal, const io::PagePointer& page_pointer) {
+        std::string key;
+        KeyCoderTraits<COLUMN_TYPE_UNINITIALIZED>::encode_ascending(&ordinal, &key);
+        _page_encoder->add(key, page_pointer);
     }
 
     size_t size() const {
-        return _num_items;
+        return _page_encoder->size();
     }
 
-    void get_first_key(Slice* key) const {
-        if (_num_items == 0) {
-            throw std::logic_error("Index page is empty");
-        }
-        Slice input(_buffer);
-        if (!get_length_prefixed_slice(&input, key)) {
-            throw std::logic_error("Can't decode first key");
-        }
-    }
-
-    std::shared_ptr<OrdinalIndexPage> finalize() {
-        OwnedSlice data(_buffer);
-        return std::make_shared<OrdinalIndexPage>(_buffer.size(), _num_items, std::move(data));
+    void finish(io::FileWriter* file_writer, OrdinalIndexMeta* meta) {
+        assert(_page_encoder->count() > 0);
+        meta->_type = ColumnIndexType::ORDINAL_INDEX;
+        OwnedSlice page_body;
+        IndexPageFooter page_footer;
+        _page_encoder->finish(&page_body, &page_footer);
+        io::PagePointer page_pointer;
+        io::PageIO::write_page(file_writer, std::move(page_body), page_footer, &page_pointer);
+        meta->_page_pointer = page_pointer;
     }
 
 private:
-    String _buffer;
-    size_t _num_items = 0;
+    std::unique_ptr<IndexPageEncoder> _page_encoder;
 };
 
 class OrdinalIndexReader {
@@ -65,165 +66,158 @@ public:
     class OrdinalPageIndexIterator {
     public:
         using iterator_category = std::random_access_iterator_tag;
-        using value_type = ordinal_t;
-        using pointer = ordinal_t*;
-        using reference = ordinal_t&;
-        using difference_type = ordinal_t;
+        using value_type = int32_t;
+        using pointer = int32_t*;
+        using reference = int32_t&;
+        using difference_type = int32_t;
 
-        OrdinalPageIndexIterator() : _reader(nullptr), _index(-1) {}
+        OrdinalPageIndexIterator() : _index(nullptr), _cur_idx(-1) {}
 
-        OrdinalPageIndexIterator(const OrdinalIndexReader* reader, size_t index = 0)
-                : _reader(reader), _index(index) {}
+        OrdinalPageIndexIterator(const OrdinalIndexReader* index) : _index(index), _cur_idx(0) {}
 
-        OrdinalPageIndexIterator& operator-=(size_t step) {
-            _index -= step;
-            return *this;
+        OrdinalPageIndexIterator(const OrdinalIndexReader* index, int cur_idx)
+                : _index(index), _cur_idx(cur_idx) {}
+
+        bool valid() const {
+            return _cur_idx < _index->_num_pages;
         }
 
-        OrdinalPageIndexIterator& operator+=(size_t step) {
-            _index += step;
-            return *this;
+        void next() {
+            assert(_cur_idx < _index->_num_pages);
+            _cur_idx++;
+        }
+
+        int32_t page_index() const {
+            return _cur_idx;
+        }
+
+        io::PagePointer page_pointer() const {
+            return _index->_pages[_cur_idx];
+        }
+
+        ordinal_t first_ordinal() const {
+            return _index->get_first_ordinal(_cur_idx);
+        }
+
+        ordinal_t last_ordinal() const {
+            return _index->get_last_ordinal(_cur_idx);
+        }
+
+        bool operator==(const OrdinalPageIndexIterator& other) {
+            return _cur_idx == other._cur_idx && _index == other._index;
+        }
+
+        bool operator!=(const OrdinalPageIndexIterator& other) {
+            return _cur_idx != other._cur_idx || _index != other._index;
         }
 
         OrdinalPageIndexIterator& operator++() {
-            ++_index;
+            _cur_idx++;
             return *this;
         }
 
         OrdinalPageIndexIterator& operator--() {
-            --_index;
+            _cur_idx--;
             return *this;
         }
 
-        bool operator!=(const OrdinalPageIndexIterator& other) {
-            return _index != other._index || _reader != other._reader;
+        OrdinalPageIndexIterator& operator-=(int32_t step) {
+            _cur_idx -= step;
+            return *this;
         }
 
-        bool operator==(const OrdinalPageIndexIterator& other) {
-            return _index == other._index && _reader == other._reader;
+        OrdinalPageIndexIterator& operator+=(int32_t step) {
+            _cur_idx += step;
+            return *this;
         }
 
-        size_t operator-(const OrdinalPageIndexIterator& other) const {
-            return _index - other._index;
-        }
-
-        inline void next() {
-            assert(_index < _reader->_num_items);
-            _index++;
-        }
-
-        inline bool valid() const {
-            return _index >= 0 && _index < _reader->_num_items;
+        int32_t operator-(const OrdinalPageIndexIterator& other) const {
+            return _cur_idx - other._cur_idx;
         }
 
         ordinal_t operator*() const {
-            return _reader->get_first_ordinal(_index);
-        }
-
-        size_t index() const {
-            return _index;
+            return _index->_ordinals[_cur_idx];
         }
 
     private:
-        const OrdinalIndexReader* _reader;
-        size_t _index;
+        const OrdinalIndexReader* _index;
+        int32_t _cur_idx;
     };
 
-    OrdinalIndexReader() : _parsed(false), _num_items(0) {}
+    explicit OrdinalIndexReader() = default;
 
-    void parse(const OrdinalIndexPage* page) {
-        Slice data = page->_data.slice();
-        _num_items = page->_num_items;
-        _ordinals.resize(_num_items + 1);
-        _indexs.resize(_num_items);
+    void load(io::FileReaderSPtr file_reader, const OrdinalIndexMeta* index_meta, ordinal_t num_values) {
+        OwnedSlice index_data;
+        Slice body;
+        IndexPageFooter footer;
+        io::PageIO::read_and_decompress_page(
+                nullptr, index_meta->_page_pointer,
+                file_reader, &body, footer, &index_data);
+        // parse and save all (ordinal, pp) from index page
+        IndexPageDecoder decoder;
+        decoder.load(body, footer);
+        _num_pages = decoder.count();
+        _ordinals.resize(_num_pages);
+        _pages.resize(_num_pages);
+        //_ordinals.resize(_num_pages + 1);
 
-        for (int i = 0; i < _num_items; ++i) {
-            ordinal_t ordinal;
-            UInt32 index;
-            if (!get_varint64(&data, &ordinal)) {
-                throw std::logic_error("Fail to get varint `ordinal` from buffer");
-            }
-            if (!get_varint32(&data, &index)) {
-                throw std::logic_error("Fail to get varint `index` from buffer");
-            }
+        for (int i = 0; i < _num_pages; i++) {
+            Slice key = decoder.get_key(i);
+            ordinal_t ordinal = 0;
+            KeyCoderTraits<COLUMN_TYPE_UNINITIALIZED>::decode_ascending(
+                    &key, sizeof(ordinal_t), (uint8_t*)&ordinal);
             _ordinals[i] = ordinal;
-            _indexs[i] = index;
+            _pages[i] = decoder.get_value(i);
         }
 
-        if (data._size != 0) {
-            throw std::logic_error("Still has data after parse all key offset");
+        // _ordinals[_num_pages] = num_values;
+    }
+
+    // the returned iter points to the largest element which is less than `ordinal`,
+    // or points to the first element if all elements are greater than `ordinal`,
+    // or points to "end" if all elements are smaller than `ordinal`.
+    OrdinalPageIndexIterator seek_at_or_before(ordinal_t ordinal) {
+        auto iter = _upper_bound(ordinal);
+        if (iter != begin()) {
+            --iter;
         }
-        _parsed = true;
-        // _ordinals[_num_items] = _num_values;
+        return iter;
     }
 
     inline OrdinalPageIndexIterator begin() const {
-        return OrdinalPageIndexIterator(this, 0);
+        return {this, 0};
     }
 
     inline OrdinalPageIndexIterator end() const {
-        return OrdinalPageIndexIterator(this, _num_items);
+        return {this, _num_pages};
     }
 
-    ordinal_t get_first_ordinal(size_t index) const {
-        return _ordinals[index];
+    ordinal_t get_first_ordinal(int page_index) const {
+        return _ordinals[page_index];
     }
 
-    ordinal_t get_last_ordinal(size_t index) const {
-        return get_first_ordinal(index + 1) - 1;
+    ordinal_t get_last_ordinal(int page_index) const {
+        return get_first_ordinal(page_index + 1) - 1;
     }
 
-    OrdinalPageIndexIterator lower_bound(ordinal_t ordinal) const {
-        assert(_parsed);
-        return _seek<true>(ordinal);
-    }
-
-    // Return the iterator which locates the first item greater than the input key.
-    OrdinalPageIndexIterator upper_bound(ordinal_t ordinal) const {
-        assert(_parsed);
-        return _seek<false>(ordinal);
-    }
-
-    bool is_parsed() const {
-        return _parsed;
-    }
-
-    OrdinalPageIndexIterator seek_at_or_before(ordinal_t ordinal) {
-        int32_t left = 0;
-        int32_t right = _num_items - 1;
-        while (left < right) {
-            int32_t mid = (left + right + 1) / 2;
-            if (_ordinals[mid] < ordinal) {
-                left = mid;
-            } else if (_ordinals[mid] > ordinal) {
-                right = mid - 1;
-            } else {
-                left = mid;
-                break;
-            }
-        }
-        if (_ordinals[left] > ordinal) {
-            return end();
-        }
-        return OrdinalPageIndexIterator(this, left);
+    // for test
+    int32_t num_data_pages() const {
+        return _num_pages;
     }
 
 private:
-    template <bool lower_bound>
-    OrdinalPageIndexIterator _seek(ordinal_t ordinal) const {
-        auto cmp = [](ordinal_t lhs, ordinal_t rhs) { return lhs < rhs; };
-        if constexpr (lower_bound) {
-            return std::lower_bound(begin(), end(), ordinal, cmp);
-        } else {
-            return std::upper_bound(begin(), end(), ordinal, cmp);
-        }
+    friend OrdinalPageIndexIterator;
+
+    OrdinalPageIndexIterator _upper_bound(ordinal_t ordinal) const {
+        auto cmp = [](const ordinal_t& lhs, const ordinal_t& rhs) {
+            return lhs < rhs;
+        };
+        return std::upper_bound(begin(), end(), ordinal, cmp);
     }
 
-    bool _parsed;
-    std::vector<ordinal_t> _ordinals; // _ordinals[i] = first ordinal of the i-th data page,
-    std::vector<UInt32> _indexs;
-    int _num_items;
-    // ordinal_t _num_values; // equals to 1 + 'last ordinal of last data pages'
+    int _num_pages = 0;
+    std::vector<ordinal_t> _ordinals;
+    std::vector<io::PagePointer> _pages;
 };
 
 }

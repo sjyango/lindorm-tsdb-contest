@@ -43,8 +43,8 @@ public:
     }
 
     int operator()(const RowInBlock* left, const RowInBlock* right) const {
-        return _block->compare_at(left->_row_pos, right->_row_pos, _schema->num_key_columns(),
-                                   *_block);
+        return _block->compare_at(left->_row_pos, right->_row_pos,
+                                  _schema->num_key_columns(),*_block);
     }
 
 private:
@@ -56,7 +56,7 @@ class MemTable {
 public:
     using VecTable = SkipList<RowInBlock*, RowInBlockComparator>;
 
-    MemTable(TableSchemaSPtr schema, size_t segment_id);
+    MemTable(io::FileWriter* file_writer, TableSchemaSPtr schema, size_t segment_id);
 
     ~MemTable();
 
@@ -64,7 +64,7 @@ public:
 
     void flush(size_t* num_rows_written_in_table);
 
-    SegmentSPtr finalize();
+    void finalize();
 
     void close();
 
@@ -98,6 +98,7 @@ public:
     };
 
 private:
+    io::FileWriter* _file_writer;
     TableSchemaSPtr _schema;
     size_t _segment_id;
     std::unique_ptr<RowInBlockComparator> _row_comparator;

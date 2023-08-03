@@ -14,16 +14,17 @@
 */
 
 #include "storage/segment_writer.h"
+#include "io/page_io.h"
 
 namespace LindormContest::storage {
 
-SegmentWriter::SegmentWriter(TableSchemaSPtr schema, size_t segment_id)
-        : _schema(schema), _segment_id(segment_id) {
+SegmentWriter::SegmentWriter(io::FileWriter* file_writer, TableSchemaSPtr schema, size_t segment_id)
+        : _file_writer(file_writer), _schema(schema), _segment_id(segment_id) {
     _num_key_columns = _schema->num_key_columns();
     _num_short_key_columns = _schema->num_short_key_columns();
     _column_writers.reserve(_schema->num_columns());
     _data_convertor.reserve(_schema->num_columns());
-    _short_key_index_writer = std::make_unique<ShortKeyIndexWriter>(_segment_id);
+    _short_key_index_writer = std::make_unique<ShortKeyIndexWriter>();
 
     for (const auto& column : _schema->columns()) {
         _create_column_writer(column);
@@ -33,17 +34,18 @@ SegmentWriter::SegmentWriter(TableSchemaSPtr schema, size_t segment_id)
         const auto& column = _schema->column(cid);
         _key_coders.push_back(get_key_coder(column.get_column_type()));
     }
-
-    _segment_data = std::make_shared<SegmentData>();
-    _segment_data->_segment_id = segment_id;
-    _segment_data->_table_schema = schema;
 }
 
 SegmentWriter::~SegmentWriter() = default;
 
 void SegmentWriter::_create_column_writer(const TableColumn& column) {
-    std::unique_ptr<ColumnWriter> writer = std::make_unique<ColumnWriter>(column);
-    _column_writers.push_back(std::move(writer));
+    ColumnMetaSPtr meta = std::make_shared<ColumnMeta>();
+    meta->_column_id = column.get_uid();
+    meta->_type = column.get_data_type();
+    meta->_encoding_type = EncodingType::PLAIN_ENCODING;
+    meta->_compression_type = CompressionType::NO_COMPRESSION;
+    _footer._column_metas.emplace_back(meta);
+    _column_writers.emplace_back(std::make_unique<ColumnWriter>(meta, _file_writer));
     _data_convertor.add_column_data_convertor(column);
 }
 
@@ -56,6 +58,7 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
         short_key_pos.push_back(0);
     }
 
+    // 假设数据共5000条，则num_rows=5000，则short_key_pos=[0, 1024, 2048, 3072, 4096]
     while (_short_key_row_pos + NUM_ROWS_PER_GROUP < num_rows) {
         _short_key_row_pos += NUM_ROWS_PER_GROUP;
         short_key_pos.push_back(_short_key_row_pos);
@@ -69,15 +72,15 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
         if (cid < _num_key_columns) {
             key_columns.push_back(converted_result);
         }
-        auto data = reinterpret_cast<const UInt8*>(converted_result->get_data());
+        const uint8_t* data = reinterpret_cast<const uint8_t*>(converted_result->get_data());
         _column_writers[cid]->append_data(&data, num_rows);
     }
 
     if (_is_first_row) {
-        _min_key = std::move(_full_encode_keys(key_columns, 0));
+        _min_key = std::move(_encode_keys(key_columns, 0));
         _is_first_row = false;
     }
-    _max_key = std::move(_full_encode_keys(key_columns, num_rows - 1));
+    _max_key = std::move(_encode_keys(key_columns, num_rows - 1));
     key_columns.resize(_num_short_key_columns);
 
     for (const auto pos : short_key_pos) {
@@ -88,20 +91,8 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
     *num_rows_written_in_table += _num_rows_written;
 }
 
-String SegmentWriter::_full_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
-    assert(key_columns.size() == _num_key_columns && _key_coders.size() == _num_key_columns);
-    std::string encoded_keys;
-    size_t cid = 0;
-    for (const auto& column : key_columns) {
-        auto data = column->get_data_at(pos);
-        _key_coders[cid]->full_encode_ascending(data, &encoded_keys);
-        ++cid;
-    }
-    return encoded_keys;
-}
-
 String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos) {
-    assert(key_columns.size() == _num_short_key_columns);
+    assert(key_columns.size() == _num_key_columns && _key_coders.size() == _num_key_columns);
     String encoded_keys;
     size_t cid = 0;
     for (const auto& column : key_columns) {
@@ -123,17 +114,29 @@ void SegmentWriter::close() {
     _num_rows_written = 0;
 }
 
-SegmentSPtr SegmentWriter::finalize() {
+void SegmentWriter::finalize() {
     for (auto& column_writer : _column_writers) {
-        column_writer->finish();
+        column_writer->write_column_data();
     }
 
     for (auto& column_writer : _column_writers) {
-        _segment_data->emplace_back(column_writer->write_data());
+        column_writer->write_column_index();
     }
-    _segment_data->_short_key_index_page = _short_key_index_writer->finalize(_num_rows_written);
-    _segment_data->_num_rows = _num_rows_written;
-    return std::move(_segment_data);
+
+    OwnedSlice short_key_index_body;
+    ShortKeyIndexFooter footer;
+    _short_key_index_writer->finalize(_num_rows_written, &short_key_index_body, &footer);
+    io::PagePointer page_pointer;
+    io::PageIO::write_page(_file_writer, std::move(short_key_index_body), footer, &page_pointer);
+    _footer._short_key_index_page_pointer = page_pointer;
+    _footer._num_rows = _num_rows_written;
+    _footer._compression_type = CompressionType::NO_COMPRESSION;
+
+    std::string footer_buffer; // serialize segment footer and footer size
+    _footer.serialize(&footer_buffer);
+    size_t footer_size = footer_buffer.size();
+    put_fixed32_le(&footer_buffer, footer_size);
+    _file_writer->append(footer_buffer);
 }
 
 }

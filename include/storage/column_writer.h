@@ -21,12 +21,13 @@
 #include "storage/indexs/ordinal_key_index.h"
 #include "table_schema.h"
 #include "vec/blocks/block.h"
+#include "io/compression.h"
 
 namespace LindormContest::storage {
 
 class ColumnWriter {
 public:
-    ColumnWriter(const TableColumn& column);
+    ColumnWriter(ColumnMetaSPtr meta, io::FileWriter* file_writer);
 
     ~ColumnWriter();
 
@@ -38,15 +39,16 @@ public:
 
     void append_data_in_current_page(const uint8_t* data, size_t* num_written);
 
-    void finish();
+    void write_column_data();
 
-    ColumnSPtr write_data();
+    void write_column_index();
 
 private:
-    ColumnSPtr _column_data;
+    ColumnMetaSPtr _meta;
+    io::FileWriter* _file_writer;
+    io::CompressionUtil* _compression_util;
     ordinal_t _first_ordinal = 0;
     ordinal_t _next_ordinal = 0;
-
     std::unique_ptr<PageEncoder> _page_encoder;
     std::vector<DataPage> _data_pages;
     std::unique_ptr<OrdinalIndexWriter> _ordinal_index_writer;

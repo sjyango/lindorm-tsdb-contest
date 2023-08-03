@@ -31,7 +31,7 @@ public:
 
     virtual ~PageDecoder() = default;
 
-    virtual DataPage* decode(size_t page_index) = 0;
+    virtual void init(Slice data) = 0;
 
     // Seek the decoder to the given positional index of the page.
     // For example, seek_to_position_in_page(0) seeks to the first
@@ -98,22 +98,20 @@ public:
 
 class BinaryPlainPageDecoder : public PageDecoder {
 public:
-    BinaryPlainPageDecoder(ColumnData* column_data)
-            : _column_data(column_data), _num_elems(0), _offsets_pos(0), _cur_idx(0) {}
+    BinaryPlainPageDecoder()
+            : _num_elems(0), _offsets_pos(0), _cur_idx(0) {}
 
-    DataPage* decode(size_t page_index) override {
-        assert(page_index < _column_data->_data_pages.size());
-        _data = _column_data->_data_pages[page_index]._data.slice();
+    void init(Slice data) override {
+        _data = data;
         assert(_data._size >= BINARY_PLAIN_PAGE_HEADER_SIZE);
         _num_elems = decode_fixed32_le(
                 reinterpret_cast<const uint8_t*>(_data._data + (_data._size - sizeof(uint32_t))));
         _offsets_pos = _data._size - (_num_elems + 1) * sizeof(uint32_t);
-        seek_to_position_in_page(0);
-        return &_column_data->_data_pages[page_index];
+        assert(_offsets_pos + sizeof(uint32_t) == _data._size);
     }
 
     void seek_to_position_in_page(size_t pos) override {
-        assert(_num_elems > 0 && pos < _num_elems);
+        assert(pos < _num_elems);
         _cur_idx = pos;
     }
 
@@ -132,6 +130,14 @@ public:
 
         dst->insert_binary_data(_data._data + start_offset, offsets, max_fetch);
         *n = max_fetch;
+    }
+
+    size_t count() const override {
+        return _num_elems;
+    }
+
+    size_t current_index() const override {
+        return _cur_idx;
     }
 
     // void read_by_rowids(const rowid_t* rowids, ordinal_t page_first_ordinal, size_t* n,
@@ -162,14 +168,6 @@ public:
     //
     //     *n = read_count;
     // }
-
-    size_t count() const override {
-        return _num_elems;
-    }
-
-    size_t current_index() const override {
-        return _cur_idx;
-    }
 
     // Slice string_at_index(size_t idx) const {
     //     const uint32_t start_offset = offset(idx);
@@ -209,7 +207,6 @@ private:
     }
 
     Slice _data;
-    ColumnData* _column_data;
     uint32_t _num_elems;
     uint32_t _offsets_pos;
     uint32_t _cur_idx;
@@ -217,19 +214,16 @@ private:
 
 class PlainPageDecoder : public PageDecoder {
 public:
-    PlainPageDecoder(ColumnData* column_data):
-              _column_data(column_data), _num_elems(0), _cur_idx(0) {}
+    PlainPageDecoder(const DataType* type)
+            : _type(type), _num_elems(0), _cur_idx(0) {}
 
     ~PlainPageDecoder() override = default;
 
-    DataPage* decode(size_t page_index) override {
-        assert(page_index < _column_data->_data_pages.size());
-        _data = _column_data->_data_pages[page_index]._data.slice();
+    void init(Slice data) override {
+        _data = data;
         assert(_data._size >= PLAIN_PAGE_HEADER_SIZE);
         _num_elems = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data._data));
-        assert(_data._size == (PLAIN_PAGE_HEADER_SIZE + _num_elems * _get_type_size()));
-        seek_to_position_in_page(0);
-        return &_column_data->_data_pages[page_index];
+        assert(_data._size == (PLAIN_PAGE_HEADER_SIZE + _num_elems * _type_size()));
     }
 
     void seek_to_position_in_page(size_t pos) override {
@@ -248,8 +242,8 @@ public:
         // - left == _num_elems when not found (all values < target)
         while (left < right) {
             size_t mid = left + (right - left) / 2;
-            mid_value = _data._data + (PLAIN_PAGE_HEADER_SIZE + mid * _get_type_size());
-            if (_get_type()->cmp(mid_value, value) < 0) {
+            mid_value = _data._data + (PLAIN_PAGE_HEADER_SIZE + mid * _type_size());
+            if (_type->cmp(mid_value, value) < 0) {
                 left = mid + 1;
             } else {
                 right = mid;
@@ -259,8 +253,8 @@ public:
         if (left >= _num_elems) {
             throw std::logic_error("all value small than the value");
         }
-        const void* find_value = _data._data + PLAIN_PAGE_HEADER_SIZE + left * _get_type_size();
-        if (_get_type()->cmp(find_value, value) == 0) {
+        const void* find_value = _data._data + PLAIN_PAGE_HEADER_SIZE + left * _type_size();
+        if (_type->cmp(find_value, value) == 0) {
             *exact_match = true;
         } else {
             *exact_match = false;
@@ -275,7 +269,7 @@ public:
         }
         const size_t max_fetch = std::min(*n, static_cast<size_t>(_num_elems - _cur_idx));
         const uint8_t* start_offset =
-                reinterpret_cast<const uint8_t*>(_data._data + (_cur_idx + 1) * _get_type_size());
+                reinterpret_cast<const uint8_t*>(_data._data + (_cur_idx + 1) * _type_size());
         _cur_idx += max_fetch;
         dst->insert_many_data(start_offset, max_fetch);
         *n = max_fetch;
@@ -290,16 +284,12 @@ public:
     }
 
 private:
-    size_t _get_type_size() const {
-        return _column_data->_column_meta.get_type_size();
-    }
-    
-    const DataType* _get_type() const {
-        return _column_data->_column_meta._type;
+    size_t _type_size() const {
+        return _type->type_size();
     }
 
     Slice _data;
-    ColumnData* _column_data;
+    const DataType* _type;
     uint32_t _num_elems;
     uint32_t _cur_idx;
 };

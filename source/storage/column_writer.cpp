@@ -17,21 +17,17 @@
 
 namespace LindormContest::storage {
 
-ColumnWriter::ColumnWriter(const TableColumn& column) {
-    ColumnMeta column_meta;
-    column_meta._column_id = column.get_uid();
-    column_meta._type = column.get_data_type();
-    column_meta._ordinal_index = nullptr;
-    _column_data = std::make_shared<ColumnData>(std::move(column_meta));
+ColumnWriter::ColumnWriter(std::shared_ptr<ColumnMeta> meta, io::FileWriter* file_writer)
+        : _meta(meta), _file_writer(file_writer) {
     _ordinal_index_writer = std::make_unique<OrdinalIndexWriter>();
-    switch (_column_data->_column_meta.get_column_type()) {
+    switch (_meta->_type->column_type()) {
     case COLUMN_TYPE_STRING:
         _page_encoder = std::make_unique<BinaryPlainPageEncoder>();
         break;
     case COLUMN_TYPE_INTEGER:
     case COLUMN_TYPE_TIMESTAMP:
     case COLUMN_TYPE_DOUBLE_FLOAT:
-        _page_encoder = std::make_unique<PlainPageEncoder>(column);
+        _page_encoder = std::make_unique<PlainPageEncoder>(_meta->get_type_size());
         break;
     default:
         _page_encoder = nullptr;
@@ -59,32 +55,35 @@ void ColumnWriter::append_data_in_current_page(const uint8_t* data, size_t* num_
 
 void ColumnWriter::append_data_in_current_page(const uint8_t** data, size_t* num_written) {
     append_data_in_current_page(*data, num_written);
-    *data += _column_data->get_type_size() * (*num_written);
+    *data += _meta->get_type_size() * (*num_written);
 }
 
 void ColumnWriter::flush_current_page() {
-    if (_next_ordinal == _first_ordinal) {
-        return;
-    }
-    OwnedSlice page_data = _page_encoder->finish();
+    OwnedSlice page_data = std::move(_page_encoder->finish());
     _page_encoder->reset();
-    DataPageFooter data_meta(page_data.size(), _first_ordinal, _next_ordinal - _first_ordinal);
-    DataPage page(std::move(page_data), data_meta);
+    DataPageFooter page_footer(page_data.size(),
+                               _first_ordinal, _next_ordinal - _first_ordinal);
+    DataPage page;
+    page._data = std::move(page_data);
+    page._footer = std::move(page_footer);
     _data_pages.emplace_back(std::move(page));
     _first_ordinal = _next_ordinal;
 }
 
-void ColumnWriter::finish() {
+void ColumnWriter::write_column_data() {
     flush_current_page();
+
+    for (auto& data_page : _data_pages) {
+        io::PagePointer page_pointer;
+        io::PageIO::write_page(_file_writer, std::move(data_page._data), data_page._footer, &page_pointer);
+        _ordinal_index_writer->append_entry(data_page._footer._first_ordinal, page_pointer);
+    }
 }
 
-ColumnSPtr ColumnWriter::write_data() {
-    for (size_t index = 0; index < _data_pages.size(); ++index) {
-        _ordinal_index_writer->append_entry(_data_pages[index]._meta._first_ordinal, index);
-    }
-    _column_data->_column_meta._ordinal_index = _ordinal_index_writer->finalize();
-    _column_data->_data_pages = std::move(_data_pages);
-    return _column_data;
+void ColumnWriter::write_column_index() {
+    OrdinalIndexMeta ordinal_index_meta;
+    _ordinal_index_writer->finish(_file_writer, &ordinal_index_meta);
+    _meta->_indexes.emplace_back(ordinal_index_meta);
 }
 
 }

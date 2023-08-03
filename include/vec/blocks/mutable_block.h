@@ -98,9 +98,9 @@ public:
 
     void add_row(const Row& row);
 
-    void add_rows(const Block* block, const size_t* row_begin, const size_t* row_end);
+    void append_block(const Block* block, const size_t* row_begin, const size_t* row_end);
 
-    void add_rows(const Block* block, size_t row_begin, size_t length);
+    void append_block(const Block* block, size_t row_begin, size_t length);
 
     int compare_one_column(size_t n, size_t m, size_t column_id) const;
 

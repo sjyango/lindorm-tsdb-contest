@@ -15,6 +15,7 @@
 
 #include <string>
 #include <random>
+#include <filesystem>
 
 #include <gtest/gtest.h>
 
@@ -47,7 +48,7 @@ inline int32_t generate_random_int32() {
 }
 
 TEST(IOTest, BasicIOTest) {
-    io::Path ROOT_PATH = "/home/ysj/lindorm-tsdb-contest-mac/test";
+    io::Path ROOT_PATH = std::filesystem::current_path();
     io::FileSystemSPtr fs = io::FileSystem::create(std::move(ROOT_PATH));
     io::Path dir_name = "test_data";
     io::Path file_name = "test.txt";

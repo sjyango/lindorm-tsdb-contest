@@ -24,7 +24,7 @@ namespace LindormContest::storage {
 
 template <typename Key, class Comparator>
 class SkipList {
-    static const size_t MAXHEIGHT = 12;
+    static const size_t MAX_HEIGHT = 12;
 
 private:
     struct Node {
@@ -59,26 +59,27 @@ private:
 public:
     struct Hint {
         Node* curr;
-        Node* prev[MAXHEIGHT];
+        Node* prev[MAX_HEIGHT];
     };
 
     SkipList(Comparator* cmp, Arena* arena)
             : _compare(cmp),
               _arena(arena),
-              _head(new_node(0, MAXHEIGHT)),
+              _head(new_node(0, MAX_HEIGHT)),
               _max_height(1),
               _rnd(0xdeadbeef) {
-        for (int i = 0; i < MAXHEIGHT; i++) {
+        for (int i = 0; i < MAX_HEIGHT; i++) {
             _head->set_next(i, nullptr);
         }
     }
 
     // No copying allowed
     SkipList(const SkipList&) = delete;
+
     void operator=(const SkipList&) = delete;
 
     void insert(const Key& key) {
-        Node* prev[MAXHEIGHT];
+        Node* prev[MAX_HEIGHT];
         Node* x = find_greater_or_equal(key, prev);
 
         // Our data structure does not allow duplicate insertion
@@ -207,12 +208,12 @@ private:
         static const unsigned int kBranching = 4;
         int height = 1;
 
-        while (height < MAXHEIGHT && ((_rnd.Next() % kBranching) == 0)) {
+        while (height < MAX_HEIGHT && ((_rnd.Next() % kBranching) == 0)) {
             height++;
         }
 
         assert(height > 0);
-        assert(height <= MAXHEIGHT);
+        assert(height <= MAX_HEIGHT);
         return height;
     }
     

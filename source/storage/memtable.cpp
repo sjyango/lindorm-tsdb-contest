@@ -17,7 +17,8 @@
 
 namespace LindormContest::storage {
 
-MemTable::MemTable(TableSchemaSPtr schema, size_t segment_id) : _schema(schema), _segment_id(segment_id) {
+MemTable::MemTable(io::FileWriter* file_writer, TableSchemaSPtr schema, size_t segment_id)
+        : _schema(schema), _segment_id(segment_id) {
     _arena = std::make_unique<Arena>();
     _row_comparator = std::make_unique<RowInBlockComparator>(_schema);
     _skip_list = std::make_unique<VecTable>(_row_comparator.get(), _arena.get());
@@ -26,8 +27,8 @@ MemTable::MemTable(TableSchemaSPtr schema, size_t segment_id) : _schema(schema),
     vectorized::Block output_block = _schema->create_block();
     _output_mutable_block = vectorized::MutableBlock::build_mutable_block(&output_block);
     _row_comparator->set_block(&_input_mutable_block);
+    _segment_writer = std::make_unique<SegmentWriter>(file_writer, _schema, _segment_id);
     assert(_input_mutable_block.columns() == _schema->num_columns());
-    _segment_writer = std::make_unique<SegmentWriter>(_schema, _segment_id);
 }
 
 MemTable::~MemTable() = default;
@@ -36,7 +37,7 @@ void MemTable::insert(const vectorized::Block&& input_block) {
     assert(input_block.columns() == _schema->num_columns());
     size_t cursor_in_mutable_block = _input_mutable_block.rows();
     size_t num_rows = input_block.rows();
-    _input_mutable_block.add_rows(&input_block, 0, num_rows);
+    _input_mutable_block.append_block(&input_block, 0, num_rows);
 
     for (int i = 0; i < num_rows; i++) {
         _row_in_blocks.emplace_back(std::make_unique<RowInBlock>(cursor_in_mutable_block + i));
@@ -61,14 +62,14 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
         row_pos_vec.emplace_back(it.key()->_row_pos);
     }
 
-    _output_mutable_block.add_rows(&in_block, row_pos_vec.data(),
+    _output_mutable_block.append_block(&in_block, row_pos_vec.data(),
                                    row_pos_vec.data() + row_pos_vec.size());
     _segment_writer->append_block(std::move(_output_mutable_block.to_block()),
                                   num_rows_written_in_table);
 }
 
-SegmentSPtr MemTable::finalize() {
-    return _segment_writer->finalize();
+void MemTable::finalize() {
+    _segment_writer->finalize();
 }
 
 void MemTable::close() {
