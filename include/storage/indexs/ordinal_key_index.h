@@ -46,7 +46,7 @@ public:
         return _page_encoder->size();
     }
 
-    void finish(io::FileWriter* file_writer, OrdinalIndexMeta* meta) {
+    void finish(io::FileWriter* file_writer, std::shared_ptr<OrdinalIndexMeta> meta) {
         assert(_page_encoder->count() > 0);
         meta->_type = ColumnIndexType::ORDINAL_INDEX;
         OwnedSlice page_body;
@@ -146,12 +146,12 @@ public:
 
     explicit OrdinalIndexReader() = default;
 
-    void load(io::FileReaderSPtr file_reader, const OrdinalIndexMeta* index_meta, ordinal_t num_values) {
+    void load(io::FileReaderSPtr file_reader, const OrdinalIndexMeta& index_meta, ordinal_t num_values) {
         OwnedSlice index_data;
         Slice body;
         IndexPageFooter footer;
         io::PageIO::read_and_decompress_page(
-                nullptr, index_meta->_page_pointer,
+                nullptr, index_meta._page_pointer,
                 file_reader, &body, footer, &index_data);
         // parse and save all (ordinal, pp) from index page
         IndexPageDecoder decoder;

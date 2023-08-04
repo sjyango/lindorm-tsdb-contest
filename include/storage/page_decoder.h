@@ -96,6 +96,9 @@ public:
     }
 };
 
+/**
+ * page layout: [Slice0, Slice1, ..., SliceN, offset0, offset1, ..., offsetN, offsets_size]
+ */
 class BinaryPlainPageDecoder : public PageDecoder {
 public:
     BinaryPlainPageDecoder()
@@ -103,11 +106,10 @@ public:
 
     void init(Slice data) override {
         _data = data;
-        assert(_data._size >= BINARY_PLAIN_PAGE_HEADER_SIZE);
+        assert(_data._size >= 0);
         _num_elems = decode_fixed32_le(
                 reinterpret_cast<const uint8_t*>(_data._data + (_data._size - sizeof(uint32_t))));
         _offsets_pos = _data._size - (_num_elems + 1) * sizeof(uint32_t);
-        assert(_offsets_pos + sizeof(uint32_t) == _data._size);
     }
 
     void seek_to_position_in_page(size_t pos) override {
@@ -173,28 +175,6 @@ public:
     //     const uint32_t start_offset = offset(idx);
     //     uint32_t len = offset(idx + 1) - start_offset;
     //     return Slice(&_data[start_offset], len);
-    // }
-
-    // void get_dict_word_info(StringRef* dict_word_info) {
-    //     if (UNLIKELY(_num_elems <= 0)) {
-    //         return;
-    //     }
-    //
-    //     char* data_begin = (char*)&_data[0];
-    //     char* offset_ptr = (char*)&_data[_offsets_pos];
-    //
-    //     for (uint32_t i = 0; i < _num_elems; ++i) {
-    //         dict_word_info[i].data = data_begin + decode_fixed32_le((uint8_t*)offset_ptr);
-    //         offset_ptr += sizeof(uint32_t);
-    //     }
-    //
-    //     for (int i = 0; i < (int)_num_elems - 1; ++i) {
-    //         dict_word_info[i].size =
-    //                 (char*)dict_word_info[i + 1].data - (char*)dict_word_info[i].data;
-    //     }
-    //
-    //     dict_word_info[_num_elems - 1].size =
-    //             (data_begin + _offsets_pos) - (char*)dict_word_info[_num_elems - 1].data;
     // }
 
 private:
@@ -269,7 +249,7 @@ public:
         }
         const size_t max_fetch = std::min(*n, static_cast<size_t>(_num_elems - _cur_idx));
         const uint8_t* start_offset =
-                reinterpret_cast<const uint8_t*>(_data._data + (_cur_idx + 1) * _type_size());
+                reinterpret_cast<const uint8_t*>(_data._data + PLAIN_PAGE_HEADER_SIZE + (_cur_idx * _type_size()));
         _cur_idx += max_fetch;
         dst->insert_many_data(start_offset, max_fetch);
         *n = max_fetch;

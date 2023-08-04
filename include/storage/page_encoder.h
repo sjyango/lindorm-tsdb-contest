@@ -26,7 +26,7 @@ namespace LindormContest::storage {
 static constexpr size_t PLAIN_PAGE_HEADER_SIZE = sizeof(UInt32);
 static constexpr size_t PLAIN_PAGE_SIZE = 1024 * 1024; // default size: 1M
 
-static constexpr size_t BINARY_PLAIN_PAGE_HEADER_SIZE = sizeof(UInt32);
+// static constexpr size_t BINARY_PLAIN_PAGE_HEADER_SIZE = sizeof(UInt32);
 static constexpr size_t BINARY_PLAIN_PAGE_SIZE = 16 * 1024 * 1024; // default size: 16M
 
 // PageBuilder is used to build page
@@ -59,9 +59,12 @@ public:
     virtual void get_last_value(void* value) const = 0;
 };
 
+/**
+ * page layout: [Slice0, Slice1, ..., SliceN, offset0, offset1, ..., offsetN, offsets_size]
+ */
 class BinaryPlainPageEncoder : public PageEncoder {
 public:
-    BinaryPlainPageEncoder() : _size(BINARY_PLAIN_PAGE_HEADER_SIZE) {
+    BinaryPlainPageEncoder() : _size(0) {
         _buffer.reserve(BINARY_PLAIN_PAGE_SIZE + 1024);
     }
 
@@ -81,6 +84,7 @@ public:
 
         while (!is_page_full() && i < *count) {
             const Slice* src = reinterpret_cast<const Slice*>(data);
+            std::string str = src->to_string();
             _buffer.append(src->_data, src->_size);
             _offsets.push_back(_buffer.size());
             _size += (src->_size + sizeof(uint32_t));
@@ -107,7 +111,7 @@ public:
         _offsets.clear();
         _buffer.clear();
         _buffer.reserve(BINARY_PLAIN_PAGE_SIZE + 1024);
-        _size = BINARY_PLAIN_PAGE_HEADER_SIZE;
+        _size = 0;
     }
 
     size_t count() const override {
@@ -157,6 +161,9 @@ private:
     String _last_value;
 };
 
+/**
+ * page layout: [_count, item0, item1, ..., itemN]
+ */
 class PlainPageEncoder : public PageEncoder {
 public:
     PlainPageEncoder(size_t type_size)
@@ -178,14 +185,25 @@ public:
             *count = 0;
             return;
         }
+
         size_t old_size = _buffer.size();
-        _buffer.resize(old_size + (*count) * _type_size);
-        std::memcpy(&_buffer[old_size], data, (*count) * _type_size);
-        _count += *count;
+        size_t remaining = PLAIN_PAGE_SIZE - old_size;
+
+        if ((*count * _type_size) <= remaining) {
+            _buffer.resize(old_size + (*count) * _type_size);
+            std::memcpy(&_buffer[old_size], data, (*count) * _type_size);
+            _count += *count;
+        } else {
+            size_t write_count = remaining / _type_size + 1; // +1 means make data page overflow, and flush to disk
+            _buffer.resize(old_size + write_count * _type_size);
+            std::memcpy(&_buffer[old_size], data, write_count * _type_size);
+            _count += write_count;
+            *count = write_count;
+        }
     }
 
     OwnedSlice finish() override {
-        encode_fixed32_le((UInt8*) _buffer.data(), _count); // encode header, record total counts
+        encode_fixed32_le((UInt8*)_buffer.data(), _count); // encode header, record total counts
         if (_count > 0) {
             _first_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE], _type_size);
             _last_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE + (_count - 1) * _type_size],

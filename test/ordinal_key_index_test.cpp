@@ -51,7 +51,7 @@ inline int32_t generate_random_int32() {
     return dis(gen);
 }
 
-io::FileWriterPtr generate_file_writer() {
+static io::FileWriterPtr generate_file_writer() {
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
     io::Path file_path = root_path / io::Path("ordinal_index_test.dat");
     io::FileSystemSPtr fs = io::FileSystem::create(root_path);
@@ -62,7 +62,7 @@ io::FileWriterPtr generate_file_writer() {
     return fs->create_file(file_path);
 }
 
-io::FileReaderSPtr generate_file_reader() {
+static io::FileReaderSPtr generate_file_reader() {
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
     io::Path file_path = root_path / io::Path("ordinal_index_test.dat");
     io::FileSystemSPtr fs = io::FileSystem::create(root_path);
@@ -87,12 +87,12 @@ TEST(OrdinalKeyIndexTest, BasicOrdinalKeyIndexTest) {
         writer.append_entry(ordinal, pointer);
     }
 
-    OrdinalIndexMeta meta;
-    writer.finish(file_writer.get(), &meta);
+    std::shared_ptr<OrdinalIndexMeta> meta = std::make_shared<OrdinalIndexMeta>();
+    writer.finish(file_writer.get(), meta);
     file_writer->finalize();
     file_writer->close();
     io::FileReaderSPtr file_reader = generate_file_reader();
-    reader.load(file_reader, &meta, N);
+    reader.load(file_reader, *meta, N);
 
     for (auto iter = reader.begin(); iter != reader.end(); ++iter) {
         io::PagePointer lhs = iter.page_pointer();

@@ -29,21 +29,17 @@ public:
     ColumnReader(ColumnMetaSPtr meta, uint64_t num_rows, io::FileReaderSPtr file_reader)
             : _meta(meta), _num_rows(num_rows), _file_reader(file_reader),
               _current_ordinal(0), _offset_in_page(0) {
-        for (const auto& index_meta : _meta->_indexes) {
-            switch (index_meta._type) {
+        for (auto& index_meta : _meta->_indexes) {
+            switch (index_meta->_type) {
             case ColumnIndexType::ORDINAL_INDEX: {
-                _ordinal_index_meta = reinterpret_cast<const OrdinalIndexMeta*>(&index_meta);
+                const OrdinalIndexMeta& ordinal_index_meta = static_cast<const OrdinalIndexMeta&>(*index_meta);
                 _ordinal_index_reader = std::make_unique<OrdinalIndexReader>();
-                _ordinal_index_reader->load(_file_reader, _ordinal_index_meta, _num_rows);
+                _ordinal_index_reader->load(_file_reader, ordinal_index_meta, _num_rows);
                 break;
             }
             default:
                 throw std::runtime_error("invalid column index type");
             }
-        }
-
-        if (_ordinal_index_meta == nullptr && !is_empty()) {
-            throw std::runtime_error("missing ordinal index for column");
         }
 
         io::get_compression_util(_meta->_compression_type, &_compression_util);
@@ -140,10 +136,11 @@ private:
     }
 
     void _load_data_page(const io::PagePointer& page_pointer) {
+        Slice page_body;
         io::PageIO::read_and_decompress_page(
                 _compression_util, page_pointer, _file_reader,
-                &_page_body, _data_page._footer, &_data_page._data);
-        _page_decoder->init(_page_body);
+                &page_body, _data_page._footer, &_data_page._data);
+        _page_decoder->init(page_body);
         _seek_to_pos_in_page(0);
     }
 
@@ -167,74 +164,14 @@ private:
 
     ColumnMetaSPtr _meta;
     DataPage _data_page;
-    Slice _page_body;
     io::CompressionUtil* _compression_util = nullptr;
     uint64_t _num_rows;
     io::FileReaderSPtr _file_reader;
     std::unique_ptr<PageDecoder> _page_decoder;
-    const OrdinalIndexMeta* _ordinal_index_meta = nullptr;
     std::unique_ptr<OrdinalIndexReader> _ordinal_index_reader;
     OrdinalPageIndexIterator _ordinal_index_iter;
     ordinal_t _current_ordinal; // global ordinal
     ordinal_t _offset_in_page; // local ordinal in page
 };
-
-// class BaseColumnReader {
-// public:
-//     BaseColumnReader() = default;
-//
-//     virtual ~BaseColumnReader() = default;
-//
-//     // Seek to the first entry in the column.
-//     virtual void seek_to_first() {
-//         throw std::runtime_error("seek_to_first not implement");
-//     }
-//
-//     // Seek to the given ordinal entry in the column.
-//     // Entry 0 is the first entry written to the column.
-//     virtual void seek_to_ordinal(ordinal_t ord) {
-//         throw std::runtime_error("seek_to_ordinal not implement");
-//     }
-//
-//     virtual void next_batch(size_t* n, vectorized::MutableColumnSPtr& dst) {
-//         throw std::runtime_error("next_batch not implement");
-//     }
-//
-//     virtual void read_by_rowids(const rowid_t* rowids, const size_t count, vectorized::MutableColumnSPtr& dst) {
-//         throw std::runtime_error("read_by_rowids not implement");
-//     }
-//
-//     virtual ordinal_t get_current_ordinal() const {
-//         return 0;
-//     }
-// };
-
-// class EmptyColumnReader : public BaseColumnReader {
-// public:
-//     EmptyColumnReader() = default;
-//
-//     ~EmptyColumnReader() override = default;
-//
-//     void seek_to_first() override {
-//         // do nothing
-//     }
-//
-//     void seek_to_ordinal(ordinal_t ord) override {
-//         // do nothing
-//     }
-//
-//     ordinal_t get_current_ordinal() const override {
-//         return 0;
-//     }
-//
-//     virtual void next_batch(size_t* n, vectorized::MutableColumnPtr& dst) {
-//         // do nothing
-//     }
-//
-//     virtual void read_by_rowids(const rowid_t* rowids, const size_t count,
-//                                 vectorized::MutableColumnPtr& dst) {
-//         // do nothing
-//     }
-// };
 
 }

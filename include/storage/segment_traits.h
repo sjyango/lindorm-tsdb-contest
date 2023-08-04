@@ -222,7 +222,7 @@ struct ColumnMeta {
     const DataType* _type = nullptr;
     EncodingType _encoding_type;
     CompressionType _compression_type;
-    std::vector<ColumnIndexMeta> _indexes;
+    std::vector<std::shared_ptr<ColumnIndexMeta>> _indexes;
 
     ColumnMeta() = default;
 
@@ -246,7 +246,7 @@ struct ColumnMeta {
         put_fixed32_le(buf, static_cast<uint32_t>(_compression_type));
 
         for (const auto& index : _indexes) {
-            index.serialize(buf);
+            index->serialize(buf);
         }
     }
 
@@ -258,8 +258,8 @@ struct ColumnMeta {
         _compression_type = static_cast<CompressionType>(*reinterpret_cast<const uint32_t*>(data + 3 * sizeof(uint32_t)));
         data += 4 * sizeof(uint32_t);
 
-        OrdinalIndexMeta meta;
-        meta.deserialize(data);
+        std::shared_ptr<OrdinalIndexMeta> meta = std::make_shared<OrdinalIndexMeta>();
+        meta->deserialize(data);
         _indexes.emplace_back(meta);
     }
 };

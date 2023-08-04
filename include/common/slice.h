@@ -42,6 +42,7 @@ public:
 
     // Intentionally copyable.
     Slice(const Slice&) = default;
+
     Slice& operator=(const Slice&) = default;
 
     // Return a pointer to the beginning of the referenced data

@@ -31,19 +31,19 @@ public:
 
     ~ColumnWriter();
 
-    void flush_current_page();
-
     void append_data(const uint8_t** data, size_t num_rows);
-
-    void append_data_in_current_page(const uint8_t** data, size_t* num_written);
-
-    void append_data_in_current_page(const uint8_t* data, size_t* num_written);
 
     void write_column_data();
 
     void write_column_index();
 
 private:
+    void _append_data_in_current_page(const uint8_t** data, size_t* num_written);
+
+    void _append_data_in_current_page(const uint8_t* data, size_t* num_written);
+
+    void _flush_current_page();
+
     ColumnMetaSPtr _meta;
     io::FileWriter* _file_writer;
     io::CompressionUtil* _compression_util;

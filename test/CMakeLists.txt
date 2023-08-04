@@ -35,9 +35,10 @@ set(EXECUTABLES
         short_key_index_test
         ordinal_key_index_test
         #table_writer_test
-        #page_test
+        data_page_test
         io_test
         index_page_test
+        column_writer_reader_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})
