@@ -14,6 +14,7 @@
 */
 
 #include "storage/memtable.h"
+#include "utils.h"
 
 namespace LindormContest::storage {
 
@@ -79,6 +80,75 @@ void MemTable::close() {
     _row_in_blocks.clear();
     _segment_writer->close();
     _segment_writer.reset();
+}
+
+// row's vin must increase one bit and timestamp must == 0
+void MemTable::handle_latest_query(std::vector<Row> rows, vectorized::Block* block) {
+    std::vector<size_t> result_positions;
+
+    for (const auto& row : rows) {
+        RowInBlock row_in_block(_input_mutable_block.rows());
+        _input_mutable_block.add_row(row);
+
+        VecTable::Iterator iter(_skip_list.get());
+        std::vector<RowInBlock*> row_in_blocks;
+
+        for (iter.seek_to_first(); iter.valid(); iter.next()) {
+            row_in_blocks.emplace_back(iter.key());
+        }
+
+        auto cmp = [&] (const RowInBlock* lhs, const RowInBlock* rhs) {
+            return (*_row_comparator)(lhs, rhs) < 0;
+        };
+
+        auto it = std::lower_bound(row_in_blocks.begin(), row_in_blocks.end(), &row_in_block, cmp);
+        auto result_it = it != row_in_blocks.begin() ? --it : row_in_blocks.begin();
+        std::string result_str = reinterpret_cast<const vectorized::ColumnString&>(
+                                  *_input_mutable_block.get_column_by_position(0)).get((*result_it)->_row_pos);
+        if (result_str == decrease_vin(row.vin)) {
+            result_positions.push_back((*result_it)->_row_pos);
+        }
+    }
+
+    for (auto& elem : *block) {
+        vectorized::IColumn& col = const_cast<vectorized::IColumn&>(*elem._column);
+        col.insert_indices_from(*_input_mutable_block.get_column_by_name(elem._name),
+                result_positions.data(),result_positions.data() + result_positions.size());
+    }
+}
+
+void MemTable::handle_time_range_query(Row lower_bound_row, Row upper_bound_row, vectorized::Block* block) {
+    RowInBlock lower_bound_row_in_block(_input_mutable_block.rows());
+    _input_mutable_block.add_row(lower_bound_row);
+    RowInBlock upper_bound_row_in_block(_input_mutable_block.rows());
+    _input_mutable_block.add_row(upper_bound_row);
+
+    VecTable::Iterator iter(_skip_list.get());
+    std::vector<RowInBlock*> row_in_blocks;
+
+    for (iter.seek_to_first(); iter.valid(); iter.next()) {
+        row_in_blocks.emplace_back(iter.key());
+    }
+
+    auto cmp = [&] (const RowInBlock* lhs, const RowInBlock* rhs) {
+        return (*_row_comparator)(lhs, rhs) < 0;
+    };
+
+    auto lower_bound_it = std::lower_bound(row_in_blocks.begin(), row_in_blocks.end(), &lower_bound_row_in_block, cmp);
+    auto upper_bound_it = std::lower_bound(row_in_blocks.begin(), row_in_blocks.end(), &upper_bound_row_in_block, cmp);
+    assert(lower_bound_it <= upper_bound_it);
+
+    std::vector<size_t> result_positions;
+
+    for (; lower_bound_it != upper_bound_it; lower_bound_it++) {
+        result_positions.push_back((*lower_bound_it)->_row_pos);
+    }
+
+    for (auto& elem : *block) {
+        vectorized::IColumn& col = const_cast<vectorized::IColumn&>(*elem._column);
+        col.insert_indices_from(*_input_mutable_block.get_column_by_name(elem._name),
+                                result_positions.data(),result_positions.data() + result_positions.size());
+    }
 }
 
 }

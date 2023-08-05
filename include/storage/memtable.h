@@ -72,7 +72,9 @@ public:
         return _rows;
     }
 
-    size_t segment_id() { return _segment_id; };
+    void handle_latest_query(std::vector<Row> rows, vectorized::Block* block);
+
+    void handle_time_range_query(Row lower_bound_row, Row upper_bound_row, vectorized::Block* block);
 
     /// The iterator of memtable, so that the data in this memtable can be visited outside.
     class Iterator {
@@ -98,7 +100,6 @@ public:
     };
 
 private:
-    io::FileWriter* _file_writer;
     TableSchemaSPtr _schema;
     size_t _segment_id;
     std::unique_ptr<RowInBlockComparator> _row_comparator;

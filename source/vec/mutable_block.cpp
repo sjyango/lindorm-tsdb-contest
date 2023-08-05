@@ -57,8 +57,8 @@ void MutableBlock::add_row(const Block* block, size_t row) {
     }
 }
 
-void MutableBlock::add_row(const LindormContest::Row& row) {
-    assert(_data.size() == row.columns.size() + 2);
+void MutableBlock::add_row(const Row& row) {
+    // assert(_data.size() == row.columns.size() + 2);
     ColumnString& vin_col = reinterpret_cast<ColumnString&>(*_data[_index_by_name["vin"]]);
     vin_col.push_string(row.vin.vin, 17);
     ColumnInt64& timestamp_col = reinterpret_cast<ColumnInt64&>(*_data[_index_by_name["timestamp"]]);

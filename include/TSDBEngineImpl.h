@@ -33,6 +33,15 @@ struct Table {
     std::unique_ptr<TableReader> _table_reader;
 };
 
+struct LatestQueryOptions {
+    // TODO
+};
+
+struct TimeRangeQueryOptions {
+    std::string vin;
+    // TODO
+};
+
 class TSDBEngineImpl : public TSDBEngine {
 public:
     /**

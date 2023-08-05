@@ -76,6 +76,11 @@ public:
         return _data[position];
     }
 
+    MutableColumnSPtr get_column_by_name(const std::string& name) const {
+        assert(_index_by_name.find(name) != _index_by_name.end());
+        return _data[_index_by_name.at(name)];
+    }
+
     size_t columns() const { return _data.size(); }
 
     bool empty() const { return rows() == 0; }
