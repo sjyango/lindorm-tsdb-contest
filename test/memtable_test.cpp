@@ -152,6 +152,9 @@ static std::optional<std::vector<int64_t>> handle_time_range_query(Vin input_vin
             results.push_back(time);
         }
     }
+    if (results.empty()) {
+        return std::nullopt;
+    }
     return {results};
 }
 
@@ -383,6 +386,106 @@ TEST(MemTableTest, HandleTimeRangeQueryMemTableTest) {
             ASSERT_EQ(results[i], dst.get(i));
         }
     }
+}
+
+TEST(MemTableTest, HandleEmptyLatestQueryMemTableTest) {
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(file_writer.get(), table_schema, 0);
+    Block block = table_schema->create_block();
+    MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
+
+    std::vector<Row> rows;
+    std::unordered_map<std::string, std::priority_queue<int64_t>> maps;
+
+    const size_t DATA_SIZE = generate_dataset(rows, maps);
+
+    for (const auto& row : rows) {
+        mutable_block.add_row(row);
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const Row& lhs, const Row& rhs) -> bool {
+        if (lhs.vin == rhs.vin) {
+            return lhs.timestamp < rhs.timestamp;
+        }
+        return lhs.vin < rhs.vin;
+    });
+
+    ASSERT_EQ(DATA_SIZE, mutable_block.rows());
+    Block new_block = mutable_block.to_block();
+    ASSERT_EQ(5, new_block.columns());
+    ASSERT_EQ(DATA_SIZE, new_block.rows());
+    mem_table->insert(std::move(new_block));
+    // ASSERT_EQ(DATA_SIZE, mem_table->rows());
+
+    Block result_block = table_schema->create_block();
+
+    Row input_row = generate_row();
+    input_row.timestamp = 0;
+
+    auto result = handle_latest_query(input_row.vin, maps);
+    mem_table->handle_latest_query({input_row}, &result_block);
+    ASSERT_EQ(!result.has_value(), result_block.rows() == 0);
+}
+
+TEST(MemTableTest, HandleEmptyTimeRangeQueryMemTableTest) {
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    std::shared_ptr<TableSchema> table_schema = std::make_shared<TableSchema>(schema);
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::unique_ptr<MemTable> mem_table = std::make_unique<MemTable>(file_writer.get(), table_schema, 0);
+    Block block = table_schema->create_block();
+    MutableBlock mutable_block = MutableBlock::build_mutable_block(&block);
+
+    std::vector<Row> rows;
+    std::unordered_map<std::string, std::priority_queue<int64_t>> maps;
+
+    const size_t DATA_SIZE = generate_dataset(rows, maps);
+
+    for (const auto& row : rows) {
+        mutable_block.add_row(row);
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const Row& lhs, const Row& rhs) -> bool {
+        if (lhs.vin == rhs.vin) {
+            return lhs.timestamp < rhs.timestamp;
+        }
+        return lhs.vin < rhs.vin;
+    });
+
+    ASSERT_EQ(DATA_SIZE, mutable_block.rows());
+    Block new_block = mutable_block.to_block();
+    ASSERT_EQ(5, new_block.columns());
+    ASSERT_EQ(DATA_SIZE, new_block.rows());
+    mem_table->insert(std::move(new_block));
+    ASSERT_EQ(DATA_SIZE, mem_table->rows());
+
+    Block result_block = table_schema->create_block();
+
+    int64_t time_lower_bound = 0;
+    int64_t time_upper_bound = 1;
+
+    Vin input_vin = rows[generate_random_int32() % rows.size()].vin;
+    Row lower_bound_row = generate_row();
+    lower_bound_row.vin = input_vin;
+    lower_bound_row.timestamp = time_lower_bound;
+    Row upper_bound_row = generate_row();
+    upper_bound_row.vin = input_vin;
+    upper_bound_row.timestamp = time_upper_bound;
+
+    auto result = handle_time_range_query(input_vin, time_lower_bound, time_upper_bound, maps);
+    mem_table->handle_time_range_query(lower_bound_row, upper_bound_row, &result_block);
+    ASSERT_EQ(!result.has_value(), result_block.rows() == 0);
 }
 
 }

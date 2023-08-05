@@ -86,6 +86,9 @@ void ColumnString::insert_range_from(const IColumn& src, size_t start, size_t le
 }
 
 void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices_begin, const size_t* indices_end) {
+    if (indices_begin == indices_end) {
+        return;
+    }
     size_t new_size = indices_end - indices_begin;
     const ColumnString& src_data = static_cast<const ColumnString&>(src);
 

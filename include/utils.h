@@ -33,4 +33,32 @@ static std::string decrease_vin(Vin vin) {
     return {vin.vin, 17};
 }
 
+struct RowPosition {
+    size_t _segment_id;
+    std::string _vin;
+    int64_t _timestamp;
+    ordinal_t _ordinal;
+
+    RowPosition() = default;
+
+    RowPosition(size_t segment_id, std::string vin, int64_t timestamp, ordinal_t ordinal)
+            : _segment_id(segment_id), _vin(vin), _timestamp(timestamp), _ordinal(ordinal) {}
+
+    ~RowPosition() = default;
+
+    bool operator==(const RowPosition& other) const {
+        return _vin == other._vin && _timestamp == other._timestamp;
+    }
+
+    bool operator!=(const RowPosition& other) const {
+        return !(*this == other);
+    }
+
+    struct HashFunc {
+        size_t operator()(const RowPosition& row) const {
+            return std::hash<std::string>()(row._vin) ^ std::hash<int64_t>()(row._timestamp);
+        }
+    };
+};
+
 }

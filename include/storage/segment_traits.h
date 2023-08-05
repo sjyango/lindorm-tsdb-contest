@@ -118,7 +118,7 @@ struct ShortKeyIndexFooter : public PageFooter {
     ShortKeyIndexFooter(PageType page_type, size_t uncompressed_size,
                    uint32_t num_items, uint32_t key_bytes,
                    uint32_t offset_bytes, uint32_t num_segment_rows)
-            : PageFooter(page_type, uncompressed_size), _num_items(num_items),
+            : PageFooter(PageType::SHORT_KEY_PAGE, uncompressed_size), _num_items(num_items),
               _key_bytes(key_bytes), _offset_bytes(offset_bytes),
               _num_segment_rows(num_segment_rows) {}
 

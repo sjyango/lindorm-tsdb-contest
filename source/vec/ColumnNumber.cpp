@@ -51,6 +51,9 @@ void ColumnNumber<T>::insert_range_from(const IColumn& src, size_t start, size_t
 
 template <typename T>
 void ColumnNumber<T>::insert_indices_from(const IColumn& src, const size_t* indices_begin, const size_t* indices_end) {
+    if (indices_begin == indices_end) {
+        return;
+    }
     size_t origin_size = size();
     size_t new_size = indices_end - indices_begin;
     _data.resize(origin_size + new_size);

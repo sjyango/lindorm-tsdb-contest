@@ -124,11 +124,17 @@ public:
         _owned_data = std::make_unique<UInt8[]>(size);
         _size = size;
     }
+
+    OwnedSlice(const char* data, size_t size) {
+        _owned_data = std::make_unique<uint8_t[]>(size);
+        _size = size;
+        std::memcpy(_owned_data.get(), data, _size);
+    }
     
-    OwnedSlice(const UInt8* _data, size_t size) {
+    OwnedSlice(const UInt8* data, size_t size) {
         _owned_data = std::make_unique<UInt8[]>(size);
         _size = size;
-        std::memcpy(_owned_data.get(), _data, _size);
+        std::memcpy(_owned_data.get(), data, _size);
     }
 
     OwnedSlice(const String& src) {

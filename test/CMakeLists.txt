@@ -39,6 +39,7 @@ set(EXECUTABLES
         io_test
         index_page_test
         column_writer_reader_test
+        parallel_merge_join_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})

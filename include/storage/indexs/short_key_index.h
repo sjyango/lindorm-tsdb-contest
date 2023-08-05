@@ -131,7 +131,7 @@ public:
     void load(const Slice& body, const ShortKeyIndexFooter& footer) {
         _footer = footer;
         assert(body._size == (_footer._key_bytes + _footer._offset_bytes));
-        _short_key_data = Slice(body._data, _footer._key_bytes);
+        _short_key_data = OwnedSlice(body._data, _footer._key_bytes);
         Slice offset_slice(body._data + _footer._key_bytes, _footer._offset_bytes);
         _offsets.resize(_footer._num_items + 1);
         // +1 for record total length
@@ -186,7 +186,7 @@ public:
     Slice key(size_t index) const {
         assert(_parsed);
         assert(index >= 0 && index < num_items());
-        return {_short_key_data._data + _offsets[index], _offsets[index + 1] - _offsets[index]};
+        return {_short_key_data.data() + _offsets[index], _offsets[index + 1] - _offsets[index]};
     }
 
 private:
@@ -205,7 +205,7 @@ private:
     bool _parsed;
     ShortKeyIndexFooter _footer;
     std::vector<uint32_t> _offsets;
-    Slice _short_key_data;
+    OwnedSlice _short_key_data;
 };
 
 }

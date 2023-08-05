@@ -33,26 +33,6 @@ public:
 
     ~SegmentWriter();
 
-    size_t num_rows_written() const {
-        return _num_rows_written;
-    }
-
-    size_t rows() const {
-        return _num_rows_written;
-    }
-
-    size_t segment_id() const {
-        return _segment_id;
-    }
-
-    String min_encoded_key() const {
-        return _min_key;
-    }
-
-    String max_encoded_key() const {
-        return _max_key;
-    }
-
     void append_block(vectorized::Block&& block, size_t* num_rows_written);
 
     void finalize();
@@ -61,6 +41,8 @@ public:
 
 private:
     void _create_column_writer(const TableColumn& column);
+
+    void _write_short_key_index(io::PagePointer* page_pointer);
 
     std::string _encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos);
 

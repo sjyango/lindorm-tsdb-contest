@@ -20,6 +20,7 @@
 #include "storage/column_reader.h"
 #include "storage/indexs/short_key_index.h"
 #include "storage/segment_traits.h"
+#include "utils.h"
 
 namespace LindormContest::vectorized {
 class Block;
@@ -31,20 +32,20 @@ class SegmentReader : public RowwiseIterator {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentReader(io::FileSystemSPtr fs, const std::string& segment_path,
+    SegmentReader(size_t segment_id, io::FileSystemSPtr fs, const std::string& segment_path,
                   TableSchemaSPtr table_schema, PartialSchemaSPtr schema)
-            :  _table_schema(table_schema), _schema(schema) {
+            : _segment_id(segment_id), _table_schema(table_schema), _schema(schema) {
         io::FileDescription fd;
         fd._path = segment_path;
         _file_reader = std::move(fs->open_file(fd));
         _parse_footer();
         _load_short_key_index();
+
         for (const auto& col_id : _schema->column_ids()) {
-            _column_readers.emplace(col_id, std::make_unique<ColumnReader>(
-                                                    _footer._column_metas[col_id], _footer._num_rows, _file_reader));
+            _column_readers.emplace(col_id, std::make_unique<ColumnReader>(_footer._column_metas[col_id], _footer._num_rows, _file_reader));
         }
-        const auto& short_key_column = schema->column(0);
-        _short_key_column = vectorized::ColumnFactory::instance().create_column(short_key_column.get_column_type(), short_key_column.get_name());
+
+        _short_key_columns = std::move(schema->create_block({0, 1}).mutate_columns());
         _return_columns = std::move(schema->create_block().mutate_columns());
     }
 
@@ -52,7 +53,7 @@ public:
 
     void next_batch(vectorized::Block* block) override {
         block->clear();
-        _read_columns_by_index(_get_row_range_by_key("_key"));
+        // _read_columns_by_index(_get_row_range_by_key("_key"));
         std::vector<ColumnId> col_ids = _schema->column_ids();
         for (size_t i = 0; i < col_ids.size(); ++i) {
             const TableColumn& column = _schema->column(col_ids[i]);
@@ -65,8 +66,37 @@ public:
         return _schema;
     }
 
-    uint32_t num_rows() const {
-        return _footer._num_rows;
+    RowPosition handle_latest_query(Vin vin) {
+        // e.g. xxx -> xxy
+        // key = vin + timestamp, e.g. xxx999 -> xxy000
+        size_t result_ordinal = _lower_bound(increase_vin(vin), 0);
+        // the position we need is `result_ordinal - 1`
+        _seek_short_key_columns(result_ordinal - 1);
+        const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
+        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
+        assert(column_vin.size() == 1);
+        assert(column_timestamp.size() == 1);
+        return {_segment_id, column_vin.get(0), column_timestamp.get(0), result_ordinal - 1};
+    }
+
+    std::vector<RowPosition> handle_time_range_query(Row lower_bound_row, Row upper_bound_row) {
+        std::string lower_vin(lower_bound_row.vin.vin, 17);
+        std::string upper_vin(upper_bound_row.vin.vin, 17);
+        size_t start_ordinal = _lower_bound(lower_vin, lower_bound_row.timestamp);
+        size_t end_ordinal = _lower_bound(upper_vin, upper_bound_row.timestamp);
+        // the range we need is [start_ordinal, end_ordinal) aka. [start_ordinal, end_ordinal - 1]
+        _read_columns_by_range({0, 1}, start_ordinal, end_ordinal);
+        assert(_return_columns[0]->size() == end_ordinal - start_ordinal);
+        assert(_return_columns[1]->size() == end_ordinal - start_ordinal);
+        std::vector<RowPosition> results;
+
+        for (size_t i = 0; i < end_ordinal - start_ordinal; ++i) {
+            const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_return_columns[0]);
+            const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_return_columns[1]);
+            results.emplace_back(_segment_id, column_vin.get(i), column_timestamp.get(i), start_ordinal + i);
+        }
+
+        return std::move(results);
     }
 
 private:
@@ -104,59 +134,23 @@ private:
         _short_key_index_reader->load(body, footer);
     }
 
-    // calculate row ranges that fall into requested key using short key index
-    RowRange _get_row_range_by_key(const String& key) {
-        size_t lower_ordinal = 0;
-        size_t upper_ordinal = _lookup_ordinal(key, num_rows(), false);
-        if (upper_ordinal > 0) {
-            lower_ordinal = _lookup_ordinal(key, upper_ordinal, true);
-        }
-        return {lower_ordinal, upper_ordinal};
-    }
-
-    size_t _lookup_ordinal(const String& key, size_t upper_bound, bool is_include) {
-        return _lookup_ordinal_from_short_key_index(key, upper_bound, is_include);
-    }
-
     // lookup the ordinal of given key from short key index
-    size_t _lookup_ordinal_from_short_key_index(const String& key, size_t upper_bound, bool is_include) {
-        size_t start_group_index;
-        auto start_iter = _short_key_index_reader->lower_bound(key);
-        if (start_iter.valid()) {
-            start_group_index = start_iter.index();
-            if (start_group_index > 0) {
-                // Because previous block may contain this key, so we should set rowid to
-                // last block's first row.
-                // 比如某一个ordinal index项为xxx666，但它之间的几条数据也都是xxx666，碰巧查询条件为xxx666，那么需要包含当前group的前一个group的数据
-                start_group_index--;
-            }
-        } else {
-            start_group_index = _short_key_index_reader->num_items() - 1;
-        }
-        size_t start_ordinal = start_group_index * NUM_ROWS_PER_GROUP;
-        size_t end_ordinal = upper_bound;
+    // key == vin + timestamp
+    size_t _lower_bound(const std::string& vin, int64_t timestamp) {
+        std::string key = vin;
+        KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>::encode_ascending(&timestamp, &key);
         auto end_iter = _short_key_index_reader->upper_bound(key);
-        if (end_iter.valid()) {
-            end_ordinal = std::min(upper_bound, end_iter.index() * NUM_ROWS_PER_GROUP);
-        }
+        auto begin_iter = --end_iter;
+        size_t start_ordinal = begin_iter.index() * NUM_ROWS_PER_GROUP;
+        size_t end_ordinal = end_iter.index() * NUM_ROWS_PER_GROUP;
 
         // binary search to find the exact key
         while (start_ordinal < end_ordinal) {
             size_t mid_ordinal = (end_ordinal - start_ordinal) / 2 + start_ordinal;
-            _seek_and_peek_short_key_column(mid_ordinal); // just seek and peek the vin column (short key)
-            const vectorized::ColumnString& short_key_column =
-                    reinterpret_cast<const vectorized::ColumnString&>(*_short_key_column);
-            int cmp = (short_key_column[0] == key);
-            if (cmp > 0) {
+            _seek_short_key_columns(mid_ordinal);
+            int cmp = _compare_with_input_key(vin, timestamp);
+            if (cmp < 0) {
                 start_ordinal = mid_ordinal + 1;
-            } else if (cmp == 0) {
-                if (is_include) {
-                    // lower bound
-                    end_ordinal = mid_ordinal;
-                } else {
-                    // upper bound
-                    start_ordinal = mid_ordinal + 1;
-                }
             } else {
                 end_ordinal = mid_ordinal;
             }
@@ -165,17 +159,142 @@ private:
         return start_ordinal;
     }
 
-    void _seek_and_peek_short_key_column(size_t ordinal) {
-        _short_key_column->clear();
+    // short key < input key, return -1
+    // short key = input key, return 0
+    // short key > input key, return 1
+    int _compare_with_input_key(const std::string& vin, int64_t timestamp) const {
+        const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
+        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
+        assert(column_vin.size() == 1);
+        assert(column_timestamp.size() == 1);
+        if (column_vin.get(0) < vin) {
+            return -1;
+        } else if (column_vin.get(0) > vin) {
+            return 1;
+        } else {
+            if (column_timestamp.get(0) < timestamp) {
+                return -1;
+            } else if (column_timestamp.get(0) > timestamp) {
+                return 1;
+            }  else {
+                return 0;
+            }
+        }
+    }
+
+    // calculate row ranges that fall into requested key using short key index
+    // RowRange _lookup_ordinal_range(const String& key, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp) {
+    //
+    //
+    //     size_t lower_ordinal = 0;
+    //     size_t upper_ordinal = _lookup_ordinal(key, num_rows(), false);
+    //     if (upper_ordinal > 0) {
+    //         lower_ordinal = _lookup_ordinal(key, upper_ordinal, true);
+    //     }
+    //     return {lower_ordinal, upper_ordinal};
+    // }
+
+    // lookup the ordinal of given key from short key index
+    // key == vin + timestamp
+    // bool _lookup_ordinal(const String& vin, int64_t timestamp, size_t* result) {
+    //     std::string key = vin;
+    //     KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>::encode_ascending(&timestamp, &key);
+    //     auto end_iter = _short_key_index_reader->upper_bound(key);
+    //     auto begin_iter = --end_iter;
+    //     size_t start_ordinal = begin_iter.index() * NUM_ROWS_PER_GROUP;
+    //     size_t end_ordinal = end_iter.index() * NUM_ROWS_PER_GROUP - 1;
+    //
+    //     // binary search to find the exact key
+    //     while (start_ordinal <= end_ordinal) {
+    //         size_t mid_ordinal = (end_ordinal - start_ordinal) / 2 + start_ordinal;
+    //         _seek_short_key_columns(mid_ordinal);
+    //         int cmp = _compare_with_input_key(vin, timestamp);
+    //         if (cmp == 0) {
+    //             *result = mid_ordinal;
+    //             return true;
+    //         } else if (cmp > 0) {
+    //             end_ordinal = mid_ordinal - 1;
+    //         } else {
+    //             start_ordinal = mid_ordinal + 1;
+    //         }
+    //     }
+    //
+    //     return false;
+    // }
+
+    // lookup the ordinal of given key from short key index
+    // size_t _lookup_ordinal_from_short_key_index(const String& key, size_t upper_bound, bool is_include) {
+    //     size_t start_group_index;
+    //     auto start_iter = _short_key_index_reader->lower_bound(key);
+    //     if (start_iter.valid()) {
+    //         start_group_index = start_iter.index();
+    //         if (*start_iter == key) {
+    //             // Because previous block may contain this key, so we should set rowid to
+    //             // last block's first row.
+    //             // 比如某一个short index项为xxx666，但它之间的几条数据也都是xxx666，碰巧查询条件为xxx666，那么需要包含当前group的前一个group的数据
+    //             start_group_index--;
+    //         }
+    //     } else {
+    //         start_group_index = _short_key_index_reader->num_items() - 1;
+    //     }
+    //     size_t start_ordinal = start_group_index * NUM_ROWS_PER_GROUP;
+    //     size_t end_ordinal = upper_bound;
+    //     auto end_iter = _short_key_index_reader->upper_bound(key);
+    //     if (end_iter.valid()) {
+    //         end_ordinal = std::min(upper_bound, end_iter.index() * NUM_ROWS_PER_GROUP);
+    //     }
+    //
+    //     // binary search to find the exact key
+    //     while (start_ordinal < end_ordinal) {
+    //         size_t mid_ordinal = (end_ordinal - start_ordinal) / 2 + start_ordinal;
+    //         _seek_and_peek_short_key_columns(mid_ordinal);
+    //         const vectorized::ColumnString& short_key_column =
+    //                 reinterpret_cast<const vectorized::ColumnString&>(*_short_key_column);
+    //         int cmp = (short_key_column[0] == key);
+    //         if (cmp > 0) {
+    //             start_ordinal = mid_ordinal + 1;
+    //         } else if (cmp == 0) {
+    //             if (is_include) {
+    //                 // lower bound
+    //                 end_ordinal = mid_ordinal;
+    //             } else {
+    //                 // upper bound
+    //                 start_ordinal = mid_ordinal + 1;
+    //             }
+    //         } else {
+    //             end_ordinal = mid_ordinal;
+    //         }
+    //     }
+    //
+    //     return start_ordinal;
+    // }
+
+    void _seek_short_key_columns(size_t ordinal) {
+        assert(_short_key_columns.size() == 2);
         size_t num_rows = 1;
+        _short_key_columns[0]->clear();
         _column_readers[0]->seek_to_ordinal(ordinal);
-        _column_readers[0]->next_batch(&num_rows, _short_key_column);
-        assert(num_rows == 0);
+        _column_readers[0]->next_batch(&num_rows, _short_key_columns[0]);
+        _short_key_columns[1]->clear();
+        _column_readers[1]->seek_to_ordinal(ordinal);
+        _column_readers[1]->next_batch(&num_rows, _short_key_columns[1]);
     }
 
     void _read_columns_by_index(const RowRange& range) {
+        for (auto& column : _return_columns) {
+            column->clear();
+        }
         _seek_columns(_schema->column_ids(), range.from());
         _read_columns(_schema->column_ids(), _return_columns, range.to() - range.from());
+    }
+
+    // [start_ordinal, end_ordinal)
+    void _read_columns_by_range(const std::vector<ColumnId>& column_ids, size_t start_ordinal, size_t end_ordinal) {
+        for (auto& column : _return_columns) {
+            column->clear();
+        }
+        _seek_columns(column_ids, start_ordinal);
+        _read_columns(column_ids, _return_columns, end_ordinal - start_ordinal);
     }
 
     void _seek_columns(const std::vector<ColumnId>& column_ids, size_t ordinal) {
@@ -187,22 +306,21 @@ private:
 
     void _read_columns(const std::vector<ColumnId>& column_ids,
                        vectorized::SMutableColumns& column_block, size_t num_rows) {
-        for (auto cid : column_ids) {
-            auto& column = column_block[cid];
-            _column_readers[cid]->next_batch(&num_rows, column);
+        for (auto col_id : column_ids) {
+            assert(_column_readers.find(col_id) != _column_readers.end());
+            _column_readers[col_id]->next_batch(&num_rows, column_block[col_id]);
         }
     }
 
+    size_t _segment_id;
     PartialSchemaSPtr _schema;
     TableSchemaSPtr _table_schema;
     io::FileReaderSPtr _file_reader;
     SegmentFooter _footer;
     std::unordered_map<uint32_t, std::unique_ptr<ColumnReader>> _column_readers;
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
-    ShortKeyIndexFooter _short_key_index_footer;
-    vectorized::MutableColumnSPtr _short_key_column;
+    vectorized::SMutableColumns _short_key_columns;
     vectorized::SMutableColumns _return_columns;
-    // const String& _key;
 };
 
 }

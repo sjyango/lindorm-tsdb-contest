@@ -81,7 +81,6 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
         _is_first_row = false;
     }
     _max_key = std::move(_encode_keys(key_columns, num_rows - 1));
-    key_columns.resize(_num_short_key_columns);
 
     for (const auto pos : short_key_pos) {
         _short_key_index_writer->add_item(_encode_keys(key_columns, pos));
@@ -101,6 +100,13 @@ String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_
         ++cid;
     }
     return encoded_keys;
+}
+
+void SegmentWriter::_write_short_key_index(io::PagePointer* page_pointer) {
+    OwnedSlice short_key_index_body;
+    ShortKeyIndexFooter short_key_index_footer;
+    _short_key_index_writer->finalize(_num_rows_written, &short_key_index_body, &short_key_index_footer);
+    io::PageIO::write_page(_file_writer, std::move(short_key_index_body), short_key_index_footer, page_pointer);
 }
 
 void SegmentWriter::close() {
@@ -123,12 +129,10 @@ void SegmentWriter::finalize() {
         column_writer->write_column_index();
     }
 
-    OwnedSlice short_key_index_body;
-    ShortKeyIndexFooter footer;
-    _short_key_index_writer->finalize(_num_rows_written, &short_key_index_body, &footer);
-    io::PagePointer page_pointer;
-    io::PageIO::write_page(_file_writer, std::move(short_key_index_body), footer, &page_pointer);
-    _footer._short_key_index_page_pointer = page_pointer;
+    io::PagePointer short_key_index_page_pointer;
+    _write_short_key_index(&short_key_index_page_pointer);
+
+    _footer._short_key_index_page_pointer = short_key_index_page_pointer;
     _footer._num_rows = _num_rows_written;
     _footer._compression_type = CompressionType::NO_COMPRESSION;
 

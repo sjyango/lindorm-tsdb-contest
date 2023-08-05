@@ -114,6 +114,17 @@ public:
         return block;
     }
 
+    vectorized::Block create_block(std::vector<ColumnId> column_ids) const {
+        vectorized::Block block;
+        for (const auto& col_id : column_ids) {
+            assert(_cols.find(col_id) != _cols.end());
+            const TableColumn& table_column = _cols.at(col_id);
+            vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(table_column.get_column_type(), table_column.get_name());
+            block.insert({ptr, table_column.get_column_type(), table_column.get_name()});
+        }
+        return block;
+    }
+
 private:
     size_t _num_key_columns;
     std::unordered_map<ColumnId, TableColumn> _cols;
