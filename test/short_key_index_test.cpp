@@ -60,7 +60,7 @@ inline Slice upper_bound(const std::vector<std::string>& ss, const String& key) 
 }
 
 TEST(ShortKeyIndexTest, BasicShortKeyIndexTest) {
-    const size_t N = 10000;
+    const size_t N = 100000;
     std::vector<std::string> ss;
 
     for (size_t i = 0; i < N; ++i) {
@@ -103,6 +103,16 @@ TEST(ShortKeyIndexTest, BasicShortKeyIndexTest) {
             ASSERT_EQ(*upper_bound_lhs, upper_bound_rhs);
         }
     }
+}
+
+TEST(ShortKeyIndexTest, EmptyShortKeyIndexTest) {
+    const size_t N = 0;
+    ShortKeyIndexWriter writer;
+    OwnedSlice short_key_index_body;
+    ShortKeyIndexFooter footer;
+    writer.finalize(N, &short_key_index_body, &footer);
+    ShortKeyIndexReader reader;
+    reader.load(short_key_index_body.slice(), footer);
 }
 
 }

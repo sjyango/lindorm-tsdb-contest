@@ -20,7 +20,6 @@
 #include <gtest/gtest.h>
 #include <random>
 
-#include "TSDBEngineImpl.h"
 #include "utils.h"
 
 namespace LindormContest::test {

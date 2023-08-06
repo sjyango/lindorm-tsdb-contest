@@ -28,7 +28,8 @@ public:
     ShortKeyIndexWriter() : _num_items(0) {}
 
     void add_item(const String& key) {
-        put_varint32(&_offset_buffer, _key_buffer.size());
+        // put_varint32(&_offset_buffer, _key_buffer.size());
+        put_fixed32_le(&_offset_buffer, _key_buffer.size());
         _key_buffer.append(key.c_str(), key.size());
         _num_items++;
     }
@@ -137,10 +138,12 @@ public:
         // +1 for record total length
 
         for (uint32_t i = 0; i < _footer._num_items; ++i) {
-            uint32_t offset = 0;
-            if (!get_varint32(&offset_slice, &offset)) {
-                throw std::logic_error("Fail to get varint from index offset buffer");
-            }
+            uint32_t offset = decode_fixed32_le(reinterpret_cast<const uint8_t*>(offset_slice._data));
+            offset_slice._data += sizeof(uint32_t);
+            offset_slice._size -= sizeof(uint32_t);
+            // if (!get_varint32(&offset_slice, &offset)) {
+            //     throw std::logic_error("Fail to get varint from index offset buffer");
+            // }
             assert(offset <= _footer._key_bytes);
             _offsets[i] = offset;
         }

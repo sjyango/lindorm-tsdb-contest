@@ -32,12 +32,10 @@ class SegmentReader : public RowwiseIterator {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentReader(size_t segment_id, io::FileSystemSPtr fs, const std::string& segment_path,
+    SegmentReader(size_t segment_id, io::FileReaderSPtr file_reader,
                   TableSchemaSPtr table_schema, PartialSchemaSPtr schema)
             : _segment_id(segment_id), _table_schema(table_schema), _schema(schema) {
-        io::FileDescription fd;
-        fd._path = segment_path;
-        _file_reader = std::move(fs->open_file(fd));
+        _file_reader = file_reader;
         _parse_footer();
         _load_short_key_index();
 
@@ -97,6 +95,23 @@ public:
         }
 
         return std::move(results);
+    }
+
+    void seek_to_first() {
+        _seek_columns_first(_schema->column_ids());
+    }
+
+    void seek_to_ordinal(ordinal_t ordinal) {
+        _seek_columns(_schema->column_ids(), ordinal);
+    }
+
+    void next_batch(size_t* n, vectorized::Block* dst) {
+        _read_columns(_schema->column_ids(), _return_columns, n);
+        size_t i = 0;
+
+        for (auto& item : *dst) {
+            item._column = std::move(_return_columns[i++]);
+        }
     }
 
 private:
@@ -284,8 +299,10 @@ private:
         for (auto& column : _return_columns) {
             column->clear();
         }
+        size_t num_to_read = range.to() - range.from();
         _seek_columns(_schema->column_ids(), range.from());
-        _read_columns(_schema->column_ids(), _return_columns, range.to() - range.from());
+        _read_columns(_schema->column_ids(), _return_columns, &num_to_read);
+        assert(num_to_read == (range.to() - range.from()));
     }
 
     // [start_ordinal, end_ordinal)
@@ -293,8 +310,17 @@ private:
         for (auto& column : _return_columns) {
             column->clear();
         }
+        size_t num_to_read = end_ordinal - start_ordinal;
         _seek_columns(column_ids, start_ordinal);
-        _read_columns(column_ids, _return_columns, end_ordinal - start_ordinal);
+        _read_columns(column_ids, _return_columns, &num_to_read);
+        assert(num_to_read == (end_ordinal - start_ordinal));
+    }
+
+    void _seek_columns_first(const std::vector<ColumnId>& column_ids) {
+        for (auto col_id : column_ids) {
+            assert(_column_readers.find(col_id) != _column_readers.end());
+            _column_readers[col_id]->seek_to_first();
+        }
     }
 
     void _seek_columns(const std::vector<ColumnId>& column_ids, size_t ordinal) {
@@ -305,10 +331,10 @@ private:
     }
 
     void _read_columns(const std::vector<ColumnId>& column_ids,
-                       vectorized::SMutableColumns& column_block, size_t num_rows) {
+                       vectorized::SMutableColumns& column_block, size_t* num_rows) {
         for (auto col_id : column_ids) {
             assert(_column_readers.find(col_id) != _column_readers.end());
-            _column_readers[col_id]->next_batch(&num_rows, column_block[col_id]);
+            _column_readers[col_id]->next_batch(num_rows, column_block[col_id]);
         }
     }
 

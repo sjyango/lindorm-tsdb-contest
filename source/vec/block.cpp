@@ -194,16 +194,18 @@ Row Block::to_row(size_t num_row) const {
 // [start_row, end_row)
 std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
     assert(start_row >= 0 && end_row <= rows() && start_row < end_row);
-    size_t num_rows = rows();
     std::vector<Row> rows;
 
     for (int i = start_row; i < end_row; ++i) {
         Row row;
         Vin vin {reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(i)};
-        int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(0)._column).get(i);
+        int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(1)._column).get(i);
         std::map<std::string, ColumnValue> columns;
 
         for (const auto& col : *this) {
+            if (col._name == "vin" || col._name == "timestamp") {
+                continue;
+            }
             switch (col._type) {
             case COLUMN_TYPE_INTEGER: {
                 ColumnValue value = ColumnValue(reinterpret_cast<const ColumnInt32&>(*col._column).get(i));
@@ -232,7 +234,7 @@ std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
         rows.emplace_back(std::move(row));
     }
 
-    assert(rows.size() == num_rows);
+    assert(rows.size() == (end_row - start_row));
     return std::move(rows);
 }
 

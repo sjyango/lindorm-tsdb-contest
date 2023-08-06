@@ -133,8 +133,8 @@ struct ShortKeyIndexFooter : public PageFooter {
 
     void deserialize(const uint8_t*& data) override {
         PageFooter::deserialize(data);
-        _num_items = *reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t));
-        _key_bytes = *reinterpret_cast<const uint32_t*>(data + 1 * sizeof(uint32_t));
+        _num_items = *reinterpret_cast<const uint32_t*>(data);
+        _key_bytes = *reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t));
         _offset_bytes = *reinterpret_cast<const uint32_t*>(data + 2 * sizeof(uint32_t));
         _num_segment_rows = *reinterpret_cast<const uint32_t*>(data + 3 * sizeof(uint32_t));
         data += 4 * sizeof(uint32_t);
