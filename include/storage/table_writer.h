@@ -28,27 +28,25 @@
 
 namespace LindormContest::storage {
 
-static constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 10000;
-
 class TableWriter {
 public:
-    TableWriter(io::FileSystemSPtr fs, io::Path table_path, TableSchemaSPtr schema);
+    TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, size_t MEM_TABLE_FLUSH_THRESHOLD);
 
     ~TableWriter();
 
-    void append(const WriteRequest& w_req);
+    void append(const std::vector<Row>& append_rows);
 
-    void write(const vectorized::Block&& block);
-
-    void flush();
-
-    bool need_to_flush();
+    void close();
 
 private:
+    void _write(const vectorized::Block&& block);
     void _init_mem_table();
+    bool _need_to_flush();
+    void _flush();
 
+    bool _inited;
+    size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
-    io::Path _table_path;
     io::FileWriterPtr _file_writer;
     TableSchemaSPtr _schema;
     std::unique_ptr<MemTable> _mem_table;

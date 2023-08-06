@@ -54,6 +54,9 @@ void MemTable::insert(const vectorized::Block&& input_block) {
 }
 
 void MemTable::flush(size_t* num_rows_written_in_table) {
+    if (_rows == 0) {
+        return;
+    }
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block.to_block();
     std::vector<size_t> row_pos_vec;

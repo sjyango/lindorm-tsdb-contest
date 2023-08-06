@@ -72,6 +72,10 @@ public:
     }
 
     void seek_to_ordinal(ordinal_t ordinal) {
+        if (ordinal == 0) {
+            seek_to_first();
+            return;
+        }
         // if ordinal is not in current data page
         if (!_data_page.contains(ordinal) || !_ordinal_index_iter.valid()) {
             _ordinal_index_iter = _ordinal_index_reader->seek_at_or_before(ordinal);

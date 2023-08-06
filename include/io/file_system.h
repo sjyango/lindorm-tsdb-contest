@@ -54,9 +54,9 @@ public:
 
     bool exists(const Path& path) const;
 
-    // void batch_delete(const std::vector<Path>& files);
+    void list(const Path& dir, bool only_file, std::vector<FileInfo>* files) const;
 
-    // void list(const Path& dir, bool only_file, std::vector<FileInfo>* files, bool* exists);
+    // void batch_delete(const std::vector<Path>& files);
 
     // void rename(const Path& orig_name, const Path& new_name);
 

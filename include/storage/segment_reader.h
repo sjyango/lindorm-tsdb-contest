@@ -51,7 +51,6 @@ public:
 
     void next_batch(vectorized::Block* block) override {
         block->clear();
-        // _read_columns_by_index(_get_row_range_by_key("_key"));
         std::vector<ColumnId> col_ids = _schema->column_ids();
         for (size_t i = 0; i < col_ids.size(); ++i) {
             const TableColumn& column = _schema->column(col_ids[i]);

@@ -41,6 +41,7 @@ set(EXECUTABLES
         column_writer_reader_test
         parallel_merge_join_test
         segment_writer_reader_test
+        table_writer_reader_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})

@@ -79,7 +79,7 @@ public:
                 : _index(index), _cur_idx(cur_idx) {}
 
         bool valid() const {
-            return _cur_idx < _index->_num_pages;
+            return _index != nullptr && _cur_idx < _index->_num_pages;
         }
 
         void next() {

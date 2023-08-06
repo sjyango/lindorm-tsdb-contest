@@ -138,7 +138,7 @@ static bool compare_rows(const Row& lhs, const Row& rhs) {
 }
 
 TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
-    const size_t N = 5000000;
+    const size_t N = 10000;
     const size_t SEGMENT_ID = 0;
     // ######################################## SegmentWriter ########################################
 
@@ -156,8 +156,17 @@ TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
     std::vector<Row> src_rows;
 
     for (size_t i = 0; i < N; ++i) {
-        Row row = generate_row();
-        src_rows.emplace_back(row);
+        src_rows.emplace_back(generate_row());
+    }
+
+    std::sort(src_rows.begin(), src_rows.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    for (const auto& row : src_rows) {
         src_block.add_row(row);
     }
 
@@ -199,7 +208,35 @@ TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
     INFO_LOG("read costs %ld ms", read_duration.count())
 
     // ######################################## SegmentWriter ########################################
+
     std::vector<Row> dst_rows = dst_block.to_rows(0, N);
+
+    for (size_t i = 0; i < N; ++i) {
+        ASSERT_TRUE(compare_rows(src_rows[i], dst_rows[i]));
+    }
+}
+
+TEST(SegmentWriterReaderTest, SeekSegmentWriterReaderTest) {
+    const size_t N = 10000;
+    const size_t SEGMENT_ID = 0;
+    // ######################################## SegmentWriter ########################################
+
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<SegmentWriter> segment_writer = std::make_unique<SegmentWriter>(file_writer.get(), table_schema, SEGMENT_ID);
+    vectorized::Block block = table_schema->create_block();
+    vectorized::MutableBlock src_block = MutableBlock::build_mutable_block(&block);
+    std::vector<Row> src_rows;
+
+    for (size_t i = 0; i < N; ++i) {
+        src_rows.emplace_back(generate_row());
+    }
 
     std::sort(src_rows.begin(), src_rows.end(), [] (const Row& lhs, const Row& rhs) {
         if (lhs.vin != rhs.vin) {
@@ -208,16 +245,129 @@ TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
         return lhs.timestamp < rhs.timestamp;
     });
 
-    std::sort(dst_rows.begin(), dst_rows.end(), [] (const Row& lhs, const Row& rhs) {
+    for (const auto& row : src_rows) {
+        src_block.add_row(row);
+    }
+
+    ASSERT_EQ(src_block.rows(), N);
+    size_t num_written;
+
+    auto write_start = std::chrono::high_resolution_clock::now();
+
+    segment_writer->append_block(std::move(src_block.to_block()), &num_written);
+    segment_writer->finalize();
+    ASSERT_EQ(num_written, N);
+    file_writer->finalize();
+    file_writer->close();
+
+    auto write_end = std::chrono::high_resolution_clock::now();
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(write_end - write_start);
+    INFO_LOG("write costs %ld ms", write_duration.count())
+
+    // ######################################## SegmentWriter ########################################
+
+    // ######################################## SegmentWriter ########################################
+
+    io::FileReaderSPtr file_reader = generate_file_reader();
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path segment_path = root_path / io::Path("segment_writer_reader_test.dat");
+    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table_schema);
+
+    auto read_start = std::chrono::high_resolution_clock::now();
+
+    std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(SEGMENT_ID, file_reader, table_schema, partial_schema);
+    vectorized::Block dst_block = table_schema->create_block();
+    size_t rand_ordinal = generate_random_int32() % N;
+    size_t num_to_read = rand_ordinal / 10;
+    segment_reader->seek_to_ordinal(rand_ordinal);
+    segment_reader->next_batch(&num_to_read, &dst_block);
+    ASSERT_EQ(num_to_read, std::min(N - rand_ordinal, rand_ordinal / 10));
+    ASSERT_EQ(dst_block.rows(), num_to_read);
+
+    auto read_end = std::chrono::high_resolution_clock::now();
+    auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
+    INFO_LOG("read costs %ld ms", read_duration.count())
+
+    // ######################################## SegmentWriter ########################################
+
+    std::vector<Row> dst_rows = dst_block.to_rows(0, num_to_read);
+
+    for (size_t i = 0; i < num_to_read; ++i) {
+        ASSERT_TRUE(compare_rows(src_rows[i + rand_ordinal], dst_rows[i]));
+    }
+}
+
+TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
+    const size_t N = 1000000;
+    const size_t SEGMENT_ID = 0;
+    // ######################################## SegmentWriter ########################################
+
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<SegmentWriter> segment_writer = std::make_unique<SegmentWriter>(file_writer.get(), table_schema, SEGMENT_ID);
+    vectorized::Block block = table_schema->create_block();
+    vectorized::MutableBlock src_block = MutableBlock::build_mutable_block(&block);
+    std::vector<Row> src_rows;
+
+    for (size_t i = 0; i < N; ++i) {
+        src_rows.emplace_back(generate_row());
+    }
+
+    std::sort(src_rows.begin(), src_rows.end(), [] (const Row& lhs, const Row& rhs) {
         if (lhs.vin != rhs.vin) {
             return lhs.vin < rhs.vin;
         }
         return lhs.timestamp < rhs.timestamp;
     });
 
-    for (size_t i = 0; i < N; ++i) {
-        ASSERT_TRUE(compare_rows(src_rows[i], dst_rows[i]));
+    for (const auto& row : src_rows) {
+        src_block.add_row(row);
     }
+
+    ASSERT_EQ(src_block.rows(), N);
+    size_t num_written;
+
+    auto write_start = std::chrono::high_resolution_clock::now();
+
+    segment_writer->append_block(std::move(src_block.to_block()), &num_written);
+    segment_writer->finalize();
+    ASSERT_EQ(num_written, N);
+    file_writer->finalize();
+    file_writer->close();
+
+    auto write_end = std::chrono::high_resolution_clock::now();
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(write_end - write_start);
+    INFO_LOG("write costs %ld ms", write_duration.count())
+
+    // ######################################## SegmentWriter ########################################
+
+    // ######################################## SegmentWriter ########################################
+
+    io::FileReaderSPtr file_reader = generate_file_reader();
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path segment_path = root_path / io::Path("segment_writer_reader_test.dat");
+    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table_schema);
+
+    auto read_start = std::chrono::high_resolution_clock::now();
+
+    std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(SEGMENT_ID, file_reader, table_schema, partial_schema);
+    vectorized::Block dst_block = table_schema->create_block();
+    size_t num_to_read = N;
+    segment_reader->seek_to_first();
+    segment_reader->next_batch(&num_to_read, &dst_block);
+    ASSERT_EQ(num_to_read, N);
+
+    auto read_end = std::chrono::high_resolution_clock::now();
+    auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
+    INFO_LOG("read costs %ld ms", read_duration.count())
+
+    // ######################################## SegmentWriter ########################################
 }
 
 }

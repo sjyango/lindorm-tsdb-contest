@@ -72,6 +72,34 @@ bool FileSystem::exists(const Path& path) const {
     return res;
 }
 
+void FileSystem::list(const Path& dir, bool only_file, std::vector<FileInfo>* files) const {
+    Path abs_path = absolute_path(dir);
+    assert(exists(dir));
+    std::error_code ec;
+
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (only_file && !entry.is_regular_file()) {
+            continue;
+        }
+        FileInfo file_info;
+        file_info._file_name = entry.path().filename();
+        file_info._is_file = entry.is_regular_file(ec);
+        if (ec) {
+            break;
+        }
+        if (file_info._is_file) {
+            file_info._file_size = entry.file_size(ec);
+            if (ec) {
+                break;
+            }
+        }
+        files->push_back(std::move(file_info));
+    }
+    if (ec) {
+        throw std::runtime_error("failed to list directory");
+    }
+}
+
 void FileSystem::delete_file(const Path& file) const {
     Path abs_path = absolute_path(file);
     if (!exists(abs_path)) {

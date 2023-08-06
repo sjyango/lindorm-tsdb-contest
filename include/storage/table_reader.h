@@ -16,6 +16,7 @@
 #pragma once
 
 #include <algorithm>
+#include <unordered_map>
 
 #include "Root.h"
 #include "partial_schema.h"
@@ -24,65 +25,65 @@
 #include "segment_traits.h"
 #include "struct/Requests.h"
 #include "vec/blocks/block.h"
+#include "io/io_utils.h"
 
 namespace LindormContest::storage {
 
 class TableReader {
 public:
-    TableReader(io::FileSystemSPtr fs, io::Path table_path)
-            : _fs(fs), _table_path(table_path), _inited(false) {}
+    TableReader(io::FileSystemSPtr fs, TableSchemaSPtr table_schema)
+            : _fs(fs), _table_schema(table_schema), _inited(false) {}
 
     ~TableReader() = default;
 
-    void init(PartialSchemaSPtr schema, const String& key) {
-
+    void init(PartialSchemaSPtr schema) {
         _schema = schema;
-        std::vector<RowwiseIteratorUPtr> segment_iters;
-        // for (auto& segment_data : _segment_datas) {
-        //     RowwiseIteratorUPtr segment_iter = std::make_unique<SegmentReader>(segment_data, _schema, key);
-        //     segment_iters.emplace_back(std::move(segment_iter));
-        // }
-        _table_iter = std::make_unique<MergeIterator>(std::move(segment_iters), _schema, nullptr);
+        std::vector<io::FileInfo> file_infos;
+        _fs->list(_fs->root_path(), true, &file_infos);
+        assert(file_infos.size() > 0);
+
+        for (const auto& file_info : file_infos) {
+            if (file_info._file_size <= 4) {
+                continue;
+            }
+            io::Path segment_path = _fs->root_path() / file_info._file_name;
+            io::FileReaderSPtr file_reader = _fs->open_file(segment_path);
+            size_t segment_id;
+            std::sscanf(file_info._file_name.c_str(), "segment_%zd.dat", &segment_id);
+            std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(segment_id, file_reader, _table_schema, _schema);
+            _segment_readers.emplace(segment_id, std::move(segment_reader));
+            _file_readers.emplace(segment_id, file_reader);
+        }
+
         _inited = true;
     }
 
     void reset() {
-        _schema.reset();
-        _table_iter.reset();
+        _schema = nullptr;
+        _segment_readers.clear();
+        _file_readers.clear();
         _inited = false;
     }
 
-    Row execute_latest_query(const LatestQueryRequest& req) {
-        vectorized::Block block = _schema->create_block();
-        _next_batch(&block);
-        return std::move(block.to_row(block.rows() - 1));
-    }
-
-    std::vector<Row> execute_time_range_query(const TimeRangeQueryRequest& req) {
-        vectorized::Block block = _schema->create_block();
-        _next_batch(&block);
-        size_t start_row = _lower_bound(&block, req.timeLowerBound);
-        size_t end_row = _lower_bound(&block, req.timeUpperBound);
-        return std::move(block.to_rows(start_row, end_row));
+    // just for ut debug
+    void scan_all(size_t* n, std::vector<Row>& results) {
+        for (auto& item : _segment_readers) {
+            std::unique_ptr<SegmentReader>& segment_reader = item.second;
+            vectorized::Block block = _table_schema->create_block();
+            segment_reader->seek_to_first();
+            segment_reader->next_batch(n, &block);
+            std::vector<Row> read_rows = block.to_rows(0, block.rows());
+            results.insert(results.end(), read_rows.begin(), read_rows.end());
+        }
     }
 
 private:
-    void _next_batch(vectorized::Block* block) {
-        assert(_inited);
-        _table_iter->next_batch(block);
-    }
-
-    size_t _lower_bound(const vectorized::Block* block, uint64_t timestamp) const {
-        const vectorized::ColumnInt64& col = reinterpret_cast<const vectorized::ColumnInt64&>(*block->get_by_position(1)._column);
-        auto it = std::lower_bound(col.get_data().cbegin(), col.get_data().cend(), timestamp);
-        return std::distance(col.get_data().cbegin(), it);
-    }
-
     bool _inited = false;
     io::FileSystemSPtr _fs;
-    io::Path _table_path;
     PartialSchemaSPtr _schema;
-    std::unique_ptr<RowwiseIterator> _table_iter;
+    TableSchemaSPtr _table_schema;
+    std::unordered_map<size_t, std::unique_ptr<SegmentReader>> _segment_readers;
+    std::unordered_map<size_t, io::FileReaderSPtr> _file_readers;
 };
 
 }

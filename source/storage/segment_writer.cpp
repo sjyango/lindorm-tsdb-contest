@@ -52,6 +52,9 @@ void SegmentWriter::_create_column_writer(const TableColumn& column) {
 void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_written_in_table) {
     *num_rows_written_in_table = 0;
     size_t num_rows = block.rows();
+    if (num_rows == 0) {
+        return;
+    }
     _data_convertor.set_source_content(&block, 0, num_rows);
     std::vector<size_t> short_key_pos;
 
