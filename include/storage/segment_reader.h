@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "common/range.h"
 #include "rowwise_iterator.h"
 #include "storage/column_reader.h"
@@ -63,25 +65,30 @@ public:
         return _schema;
     }
 
-    RowPosition handle_latest_query(Vin vin) {
+    std::optional<RowPosition> handle_latest_query(Vin key_vin) {
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
-        size_t result_ordinal = _lower_bound(increase_vin(vin), 0);
+        size_t result_ordinal = _lower_bound(increase_vin(key_vin), 0) - 1;
         // the position we need is `result_ordinal - 1`
-        _seek_short_key_columns(result_ordinal - 1);
+        _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
         const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
-        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
         assert(column_vin.size() == 1);
+        if (std::strncmp(key_vin.vin, column_vin[0].c_str(), 17) != 0) {
+            return std::nullopt;
+        }
+        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
         assert(column_timestamp.size() == 1);
-        return {_segment_id, column_vin.get(0), column_timestamp.get(0), result_ordinal - 1};
+        return {{_segment_id, column_vin.get(0), column_timestamp.get(0), result_ordinal - 1}};
     }
 
-    std::vector<RowPosition> handle_time_range_query(Row lower_bound_row, Row upper_bound_row) {
-        std::string lower_vin(lower_bound_row.vin.vin, 17);
-        std::string upper_vin(upper_bound_row.vin.vin, 17);
-        size_t start_ordinal = _lower_bound(lower_vin, lower_bound_row.timestamp);
-        size_t end_ordinal = _lower_bound(upper_vin, upper_bound_row.timestamp);
+    std::optional<std::vector<RowPosition>> handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
+        std::string key_vin(query_vin.vin, 17);
+        size_t start_ordinal = _lower_bound(key_vin, lower_bound_timestamp);
+        size_t end_ordinal = _lower_bound(key_vin, upper_bound_timestamp);
         // the range we need is [start_ordinal, end_ordinal) aka. [start_ordinal, end_ordinal - 1]
+        if (start_ordinal == end_ordinal) {
+            return std::nullopt;
+        }
         _read_columns_by_range({0, 1}, start_ordinal, end_ordinal);
         assert(_return_columns[0]->size() == end_ordinal - start_ordinal);
         assert(_return_columns[1]->size() == end_ordinal - start_ordinal);
@@ -154,7 +161,8 @@ private:
         std::string key = vin;
         KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>::encode_ascending(&timestamp, &key);
         auto end_iter = _short_key_index_reader->upper_bound(key);
-        auto begin_iter = --end_iter;
+        auto begin_iter = end_iter;
+        --begin_iter;
         size_t start_ordinal = begin_iter.index() * NUM_ROWS_PER_GROUP;
         size_t end_ordinal = end_iter.index() * NUM_ROWS_PER_GROUP;
 

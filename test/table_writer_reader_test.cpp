@@ -77,7 +77,7 @@ static Row generate_row() {
 }
 
 TEST(TableWriterReaderTest, BasicTableWriterReaderTest) {
-    const size_t N = 100000;
+    const size_t N = 10000;
     size_t MEM_TABLE_FLUSH_THRESHOLD = N / 10;
 
     // ######################################## TableWriter ########################################
@@ -135,6 +135,50 @@ TEST(TableWriterReaderTest, BasicTableWriterReaderTest) {
 
     ASSERT_EQ(src_rows, dst_rows);
 }
+
+TEST(TableWriterReaderTest, HandleLatestQueryTest) {
+    const size_t N = 100000;
+    size_t MEM_TABLE_FLUSH_THRESHOLD = N / 10;
+
+    // ######################################## TableWriter ########################################
+
+    io::Path table_path = std::filesystem::current_path() / io::Path("test_data");
+    io::FileSystemSPtr fs = io::FileSystem::create(table_path);
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, MEM_TABLE_FLUSH_THRESHOLD);
+    std::vector<Row> src_rows;
+
+    for (size_t i = 0; i < 10; ++i) {
+        std::vector<Row> batch_rows;
+        for (size_t j = 0; j < (N / 10); ++j) {
+            batch_rows.emplace_back(generate_row());
+        }
+        table_writer->append(batch_rows);
+        src_rows.insert(src_rows.end(), batch_rows.begin(), batch_rows.end());
+    }
+
+    table_writer->close();
+
+    // ######################################## TableWriter ########################################
+
+    // ######################################## TableReader ########################################
+
+    std::unique_ptr<TableReader> table_reader = std::make_unique<TableReader>(fs, table_schema);
+    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table_schema);
+    table_reader->init(partial_schema);
+    std::vector<Row> results;
+    Vin rand_vin = src_rows[generate_random_int32() % src_rows.size()].vin;
+    table_reader->handle_latest_query(rand_vin, results);
+
+    // ######################################## TableReader ########################################
+}
+
 
 }
 

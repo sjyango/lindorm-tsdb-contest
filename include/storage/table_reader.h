@@ -77,6 +77,27 @@ public:
         }
     }
 
+    void handle_latest_query(Vin vin, std::vector<Row>& results) {
+        assert(_inited);
+        std::vector<RowPosition> row_positions;
+
+        for (auto& [segment_id, segment_reader] : _segment_readers) {
+            auto result = segment_reader->handle_latest_query(vin);
+            if (result.has_value()) {
+                row_positions.emplace_back(*result);
+            }
+        }
+    }
+
+    void handle_time_range_query(Row lower_bound_row, Row upper_bound_row, std::vector<Row>& results) {
+        assert(_inited);
+        std::vector<std::vector<RowPosition>> row_positions;
+
+        // for (auto& [segment_id, segment_reader] : _segment_readers) {
+        //     row_positions.emplace_back(segment_reader->handle_time_range_query(lower_bound_row, upper_bound_row));
+        // }
+    }
+
 private:
     bool _inited = false;
     io::FileSystemSPtr _fs;

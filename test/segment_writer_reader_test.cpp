@@ -297,6 +297,164 @@ TEST(SegmentWriterReaderTest, SeekSegmentWriterReaderTest) {
     }
 }
 
+TEST(SegmentWriterReaderTest, SegmentLatestQueryTest) {
+    const size_t N = 10000;
+    const size_t SEGMENT_ID = 0;
+    // ######################################## SegmentWriter ########################################
+
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<SegmentWriter> segment_writer = std::make_unique<SegmentWriter>(file_writer.get(), table_schema, SEGMENT_ID);
+    vectorized::Block block = table_schema->create_block();
+    vectorized::MutableBlock src_block = MutableBlock::build_mutable_block(&block);
+    std::vector<Row> src_rows;
+
+    for (size_t i = 0; i < N; ++i) {
+        src_rows.emplace_back(generate_row());
+    }
+
+    std::sort(src_rows.begin(), src_rows.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    for (const auto& row : src_rows) {
+        src_block.add_row(row);
+    }
+
+    ASSERT_EQ(src_block.rows(), N);
+    size_t num_written;
+
+    auto write_start = std::chrono::high_resolution_clock::now();
+
+    segment_writer->append_block(std::move(src_block.to_block()), &num_written);
+    segment_writer->finalize();
+    ASSERT_EQ(num_written, N);
+    file_writer->finalize();
+    file_writer->close();
+
+    auto write_end = std::chrono::high_resolution_clock::now();
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(write_end - write_start);
+    INFO_LOG("write costs %ld ms", write_duration.count())
+
+    // ######################################## SegmentWriter ########################################
+
+    // ######################################## SegmentWriter ########################################
+
+    io::FileReaderSPtr file_reader = generate_file_reader();
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path segment_path = root_path / io::Path("segment_writer_reader_test.dat");
+    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table_schema);
+
+    std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(SEGMENT_ID, file_reader, table_schema, partial_schema);
+    vectorized::Block dst_block = table_schema->create_block();
+    size_t rand_ordinal = generate_random_int32() % src_rows.size();
+    Vin rand_vin = src_rows[rand_ordinal].vin;
+    auto result = segment_reader->handle_latest_query(rand_vin);
+    ASSERT_TRUE(result.has_value());
+    while (src_rows[rand_ordinal].vin == rand_vin) {
+        rand_ordinal++;
+    }
+    ASSERT_EQ((*result)._timestamp, src_rows[rand_ordinal - 1].timestamp);
+
+    // ######################################## SegmentWriter ########################################
+}
+
+TEST(SegmentWriterReaderTest, SegmentTimeRangeQueryTest) {
+    const size_t N = 10000;
+    const size_t SEGMENT_ID = 0;
+    // ######################################## SegmentWriter ########################################
+
+    io::FileWriterPtr file_writer = generate_file_writer();
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col2", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col4", COLUMN_TYPE_INTEGER});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
+    std::unique_ptr<SegmentWriter> segment_writer = std::make_unique<SegmentWriter>(file_writer.get(), table_schema, SEGMENT_ID);
+    vectorized::Block block = table_schema->create_block();
+    vectorized::MutableBlock src_block = MutableBlock::build_mutable_block(&block);
+    std::vector<Row> src_rows;
+
+    for (size_t i = 0; i < N; ++i) {
+        src_rows.emplace_back(generate_row());
+    }
+
+    std::sort(src_rows.begin(), src_rows.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    for (const auto& row : src_rows) {
+        src_block.add_row(row);
+    }
+
+    ASSERT_EQ(src_block.rows(), N);
+    size_t num_written;
+
+    auto write_start = std::chrono::high_resolution_clock::now();
+
+    segment_writer->append_block(std::move(src_block.to_block()), &num_written);
+    segment_writer->finalize();
+    ASSERT_EQ(num_written, N);
+    file_writer->finalize();
+    file_writer->close();
+
+    auto write_end = std::chrono::high_resolution_clock::now();
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(write_end - write_start);
+    INFO_LOG("write costs %ld ms", write_duration.count())
+
+    // ######################################## SegmentWriter ########################################
+
+    // ######################################## SegmentWriter ########################################
+
+    io::FileReaderSPtr file_reader = generate_file_reader();
+    io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
+    io::Path segment_path = root_path / io::Path("segment_writer_reader_test.dat");
+    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table_schema);
+
+    std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(SEGMENT_ID, file_reader, table_schema, partial_schema);
+    vectorized::Block dst_block = table_schema->create_block();
+    size_t rand_ordinal = generate_random_int32() % src_rows.size();
+    size_t rand_timestamp = generate_random_timestamp();
+    Vin rand_vin = src_rows[rand_ordinal].vin;
+    std::vector<RowPosition> query_results;
+    std::vector<RowPosition> ground_truths;
+
+    for (const auto& row : src_rows) {
+        if (row.vin == rand_vin && row.timestamp < rand_timestamp) {
+            std::string s(row.vin.vin, 17);
+            ground_truths.emplace_back(SEGMENT_ID, s, row.timestamp, 0);
+        }
+    }
+
+    auto result = segment_reader->handle_time_range_query(rand_vin, 0, rand_timestamp);
+    if (result.has_value()) {
+        query_results = *result;
+    }
+
+    ASSERT_EQ(query_results.size(), ground_truths.size());
+
+    for (size_t i = 0; i < query_results.size(); ++i) {
+        ASSERT_EQ(query_results[i]._vin, ground_truths[i]._vin);
+        ASSERT_EQ(query_results[i]._timestamp, ground_truths[i]._timestamp);
+    }
+
+    // ######################################## SegmentWriter ########################################
+}
+
 TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
     const size_t N = 1000000;
     const size_t SEGMENT_ID = 0;
@@ -371,4 +529,3 @@ TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
 }
 
 }
-
