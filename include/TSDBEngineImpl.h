@@ -22,24 +22,17 @@ namespace LindormContest {
 
 using namespace storage;
 
+constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 1000000;
+
 struct Table;
 
 using TableSPtr = std::shared_ptr<Table>;
 
 struct Table {
-    std::string _table_name;
+    io::FileSystemSPtr _fs;
     TableSchemaSPtr _table_schema;
     std::unique_ptr<TableWriter> _table_writer;
     std::unique_ptr<TableReader> _table_reader;
-};
-
-struct LatestQueryOptions {
-    // TODO
-};
-
-struct TimeRangeQueryOptions {
-    std::string vin;
-    // TODO
 };
 
 class TSDBEngineImpl : public TSDBEngine {

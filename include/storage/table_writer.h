@@ -38,11 +38,12 @@ public:
 
     void close();
 
+    void flush();
+
 private:
     void _write(const vectorized::Block&& block);
     void _init_mem_table();
     bool _need_to_flush();
-    void _flush();
 
     bool _inited;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;

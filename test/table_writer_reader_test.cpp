@@ -21,7 +21,6 @@
 
 namespace LindormContest::test {
 
-
 using namespace storage;
 using namespace vectorized;
 
@@ -175,7 +174,7 @@ TEST(TableWriterReaderTest, HandleLatestQueryTest) {
     std::vector<Row> results;
     size_t rand_index = generate_random_int32() % src_rows.size();
     Vin rand_vin = src_rows[rand_index].vin;
-    table_reader->handle_latest_query(rand_vin, results);
+    table_reader->handle_latest_query({rand_vin}, results);
     ASSERT_EQ(1, results.size());
     ASSERT_EQ(src_rows[rand_index], results[0]);
 

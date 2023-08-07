@@ -45,8 +45,8 @@ public:
             _column_readers.emplace(col_id, std::make_unique<ColumnReader>(_footer._column_metas[col_id], _footer._num_rows, _file_reader));
         }
 
-        _short_key_columns = std::move(schema->create_block({0, 1}).mutate_columns());
-        _return_columns = std::move(schema->create_block().mutate_columns());
+        _short_key_columns = std::move(_schema->create_block({0, 1}).mutate_columns());
+        _return_columns = std::move(_schema->create_block().mutate_columns());
     }
 
     ~SegmentReader() override = default;
@@ -86,7 +86,10 @@ public:
             item._column = std::move(_return_columns[i++]);
         }
 
-        assert(block.rows() == 1);
+        // reset _return_columns
+        _return_columns = std::move(_schema->create_block().mutate_columns());
+
+        assert(block.rows() <= 1);
         return {std::move(block.to_rows()[0])};
     }
 
@@ -108,17 +111,10 @@ public:
             item._column = std::move(_return_columns[i++]);
         }
 
-        return {std::move(block)};
+        // reset _return_columns
+        _return_columns = std::move(_schema->create_block().mutate_columns());
 
-        // std::vector<RowPosition> results;
-        //
-        // for (size_t i = 0; i < end_ordinal - start_ordinal; ++i) {
-        //     const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_return_columns[0]);
-        //     const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_return_columns[1]);
-        //     results.emplace_back(_segment_id, column_vin.get(i), column_timestamp.get(i), start_ordinal + i);
-        // }
-        //
-        // return std::move(results);
+        return {std::move(block)};
     }
 
     void seek_to_first() {
@@ -221,93 +217,6 @@ private:
             }
         }
     }
-
-    // calculate row ranges that fall into requested key using short key index
-    // RowRange _lookup_ordinal_range(const String& key, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp) {
-    //
-    //
-    //     size_t lower_ordinal = 0;
-    //     size_t upper_ordinal = _lookup_ordinal(key, num_rows(), false);
-    //     if (upper_ordinal > 0) {
-    //         lower_ordinal = _lookup_ordinal(key, upper_ordinal, true);
-    //     }
-    //     return {lower_ordinal, upper_ordinal};
-    // }
-
-    // lookup the ordinal of given key from short key index
-    // key == vin + timestamp
-    // bool _lookup_ordinal(const String& vin, int64_t timestamp, size_t* result) {
-    //     std::string key = vin;
-    //     KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>::encode_ascending(&timestamp, &key);
-    //     auto end_iter = _short_key_index_reader->upper_bound(key);
-    //     auto begin_iter = --end_iter;
-    //     size_t start_ordinal = begin_iter.index() * NUM_ROWS_PER_GROUP;
-    //     size_t end_ordinal = end_iter.index() * NUM_ROWS_PER_GROUP - 1;
-    //
-    //     // binary search to find the exact key
-    //     while (start_ordinal <= end_ordinal) {
-    //         size_t mid_ordinal = (end_ordinal - start_ordinal) / 2 + start_ordinal;
-    //         _seek_short_key_columns(mid_ordinal);
-    //         int cmp = _compare_with_input_key(vin, timestamp);
-    //         if (cmp == 0) {
-    //             *result = mid_ordinal;
-    //             return true;
-    //         } else if (cmp > 0) {
-    //             end_ordinal = mid_ordinal - 1;
-    //         } else {
-    //             start_ordinal = mid_ordinal + 1;
-    //         }
-    //     }
-    //
-    //     return false;
-    // }
-
-    // lookup the ordinal of given key from short key index
-    // size_t _lookup_ordinal_from_short_key_index(const String& key, size_t upper_bound, bool is_include) {
-    //     size_t start_group_index;
-    //     auto start_iter = _short_key_index_reader->lower_bound(key);
-    //     if (start_iter.valid()) {
-    //         start_group_index = start_iter.index();
-    //         if (*start_iter == key) {
-    //             // Because previous block may contain this key, so we should set rowid to
-    //             // last block's first row.
-    //             // 比如某一个short index项为xxx666，但它之间的几条数据也都是xxx666，碰巧查询条件为xxx666，那么需要包含当前group的前一个group的数据
-    //             start_group_index--;
-    //         }
-    //     } else {
-    //         start_group_index = _short_key_index_reader->num_items() - 1;
-    //     }
-    //     size_t start_ordinal = start_group_index * NUM_ROWS_PER_GROUP;
-    //     size_t end_ordinal = upper_bound;
-    //     auto end_iter = _short_key_index_reader->upper_bound(key);
-    //     if (end_iter.valid()) {
-    //         end_ordinal = std::min(upper_bound, end_iter.index() * NUM_ROWS_PER_GROUP);
-    //     }
-    //
-    //     // binary search to find the exact key
-    //     while (start_ordinal < end_ordinal) {
-    //         size_t mid_ordinal = (end_ordinal - start_ordinal) / 2 + start_ordinal;
-    //         _seek_and_peek_short_key_columns(mid_ordinal);
-    //         const vectorized::ColumnString& short_key_column =
-    //                 reinterpret_cast<const vectorized::ColumnString&>(*_short_key_column);
-    //         int cmp = (short_key_column[0] == key);
-    //         if (cmp > 0) {
-    //             start_ordinal = mid_ordinal + 1;
-    //         } else if (cmp == 0) {
-    //             if (is_include) {
-    //                 // lower bound
-    //                 end_ordinal = mid_ordinal;
-    //             } else {
-    //                 // upper bound
-    //                 start_ordinal = mid_ordinal + 1;
-    //             }
-    //         } else {
-    //             end_ordinal = mid_ordinal;
-    //         }
-    //     }
-    //
-    //     return start_ordinal;
-    // }
 
     void _seek_short_key_columns(size_t ordinal) {
         assert(_short_key_columns.size() == 2);

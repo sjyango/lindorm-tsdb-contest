@@ -46,9 +46,7 @@ void TableWriter::append(const std::vector<Row>& append_rows) {
 }
 
 void TableWriter::close() {
-    if (_mem_table != nullptr) {
-        _flush();
-    }
+    flush();
 }
 
 bool TableWriter::_need_to_flush() {
@@ -58,11 +56,14 @@ bool TableWriter::_need_to_flush() {
 void TableWriter::_write(const vectorized::Block&& block) {
     _mem_table->insert(std::move(block));
     if (_need_to_flush()) {
-        _flush();
+        flush();
     }
 }
 
-void TableWriter::_flush() {
+void TableWriter::flush() {
+    if (_mem_table == nullptr) {
+        return;
+    }
     size_t num_rows_written_in_table = 0;
     _mem_table->flush(&num_rows_written_in_table);
     if (num_rows_written_in_table == 0) {
@@ -73,7 +74,7 @@ void TableWriter::_flush() {
     _file_writer->finalize();
     _file_writer->close();
     _inited = false;
-    // INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id.load() - 1, _fs->root_path().c_str())
+    INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id.load() - 1, _fs->root_path().c_str())
 }
 
 void TableWriter::_init_mem_table() {

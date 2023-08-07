@@ -32,7 +32,7 @@ namespace LindormContest::storage {
 class TableReader {
 public:
     TableReader(io::FileSystemSPtr fs, TableSchemaSPtr table_schema)
-            : _fs(fs), _table_schema(table_schema), _inited(false) {}
+            : _fs(fs), _table_schema(table_schema) {}
 
     ~TableReader() = default;
 
@@ -43,7 +43,7 @@ public:
         assert(file_infos.size() > 0);
 
         for (const auto& file_info : file_infos) {
-            if (file_info._file_size <= 4) {
+            if (file_info._file_size <= 4 || file_info._file_name == "schema.txt") {
                 continue;
             }
             io::Path segment_path = _fs->root_path() / file_info._file_name;
@@ -54,15 +54,12 @@ public:
             _segment_readers.emplace(segment_id, std::move(segment_reader));
             _file_readers.emplace(segment_id, file_reader);
         }
-
-        _inited = true;
     }
 
     void reset() {
         _schema = nullptr;
         _segment_readers.clear();
         _file_readers.clear();
-        _inited = false;
     }
 
     // just for ut debug
@@ -77,29 +74,29 @@ public:
         }
     }
 
-    void handle_latest_query(Vin vin, std::vector<Row>& results) {
-        assert(_inited);
-        Row result_row;
-        result_row.timestamp = -1;
+    void handle_latest_query(const std::vector<Vin>& vins, std::vector<Row>& results) {
+        for (const auto& vin : vins) {
+            Row result_row;
+            result_row.timestamp = -1;
 
-        for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
-            auto result = it->second->handle_latest_query(vin);
-            if (result.has_value()) {
-                if ((*result).timestamp > result_row.timestamp) {
-                    std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
-                    result_row.timestamp = (*result).timestamp;
-                    result_row.columns = std::move((*result).columns);
+            for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
+                auto result = it->second->handle_latest_query(vin);
+                if (result.has_value()) {
+                    if ((*result).timestamp > result_row.timestamp) {
+                        std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
+                        result_row.timestamp = (*result).timestamp;
+                        result_row.columns = std::move((*result).columns);
+                    }
                 }
             }
-        }
 
-        if (result_row.timestamp != -1) {
-            results.emplace_back(result_row);
+            if (result_row.timestamp != -1) {
+                results.emplace_back(result_row);
+            }
         }
     }
 
     void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
-        assert(_inited);
         std::vector<std::vector<Row>> table_rows;
 
         for (auto& [segment_id, segment_reader] : _segment_readers) {
@@ -109,10 +106,11 @@ public:
             }
         }
 
-        deduplication(table_rows, results);
+        _deduplication(table_rows, results);
     }
 
-    void deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {
+private:
+    void _deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {
         std::unordered_set<Row, RowHashFunc> deduplication_rows;
 
         for (auto it = table_rows.rbegin(); it != table_rows.rend(); ++it) {
@@ -130,7 +128,6 @@ public:
         }
     }
 
-private:
     struct RowHashFunc {
         size_t operator()(const Row& row) const {
             std::string vin_str(row.vin.vin, 17);
@@ -138,7 +135,6 @@ private:
         }
     };
 
-    bool _inited = false;
     io::FileSystemSPtr _fs;
     PartialSchemaSPtr _schema;
     TableSchemaSPtr _table_schema;
