@@ -30,7 +30,7 @@ namespace LindormContest::storage {
 
 class TableWriter {
 public:
-    TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, size_t MEM_TABLE_FLUSH_THRESHOLD);
+    TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::atomic<size_t>* next_segment_id, size_t MEM_TABLE_FLUSH_THRESHOLD);
 
     ~TableWriter();
 
@@ -51,7 +51,7 @@ private:
     io::FileWriterPtr _file_writer;
     TableSchemaSPtr _schema;
     std::unique_ptr<MemTable> _mem_table;
-    std::atomic<size_t> _next_segment_id = 0;
+    std::atomic<size_t>* _next_segment_id;
 };
 
 }

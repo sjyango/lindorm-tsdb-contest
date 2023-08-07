@@ -37,3 +37,6 @@ file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
 add_library(DBLib ${sources_c} ${sources_cpp})
+
+add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
+target_link_libraries(testMyDb DBLib)

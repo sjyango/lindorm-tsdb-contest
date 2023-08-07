@@ -8,6 +8,8 @@
 #pragma once
 
 #include <unordered_map>
+#include <mutex>
+#include <atomic>
 
 #include "Root.h"
 #include "TSDBEngine.hpp"
@@ -33,6 +35,7 @@ struct Table {
     TableSchemaSPtr _table_schema;
     std::unique_ptr<TableWriter> _table_writer;
     std::unique_ptr<TableReader> _table_reader;
+    std::atomic<size_t> _next_segment_id;
 };
 
 class TSDBEngineImpl : public TSDBEngine {
@@ -59,6 +62,7 @@ public:
     int executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) override;
 
 private:
+    std::mutex _latch;
     bool _connected = false;
     io::FileSystemSPtr _fs;
     std::unordered_map<std::string, TableSPtr> _tables;

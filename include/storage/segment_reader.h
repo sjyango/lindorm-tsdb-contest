@@ -16,6 +16,7 @@
 #pragma once
 
 #include <optional>
+#include <cmath>
 
 #include "common/range.h"
 #include "rowwise_iterator.h"
@@ -177,8 +178,8 @@ private:
         auto end_iter = _short_key_index_reader->upper_bound(key);
         auto begin_iter = end_iter;
         --begin_iter;
-        size_t start_ordinal = begin_iter.index() * NUM_ROWS_PER_GROUP;
-        size_t end_ordinal = end_iter.index() * NUM_ROWS_PER_GROUP;
+        size_t start_ordinal = std::min(begin_iter.index() * NUM_ROWS_PER_GROUP, (size_t)_footer._num_rows);
+        size_t end_ordinal = std::min(end_iter.index() * NUM_ROWS_PER_GROUP, (size_t)_footer._num_rows);
 
         // binary search to find the exact key
         while (start_ordinal < end_ordinal) {

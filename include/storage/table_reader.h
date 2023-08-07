@@ -43,7 +43,7 @@ public:
         assert(file_infos.size() > 0);
 
         for (const auto& file_info : file_infos) {
-            if (file_info._file_size <= 4 || file_info._file_name == "schema.txt") {
+            if (file_info._file_size <= 4 || file_info._file_name == "schema.txt" || file_info._file_name == "next_segment_id") {
                 continue;
             }
             io::Path segment_path = _fs->root_path() / file_info._file_name;

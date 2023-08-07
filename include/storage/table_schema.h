@@ -133,7 +133,7 @@ public:
         if (field_names.empty()) {
             return _cols;
         }
-        std::vector<TableColumn> columns;
+        std::vector<TableColumn> columns = {_cols[0], _cols[1]};
         for (const auto& field_name : field_names) {
             assert(_field_name_to_index.count(field_name) != 0);
             const auto& it = _field_name_to_index.find(field_name);
@@ -237,6 +237,9 @@ static void save_schema_to_file(TableSchemaSPtr table_schema, std::string file_p
     std::ofstream output_file(file_path);
 
     for (const auto& column : table_schema->columns()) {
+        if (column.get_name() == "vin" || column.get_name() == "timestamp") {
+            continue;
+        }
         output_file << column.get_name() << " " << column_type_to_string(column.get_column_type()) << std::endl;
     }
 

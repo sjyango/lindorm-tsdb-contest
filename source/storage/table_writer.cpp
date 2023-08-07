@@ -19,8 +19,8 @@
 
 namespace LindormContest::storage {
 
-TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, size_t MEM_TABLE_FLUSH_THRESHOLD)
-        : _fs(fs), _schema(schema), _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _inited(false) {
+TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::atomic<size_t>* next_segment_id, size_t MEM_TABLE_FLUSH_THRESHOLD)
+        : _fs(fs), _schema(schema), _next_segment_id(next_segment_id), _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _inited(false) {
     _init_mem_table();
 }
 
@@ -61,7 +61,7 @@ void TableWriter::_write(const vectorized::Block&& block) {
 }
 
 void TableWriter::flush() {
-    if (_mem_table == nullptr) {
+    if (_mem_table == nullptr || _mem_table->rows() == 0) {
         return;
     }
     size_t num_rows_written_in_table = 0;
@@ -74,11 +74,12 @@ void TableWriter::flush() {
     _file_writer->finalize();
     _file_writer->close();
     _inited = false;
-    INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id.load() - 1, _fs->root_path().c_str())
+    INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id->load() - 1, _fs->root_path().c_str())
 }
 
 void TableWriter::_init_mem_table() {
-    size_t segment_id = _next_segment_id++;
+    size_t segment_id = _next_segment_id->load();
+    _next_segment_id->fetch_add(1);
     io::Path segment_path = _fs->root_path() / io::Path("segment_" + std::to_string(segment_id) + ".dat");
     if (_fs->exists(segment_path)) {
         _fs->delete_file(segment_path);
