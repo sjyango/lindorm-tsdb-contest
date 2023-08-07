@@ -149,6 +149,8 @@ public:
     // [start_row, end_row)
     std::vector<Row> to_rows(size_t start_row, size_t end_row) const;
 
+    std::vector<Row> to_rows() const;
+
     SMutableColumns mutate_columns();
 
     Block copy_block() const;

@@ -65,7 +65,7 @@ public:
         return _schema;
     }
 
-    std::optional<RowPosition> handle_latest_query(Vin key_vin) {
+    std::optional<Row> handle_latest_query(Vin key_vin) {
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
         size_t result_ordinal = _lower_bound(increase_vin(key_vin), 0) - 1;
@@ -76,12 +76,21 @@ public:
         if (std::strncmp(key_vin.vin, column_vin[0].c_str(), 17) != 0) {
             return std::nullopt;
         }
-        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
-        assert(column_timestamp.size() == 1);
-        return {{_segment_id, column_vin.get(0), column_timestamp.get(0), result_ordinal - 1}};
+        _read_columns_by_range(_schema->column_ids(), result_ordinal, result_ordinal + 1);
+        vectorized::Block block = _schema->create_block();
+        assert(block.columns() == _return_columns.size());
+
+        size_t i = 0;
+
+        for (auto& item : block) {
+            item._column = std::move(_return_columns[i++]);
+        }
+
+        assert(block.rows() == 1);
+        return {std::move(block.to_rows()[0])};
     }
 
-    std::optional<std::vector<RowPosition>> handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
+    std::optional<vectorized::Block> handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
         std::string key_vin(query_vin.vin, 17);
         size_t start_ordinal = _lower_bound(key_vin, lower_bound_timestamp);
         size_t end_ordinal = _lower_bound(key_vin, upper_bound_timestamp);
@@ -89,18 +98,27 @@ public:
         if (start_ordinal == end_ordinal) {
             return std::nullopt;
         }
-        _read_columns_by_range({0, 1}, start_ordinal, end_ordinal);
+        _read_columns_by_range(_schema->column_ids(), start_ordinal, end_ordinal);
         assert(_return_columns[0]->size() == end_ordinal - start_ordinal);
-        assert(_return_columns[1]->size() == end_ordinal - start_ordinal);
-        std::vector<RowPosition> results;
+        vectorized::Block block = _schema->create_block();
+        assert(block.columns() == _return_columns.size());
+        size_t i = 0;
 
-        for (size_t i = 0; i < end_ordinal - start_ordinal; ++i) {
-            const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_return_columns[0]);
-            const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_return_columns[1]);
-            results.emplace_back(_segment_id, column_vin.get(i), column_timestamp.get(i), start_ordinal + i);
+        for (auto& item : block) {
+            item._column = std::move(_return_columns[i++]);
         }
 
-        return std::move(results);
+        return {std::move(block)};
+
+        // std::vector<RowPosition> results;
+        //
+        // for (size_t i = 0; i < end_ordinal - start_ordinal; ++i) {
+        //     const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_return_columns[0]);
+        //     const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_return_columns[1]);
+        //     results.emplace_back(_segment_id, column_vin.get(i), column_timestamp.get(i), start_ordinal + i);
+        // }
+        //
+        // return std::move(results);
     }
 
     void seek_to_first() {

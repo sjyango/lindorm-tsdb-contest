@@ -72,38 +72,77 @@ public:
             vectorized::Block block = _table_schema->create_block();
             segment_reader->seek_to_first();
             segment_reader->next_batch(n, &block);
-            std::vector<Row> read_rows = block.to_rows(0, block.rows());
+            std::vector<Row> read_rows = block.to_rows();
             results.insert(results.end(), read_rows.begin(), read_rows.end());
         }
     }
 
     void handle_latest_query(Vin vin, std::vector<Row>& results) {
         assert(_inited);
-        std::vector<RowPosition> row_positions;
+        Row result_row;
+        result_row.timestamp = -1;
 
-        for (auto& [segment_id, segment_reader] : _segment_readers) {
-            auto result = segment_reader->handle_latest_query(vin);
+        for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
+            auto result = it->second->handle_latest_query(vin);
             if (result.has_value()) {
-                row_positions.emplace_back(*result);
+                if ((*result).timestamp > result_row.timestamp) {
+                    std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
+                    result_row.timestamp = (*result).timestamp;
+                    result_row.columns = std::move((*result).columns);
+                }
             }
+        }
+
+        if (result_row.timestamp != -1) {
+            results.emplace_back(result_row);
         }
     }
 
-    void handle_time_range_query(Row lower_bound_row, Row upper_bound_row, std::vector<Row>& results) {
+    void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
         assert(_inited);
-        std::vector<std::vector<RowPosition>> row_positions;
+        std::vector<std::vector<Row>> table_rows;
 
-        // for (auto& [segment_id, segment_reader] : _segment_readers) {
-        //     row_positions.emplace_back(segment_reader->handle_time_range_query(lower_bound_row, upper_bound_row));
-        // }
+        for (auto& [segment_id, segment_reader] : _segment_readers) {
+            auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
+            if (result.has_value()) {
+                table_rows.push_back(std::move((*result).to_rows()));
+            }
+        }
+
+        deduplication(table_rows, results);
+    }
+
+    void deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {
+        std::unordered_set<Row, RowHashFunc> deduplication_rows;
+
+        for (auto it = table_rows.rbegin(); it != table_rows.rend(); ++it) {
+            std::vector<Row>& segment_rows = *it;
+
+            for (auto& row : segment_rows) {
+                if (deduplication_rows.find(row) == deduplication_rows.end()) {
+                    deduplication_rows.insert(std::move(row));
+                }
+            }
+        }
+
+        for (Row row : deduplication_rows) {
+            results.push_back(std::move(row));
+        }
     }
 
 private:
+    struct RowHashFunc {
+        size_t operator()(const Row& row) const {
+            std::string vin_str(row.vin.vin, 17);
+            return std::hash<std::string>()(vin_str) ^ std::hash<int64_t>()(row.timestamp);
+        }
+    };
+
     bool _inited = false;
     io::FileSystemSPtr _fs;
     PartialSchemaSPtr _schema;
     TableSchemaSPtr _table_schema;
-    std::unordered_map<size_t, std::unique_ptr<SegmentReader>> _segment_readers;
+    std::map<size_t, std::unique_ptr<SegmentReader>> _segment_readers;
     std::unordered_map<size_t, io::FileReaderSPtr> _file_readers;
 };
 

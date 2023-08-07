@@ -187,7 +187,7 @@ TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
 
     // ######################################## SegmentWriter ########################################
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     io::FileReaderSPtr file_reader = generate_file_reader();
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
@@ -207,7 +207,7 @@ TEST(SegmentWriterReaderTest, BasicSegmentWriterReaderTest) {
     auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
     INFO_LOG("read costs %ld ms", read_duration.count())
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     std::vector<Row> dst_rows = dst_block.to_rows(0, N);
 
@@ -266,7 +266,7 @@ TEST(SegmentWriterReaderTest, SeekSegmentWriterReaderTest) {
 
     // ######################################## SegmentWriter ########################################
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     io::FileReaderSPtr file_reader = generate_file_reader();
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
@@ -288,7 +288,7 @@ TEST(SegmentWriterReaderTest, SeekSegmentWriterReaderTest) {
     auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
     INFO_LOG("read costs %ld ms", read_duration.count())
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     std::vector<Row> dst_rows = dst_block.to_rows(0, num_to_read);
 
@@ -347,7 +347,7 @@ TEST(SegmentWriterReaderTest, SegmentLatestQueryTest) {
 
     // ######################################## SegmentWriter ########################################
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     io::FileReaderSPtr file_reader = generate_file_reader();
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
@@ -363,9 +363,9 @@ TEST(SegmentWriterReaderTest, SegmentLatestQueryTest) {
     while (src_rows[rand_ordinal].vin == rand_vin) {
         rand_ordinal++;
     }
-    ASSERT_EQ((*result)._timestamp, src_rows[rand_ordinal - 1].timestamp);
+    ASSERT_EQ((*result).timestamp, src_rows[rand_ordinal - 1].timestamp);
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 }
 
 TEST(SegmentWriterReaderTest, SegmentTimeRangeQueryTest) {
@@ -403,22 +403,15 @@ TEST(SegmentWriterReaderTest, SegmentTimeRangeQueryTest) {
 
     ASSERT_EQ(src_block.rows(), N);
     size_t num_written;
-
-    auto write_start = std::chrono::high_resolution_clock::now();
-
     segment_writer->append_block(std::move(src_block.to_block()), &num_written);
     segment_writer->finalize();
     ASSERT_EQ(num_written, N);
     file_writer->finalize();
     file_writer->close();
 
-    auto write_end = std::chrono::high_resolution_clock::now();
-    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(write_end - write_start);
-    INFO_LOG("write costs %ld ms", write_duration.count())
-
     // ######################################## SegmentWriter ########################################
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     io::FileReaderSPtr file_reader = generate_file_reader();
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
@@ -430,29 +423,24 @@ TEST(SegmentWriterReaderTest, SegmentTimeRangeQueryTest) {
     size_t rand_ordinal = generate_random_int32() % src_rows.size();
     size_t rand_timestamp = generate_random_timestamp();
     Vin rand_vin = src_rows[rand_ordinal].vin;
-    std::vector<RowPosition> query_results;
-    std::vector<RowPosition> ground_truths;
+    std::vector<Row> query_results;
+    std::vector<Row> ground_truths;
 
     for (const auto& row : src_rows) {
-        if (row.vin == rand_vin && row.timestamp < rand_timestamp) {
+        if (row.vin == rand_vin && row.timestamp >= 0 && row.timestamp < rand_timestamp) {
             std::string s(row.vin.vin, 17);
-            ground_truths.emplace_back(SEGMENT_ID, s, row.timestamp, 0);
+            ground_truths.emplace_back(row);
         }
     }
 
     auto result = segment_reader->handle_time_range_query(rand_vin, 0, rand_timestamp);
     if (result.has_value()) {
-        query_results = *result;
+        query_results = (*result).to_rows();
     }
 
-    ASSERT_EQ(query_results.size(), ground_truths.size());
+    ASSERT_EQ(query_results, ground_truths);
 
-    for (size_t i = 0; i < query_results.size(); ++i) {
-        ASSERT_EQ(query_results[i]._vin, ground_truths[i]._vin);
-        ASSERT_EQ(query_results[i]._timestamp, ground_truths[i]._timestamp);
-    }
-
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 }
 
 TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
@@ -505,7 +493,7 @@ TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
 
     // ######################################## SegmentWriter ########################################
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 
     io::FileReaderSPtr file_reader = generate_file_reader();
     io::Path root_path = std::filesystem::current_path() / io::Path("test_data");
@@ -525,7 +513,7 @@ TEST(SegmentWriterReaderTest, DISABLED_SegmentWriterReaderBenchmarkTest) {
     auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
     INFO_LOG("read costs %ld ms", read_duration.count())
 
-    // ######################################## SegmentWriter ########################################
+    // ######################################## SegmentReader ########################################
 }
 
 }

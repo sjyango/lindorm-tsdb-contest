@@ -55,7 +55,7 @@ void ColumnWriter::write_column_data() {
         io::PagePointer page_pointer;
         io::PageIO::write_page(_file_writer, std::move(data_page._data), data_page._footer, &page_pointer);
         _ordinal_index_writer->append_entry(data_page._footer._first_ordinal, page_pointer);
-        INFO_LOG("first_ordinal [%lu], Page Pointer [%s]", data_page._footer._first_ordinal, page_pointer.to_string().c_str())
+        // INFO_LOG("first_ordinal [%lu], Page Pointer [%s]", data_page._footer._first_ordinal, page_pointer.to_string().c_str())
     }
 }
 
@@ -63,7 +63,7 @@ void ColumnWriter::write_column_index() {
     std::shared_ptr<OrdinalIndexMeta> ordinal_index_meta = std::make_shared<OrdinalIndexMeta>();
     _ordinal_index_writer->finish(_file_writer, ordinal_index_meta);
     _meta->_indexes.push_back(ordinal_index_meta);
-    INFO_LOG("Page Pointer [%s]", ordinal_index_meta->_page_pointer.to_string().c_str())
+    // INFO_LOG("Page Pointer [%s]", ordinal_index_meta->_page_pointer.to_string().c_str())
 }
 
 void ColumnWriter::_append_data_in_current_page(const uint8_t* data, size_t* num_written) {

@@ -73,7 +73,7 @@ void TableWriter::_flush() {
     _file_writer->finalize();
     _file_writer->close();
     _inited = false;
-    INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id.load() - 1, _fs->root_path().c_str())
+    // INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id.load() - 1, _fs->root_path().c_str())
 }
 
 void TableWriter::_init_mem_table() {
