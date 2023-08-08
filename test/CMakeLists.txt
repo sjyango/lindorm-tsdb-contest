@@ -34,7 +34,6 @@ set(EXECUTABLES
         memtable_test
         short_key_index_test
         ordinal_key_index_test
-        #table_writer_test
         data_page_test
         io_test
         index_page_test
@@ -42,6 +41,7 @@ set(EXECUTABLES
         parallel_merge_join_test
         segment_writer_reader_test
         table_writer_reader_test
+        multi_thread_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})

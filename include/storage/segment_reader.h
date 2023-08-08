@@ -98,6 +98,7 @@ public:
         std::string key_vin(query_vin.vin, 17);
         size_t start_ordinal = _lower_bound(key_vin, lower_bound_timestamp);
         size_t end_ordinal = _lower_bound(key_vin, upper_bound_timestamp);
+        assert(start_ordinal <= end_ordinal);
         // the range we need is [start_ordinal, end_ordinal) aka. [start_ordinal, end_ordinal - 1]
         if (start_ordinal == end_ordinal) {
             return std::nullopt;

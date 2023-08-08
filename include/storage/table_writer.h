@@ -40,12 +40,13 @@ public:
 
     void flush();
 
+    size_t rows() const;
+
 private:
     void _write(const vectorized::Block&& block);
     void _init_mem_table();
     bool _need_to_flush();
 
-    bool _inited;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
     io::FileWriterPtr _file_writer;

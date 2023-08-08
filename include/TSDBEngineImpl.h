@@ -8,6 +8,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <shared_mutex>
 #include <mutex>
 #include <atomic>
 

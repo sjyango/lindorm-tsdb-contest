@@ -20,7 +20,7 @@
 namespace LindormContest::storage {
 
 TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::atomic<size_t>* next_segment_id, size_t MEM_TABLE_FLUSH_THRESHOLD)
-        : _fs(fs), _schema(schema), _next_segment_id(next_segment_id), _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _inited(false) {
+        : _fs(fs), _schema(schema), _next_segment_id(next_segment_id), _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD) {
     _init_mem_table();
 }
 
@@ -29,9 +29,6 @@ TableWriter::~TableWriter() = default;
 void TableWriter::append(const std::vector<Row>& append_rows) {
     if (append_rows.empty()) {
         return;
-    }
-    if (!_inited) {
-        _init_mem_table();
     }
     std::unique_ptr<vectorized::MutableBlock> input_block =
             std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
@@ -73,8 +70,12 @@ void TableWriter::flush() {
     _mem_table.reset();
     _file_writer->finalize();
     _file_writer->close();
-    _inited = false;
-    INFO_LOG("segment_%zu has been flushed into disk, path is %s", _next_segment_id->load() - 1, _fs->root_path().c_str())
+    INFO_LOG("segment_%zu has been flushed %zu rows into disk, path is %s", _next_segment_id->load() - 1, num_rows_written_in_table, _fs->root_path().c_str())
+    _init_mem_table();
+}
+
+size_t TableWriter::rows() const {
+    return _mem_table->rows();
 }
 
 void TableWriter::_init_mem_table() {
@@ -86,7 +87,6 @@ void TableWriter::_init_mem_table() {
     }
     _file_writer = _fs->create_file(segment_path);
     _mem_table = std::make_unique<MemTable>(_file_writer.get(), _schema, segment_id);
-    _inited = true;
 }
 
 }

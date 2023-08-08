@@ -119,7 +119,6 @@ static bool compare_rows(const Row& lhs, const Row& rhs) {
 
 static std::vector<Row> generate_dataset() {
     std::ifstream inputFile(std::filesystem::current_path() / "test_data.csv");
-    assert(inputFile.is_open());
     std::vector<Row> dataset;
     std::string line;
 

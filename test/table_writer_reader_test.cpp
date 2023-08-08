@@ -78,6 +78,7 @@ static Row generate_row() {
 TEST(TableWriterReaderTest, BasicTableWriterReaderTest) {
     const size_t N = 10000;
     size_t MEM_TABLE_FLUSH_THRESHOLD = N / 10;
+    std::atomic<size_t> next_segment_id = 0;
 
     // ######################################## TableWriter ########################################
 
@@ -90,7 +91,7 @@ TEST(TableWriterReaderTest, BasicTableWriterReaderTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, MEM_TABLE_FLUSH_THRESHOLD);
+    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, &next_segment_id, MEM_TABLE_FLUSH_THRESHOLD);
     std::vector<Row> src_rows;
 
     for (size_t i = 0; i < 10; ++i) {
@@ -138,6 +139,7 @@ TEST(TableWriterReaderTest, BasicTableWriterReaderTest) {
 TEST(TableWriterReaderTest, HandleLatestQueryTest) {
     const size_t N = 100000;
     size_t MEM_TABLE_FLUSH_THRESHOLD = N / 10;
+    std::atomic<size_t> next_segment_id = 0;
 
     // ######################################## TableWriter ########################################
 
@@ -150,7 +152,7 @@ TEST(TableWriterReaderTest, HandleLatestQueryTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, MEM_TABLE_FLUSH_THRESHOLD);
+    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, &next_segment_id, MEM_TABLE_FLUSH_THRESHOLD);
     std::vector<Row> src_rows;
 
     for (size_t i = 0; i < 10; ++i) {
@@ -184,6 +186,7 @@ TEST(TableWriterReaderTest, HandleLatestQueryTest) {
 TEST(TableWriterReaderTest, HandleTimeRangeQueryTest) {
     const size_t N = 100000;
     size_t MEM_TABLE_FLUSH_THRESHOLD = N / 10;
+    std::atomic<size_t> next_segment_id = 0;
 
     // ######################################## TableWriter ########################################
 
@@ -196,7 +199,7 @@ TEST(TableWriterReaderTest, HandleTimeRangeQueryTest) {
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     TableSchemaSPtr table_schema = std::make_shared<TableSchema>(schema);
-    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, MEM_TABLE_FLUSH_THRESHOLD);
+    std::unique_ptr<TableWriter> table_writer = std::make_unique<TableWriter>(fs, table_schema, &next_segment_id, MEM_TABLE_FLUSH_THRESHOLD);
     std::vector<Row> src_rows;
 
     for (size_t i = 0; i < 10; ++i) {
