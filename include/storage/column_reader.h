@@ -15,8 +15,8 @@
 
 #pragma once
 
-#include "page_decoder.h"
-#include "segment_traits.h"
+#include "storage/page_decoder.h"
+#include "storage/segment_traits.h"
 #include "storage/indexs/ordinal_key_index.h"
 #include "io/page_io.h"
 

@@ -15,8 +15,8 @@
 
 #pragma once
 
-#include "IColumn.h"
 #include "Root.h"
+#include "vec/columns/IColumn.h"
 
 namespace LindormContest::vectorized {
 
@@ -114,6 +114,8 @@ public:
     MutableColumnSPtr clone_resized(size_t s) const override;
 
     void insert_binary_data(const char* data, const uint32_t* offsets, const size_t num) override;
+
+    void insert_many_data(const uint8_t* data, size_t num) override;
 
 protected:
     Offsets _offsets;

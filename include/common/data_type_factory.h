@@ -176,8 +176,8 @@ public:
                 create_column_data_type<ColumnType::COLUMN_TYPE_STRING>(),
                 create_column_data_type<ColumnType::COLUMN_TYPE_INTEGER>(),
                 create_column_data_type<ColumnType::COLUMN_TYPE_DOUBLE_FLOAT>(),
-                create_column_data_type<ColumnType::COLUMN_TYPE_TIMESTAMP>(),
-                nullptr
+                nullptr,
+                create_column_data_type<ColumnType::COLUMN_TYPE_TIMESTAMP>()
         };
         return column_data_type_array[int(column_type)];
     }

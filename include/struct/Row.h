@@ -21,8 +21,8 @@
 #ifndef LINDORM_TSDB_CONTEST_CPP_ROWVALUE_H
 #define LINDORM_TSDB_CONTEST_CPP_ROWVALUE_H
 
-#include "Vin.h"
-#include "ColumnValue.h"
+#include "struct/Vin.h"
+#include "struct/ColumnValue.h"
 
 namespace LindormContest {
 

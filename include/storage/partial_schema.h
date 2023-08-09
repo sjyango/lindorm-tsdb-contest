@@ -19,7 +19,7 @@
 #include <unordered_set>
 
 #include "Root.h"
-#include "table_schema.h"
+#include "storage/table_schema.h"
 
 namespace LindormContest::storage {
 
@@ -40,7 +40,7 @@ public:
         }
     }
 
-    PartialSchema(const std::vector<TableColumn>& columns) {
+    PartialSchema(std::vector<TableColumn>&& columns) {
         _num_key_columns = 2; // vin + timestamp
         for (const auto& col : columns) {
             _cols.emplace(col.get_uid(), col);

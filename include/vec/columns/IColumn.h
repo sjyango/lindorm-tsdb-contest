@@ -80,13 +80,11 @@ public:
 
     virtual void reserve(size_t n) = 0;
 
-    virtual void insert_binary_data(const char* data, const uint32_t* offsets, const size_t num) {
-        throw std::runtime_error("insert_binary_data isn't implement");
-    }
+    // just for ColumnString to implement
+    virtual void insert_binary_data(const char* data, const uint32_t* offsets, const size_t num) = 0;
 
-    virtual void insert_many_data(const uint8_t* data, size_t num) {
-        throw std::runtime_error("insert_many_data isn't implement");
-    }
+    // just for ColumnNumber to implement
+    virtual void insert_many_data(const uint8_t* data, size_t num) = 0;
 
     static MutableColumnSPtr assume_mutable(ColumnSPtr column) {
         return std::const_pointer_cast<IColumn>(column);

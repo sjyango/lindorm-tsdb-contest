@@ -16,10 +16,10 @@
 #pragma once
 
 #include "Root.h"
-#include "page_decoder.h"
-#include "segment_traits.h"
+#include "storage/page_decoder.h"
+#include "storage/segment_traits.h"
 #include "storage/indexs/ordinal_key_index.h"
-#include "table_schema.h"
+#include "storage/table_schema.h"
 #include "vec/blocks/block.h"
 #include "io/compression.h"
 

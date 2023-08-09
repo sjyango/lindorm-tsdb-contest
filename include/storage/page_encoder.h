@@ -17,9 +17,9 @@
 
 #include "Root.h"
 #include "common/coding.h"
-#include "page_encoder.h"
 #include "struct/ColumnValue.h"
-#include "table_schema.h"
+#include "storage/page_encoder.h"
+#include "storage/table_schema.h"
 
 namespace LindormContest::storage {
 

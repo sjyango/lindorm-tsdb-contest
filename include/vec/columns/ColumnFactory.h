@@ -16,8 +16,8 @@
 #pragma once
 
 #include "Root.h"
-#include "ColumnString.h"
-#include "ColumnNumber.h"
+#include "vec/columns/ColumnString.h"
+#include "vec/columns/ColumnNumber.h"
 
 namespace LindormContest::vectorized {
 

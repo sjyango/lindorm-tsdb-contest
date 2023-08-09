@@ -32,6 +32,21 @@ std::mutex dataset_mutex;
 std::unordered_map<std::string, Row> latest_records; // vin -> max_timestamp
 std::unordered_map<std::string, std::vector<Row>> time_range_records; // vin -> timestamps
 
+static std::string generate_random_string(int length) {
+    const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, charset.size() - 1);
+
+    std::string str(length, '\0');
+    for (int i = 0; i < length; ++i) {
+        str[i] = charset[dis(gen)];
+    }
+
+    return str;
+}
+
 static int32_t generate_random_int32() {
     std::random_device rd;
     std::mt19937_64 gen(rd());
@@ -46,9 +61,16 @@ static int64_t generate_random_timestamp() {
     return dis(gen);
 }
 
+static double_t generate_random_float64() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dis(0.0, 1.0);
+    return dis(gen);
+}
+
 static bool compare_rows(const Row& lhs, const Row& rhs) {
     bool res = (lhs.vin == rhs.vin) && (lhs.timestamp == rhs.timestamp);
-    assert(lhs.columns.size() == rhs.columns.size());
+
     for (const auto& item : lhs.columns) {
         switch (item.second.columnType) {
         case COLUMN_TYPE_INTEGER: {
@@ -151,6 +173,113 @@ static void generate_index_dataset() {
     }
 }
 
+static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
+    const size_t N = 100;
+
+    LatestQueryRequest lqr;
+    lqr.tableName = TABLE_NAME;
+    lqr.requestedColumns = {"col1", "col2"};
+    std::vector<std::string> request_vins;
+
+    for (int i = 0; i < N; ++i) {
+        if (generate_random_float64() < 0.5) {
+            size_t rand_index = generate_random_int32() % global_datasets.size();
+            lqr.vins.push_back(global_datasets[rand_index].vin);
+            request_vins.push_back(std::string(global_datasets[rand_index].vin.vin, 17));
+        } else {
+            std::string rand_vin = generate_random_string(17);
+            lqr.vins.push_back(Vin(rand_vin));
+            request_vins.push_back(rand_vin);
+        }
+    }
+
+    std::vector<Row> lq_ground_truths;
+    std::vector<Row> lq_results;
+    db.executeLatestQuery(lqr, lq_results);
+    // ASSERT_EQ(N, lq_results.size());
+
+    for (const auto& vin : request_vins) {
+        if (latest_records.find(vin) != latest_records.end()) {
+            lq_ground_truths.push_back(latest_records[vin]);
+        }
+    }
+
+    std::sort(lq_ground_truths.begin(), lq_ground_truths.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    std::sort(lq_results.begin(), lq_results.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    ASSERT_EQ(lq_results.size(), lq_ground_truths.size());
+
+    for (size_t i = 0; i < lq_results.size(); ++i) {
+        ASSERT_TRUE(compare_rows(lq_results[i], lq_ground_truths[i]));
+    }
+
+    INFO_LOG("[handle_latest_query] finished %lu times", id + 1)
+}
+
+static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
+    TimeRangeQueryRequest trqr;
+    trqr.tableName = TABLE_NAME;
+    if (generate_random_float64() < 0.5) {
+        trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
+    } else {
+        trqr.vin = generate_random_string(17);
+    }
+    trqr.timeUpperBound = std::numeric_limits<int64_t>::max() / 100;
+    trqr.timeLowerBound = std::numeric_limits<int64_t>::max() / 1000;
+    // trqr.timeLowerBound = trqr.timeUpperBound / 1000;
+    trqr.requestedColumns = {"col1", "col3"};
+    std::string key(trqr.vin.vin, 17);
+
+    std::vector<Row> trq_ground_truths;
+    std::vector<Row> trq_results;
+    db.executeTimeRangeQuery(trqr, trq_results);
+
+    if (time_range_records.find(key) != time_range_records.end()) {
+        for (const auto& row : time_range_records[key]) {
+            if (row.timestamp >= trqr.timeLowerBound && row.timestamp < trqr.timeUpperBound) {
+                Row r;
+                std::strncpy(r.vin.vin, row.vin.vin, 17);
+                r.timestamp = row.timestamp;
+                r.columns = row.columns;
+                trq_ground_truths.push_back(std::move(r));
+            }
+        }
+    }
+
+    std::sort(trq_ground_truths.begin(), trq_ground_truths.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    std::sort(trq_results.begin(), trq_results.end(), [] (const Row& lhs, const Row& rhs) {
+        if (lhs.vin != rhs.vin) {
+            return lhs.vin < rhs.vin;
+        }
+        return lhs.timestamp < rhs.timestamp;
+    });
+
+    ASSERT_EQ(trq_results.size(), trq_ground_truths.size());
+
+    for (size_t i = 0; i < trq_results.size(); ++i) {
+        ASSERT_TRUE(compare_rows(trq_results[i], trq_ground_truths[i]));
+    }
+
+    INFO_LOG("[handle_time_range_query] finished %lu times", id + 1)
+}
+
 static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TABLE_NAME) {
     const size_t INSERT_DATA_THREADS = 10;
     std::thread insert_data_threads[INSERT_DATA_THREADS];
@@ -177,6 +306,16 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
             db.upsert(wq);
         }
         INFO_LOG("insert %zu rows into db", src_rows.size())
+
+        if (generate_random_float64() < 0.75) {
+            if (generate_random_float64() < 0.5) {
+                handle_latest_query(db, TABLE_NAME, 0);
+                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
+            } else {
+                handle_time_range_query(db, TABLE_NAME, 0);
+                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
+            }
+        }
     };
 
     for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -188,95 +327,7 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
     }
 }
 
-static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAME) {
-    const size_t N = 100;
-
-    LatestQueryRequest lqr;
-    lqr.tableName = TABLE_NAME;
-    lqr.requestedColumns = {};
-    std::vector<std::string> request_vins;
-
-    for (int i = 0; i < N; ++i) {
-        size_t rand_index = generate_random_int32() % global_datasets.size();
-        lqr.vins.push_back(global_datasets[rand_index].vin);
-        request_vins.push_back(std::string(global_datasets[rand_index].vin.vin, 17));
-    }
-
-    std::vector<Row> lq_ground_truths;
-    std::vector<Row> lq_results;
-    db.executeLatestQuery(lqr, lq_results);
-    ASSERT_EQ(N, lq_results.size());
-
-    for (const auto& vin : request_vins) {
-        lq_ground_truths.push_back(latest_records[vin]);
-    }
-
-    std::sort(lq_ground_truths.begin(), lq_ground_truths.end(), [] (const Row& lhs, const Row& rhs) {
-        if (lhs.vin != rhs.vin) {
-            return lhs.vin < rhs.vin;
-        }
-        return lhs.timestamp < rhs.timestamp;
-    });
-
-    std::sort(lq_results.begin(), lq_results.end(), [] (const Row& lhs, const Row& rhs) {
-        if (lhs.vin != rhs.vin) {
-            return lhs.vin < rhs.vin;
-        }
-        return lhs.timestamp < rhs.timestamp;
-    });
-
-    ASSERT_EQ(lq_results.size(), lq_ground_truths.size());
-
-    for (size_t i = 0; i < lq_results.size(); ++i) {
-        ASSERT_TRUE(compare_rows(lq_results[i], lq_ground_truths[i]));
-    }
-}
-
-static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME) {
-    TimeRangeQueryRequest trqr;
-    trqr.tableName = TABLE_NAME;
-    trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
-    trqr.timeUpperBound = generate_random_timestamp();
-    trqr.timeLowerBound = trqr.timeUpperBound / 10;
-    trqr.requestedColumns = {};
-    std::string key(trqr.vin.vin, 17);
-
-    std::vector<Row> trq_ground_truths;
-    std::vector<Row> trq_results;
-    db.executeTimeRangeQuery(trqr, trq_results);
-
-    for (const auto& row : time_range_records[key]) {
-        if (row.timestamp >= trqr.timeLowerBound && row.timestamp < trqr.timeUpperBound) {
-            Row r;
-            std::strncpy(r.vin.vin, row.vin.vin, 17);
-            r.timestamp = row.timestamp;
-            r.columns = row.columns;
-            trq_ground_truths.push_back(std::move(r));
-        }
-    }
-
-    std::sort(trq_ground_truths.begin(), trq_ground_truths.end(), [] (const Row& lhs, const Row& rhs) {
-        if (lhs.vin != rhs.vin) {
-            return lhs.vin < rhs.vin;
-        }
-        return lhs.timestamp < rhs.timestamp;
-    });
-
-    std::sort(trq_results.begin(), trq_results.end(), [] (const Row& lhs, const Row& rhs) {
-        if (lhs.vin != rhs.vin) {
-            return lhs.vin < rhs.vin;
-        }
-        return lhs.timestamp < rhs.timestamp;
-    });
-
-    ASSERT_EQ(trq_results.size(), trq_ground_truths.size());
-
-    for (size_t i = 0; i < trq_results.size(); ++i) {
-        ASSERT_TRUE(compare_rows(trq_results[i], trq_ground_truths[i]));
-    }
-}
-
-TEST(DemoTest, MultiThreadDemoTest) {
+TEST(MultiThreadTest, MultiThreadDemoTest) {
     const size_t READ_FILE_THREADS = 10;
     std::thread read_file_threads[READ_FILE_THREADS];
 
@@ -311,18 +362,12 @@ TEST(DemoTest, MultiThreadDemoTest) {
     // create table
     ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
 
+    generate_index_dataset();
+    INFO_LOG("####################### [generate_index_dataset] finished #######################")
+
     // insert_data
     insert_data_into_db_engine(*demo, TABLE_NAME);
-
-    // shutdown
-    ASSERT_EQ(0, demo->shutdown());
-
-    generate_index_dataset();
-
-    // reset db
-    demo.reset(new TSDBEngineImpl(table_path));
-    // connect database
-    ASSERT_EQ(0, demo->connect());
+    INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
 
     const size_t N = 100;
 
@@ -331,8 +376,7 @@ TEST(DemoTest, MultiThreadDemoTest) {
     std::thread latest_query_threads[LATEST_QUERY_THREADS];
 
     for (size_t i = 0; i < LATEST_QUERY_THREADS; ++i) {
-        latest_query_threads[i] = std::thread(handle_latest_query, std::ref(*demo), TABLE_NAME);
-        INFO_LOG("[handle_latest_query] finished %lu times", i + 1)
+        latest_query_threads[i] = std::thread(handle_latest_query, std::ref(*demo), TABLE_NAME, i + 1);
     }
 
     for (auto& thread : latest_query_threads) {
@@ -346,8 +390,7 @@ TEST(DemoTest, MultiThreadDemoTest) {
     std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
 
     for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
-        time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME);
-        INFO_LOG("[handle_time_range_query] finished %lu times", i + 1)
+        time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
     }
 
     for (auto& thread : time_range_query_threads) {
@@ -355,6 +398,37 @@ TEST(DemoTest, MultiThreadDemoTest) {
     }
 
     INFO_LOG("####################### finished [handle_time_range_query] #######################")
+
+    // shutdown
+    ASSERT_EQ(0, demo->shutdown());
+    INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
+    // reset db
+    demo.reset(new TSDBEngineImpl(table_path));
+    // connect database
+    ASSERT_EQ(0, demo->connect());
+    INFO_LOG("####################### [demo->connect()] finished #######################")
+
+
+    for (size_t i = 0; i < LATEST_QUERY_THREADS; ++i) {
+        latest_query_threads[i] = std::thread(handle_latest_query, std::ref(*demo), TABLE_NAME, i + 1);
+    }
+
+    for (auto& thread : latest_query_threads) {
+        thread.join();
+    }
+
+    INFO_LOG("####################### finished after reset [handle_latest_query] #######################")
+
+    for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
+        time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
+    }
+
+    for (auto& thread : time_range_query_threads) {
+        thread.join();
+    }
+
+    INFO_LOG("####################### finished after reset [handle_time_range_query] #######################")
 
     // shutdown
     ASSERT_EQ(0, demo->shutdown());

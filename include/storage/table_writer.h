@@ -16,12 +16,13 @@
 #pragma once
 
 #include <optional>
+#include <mutex>
 
 #include "Root.h"
 #include "struct/Requests.h"
 #include "vec/blocks/block.h"
-#include "memtable.h"
-#include "table_schema.h"
+#include "storage/memtable.h"
+#include "storage/table_schema.h"
 #include "io/io_utils.h"
 #include "io/file_system.h"
 #include "io/file_writer.h"
@@ -47,6 +48,7 @@ private:
     void _init_mem_table();
     bool _need_to_flush();
 
+    std::mutex _latch;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
     io::FileWriterPtr _file_writer;

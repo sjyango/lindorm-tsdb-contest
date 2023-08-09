@@ -18,8 +18,6 @@
 #include <optional>
 #include <cmath>
 
-#include "common/range.h"
-#include "rowwise_iterator.h"
 #include "storage/column_reader.h"
 #include "storage/indexs/short_key_index.h"
 #include "storage/segment_traits.h"
@@ -31,13 +29,13 @@ class Block;
 
 namespace LindormContest::storage {
 
-class SegmentReader : public RowwiseIterator {
+class SegmentReader {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
     SegmentReader(size_t segment_id, io::FileReaderSPtr file_reader,
                   TableSchemaSPtr table_schema, PartialSchemaSPtr schema)
-            : _segment_id(segment_id), _table_schema(table_schema), _schema(schema) {
+            : _segment_id(segment_id), _schema(schema), _table_schema(table_schema) {
         _file_reader = file_reader;
         _parse_footer();
         _load_short_key_index();
@@ -46,23 +44,29 @@ public:
             _column_readers.emplace(col_id, std::make_unique<ColumnReader>(_footer._column_metas[col_id], _footer._num_rows, _file_reader));
         }
 
-        _short_key_columns = std::move(_schema->create_block({0, 1}).mutate_columns());
-        _return_columns = std::move(_schema->create_block().mutate_columns());
+        _short_key_columns = _schema->create_block({0, 1}).mutate_columns();
+        _return_columns = _schema->create_block().mutate_columns();
+        size_t column_index = 0;
+
+        for (const auto& col_id : _schema->column_ids()) {
+            _col_id_to_column_index[col_id] = column_index++;
+        }
     }
 
-    ~SegmentReader() override = default;
+    ~SegmentReader() = default;
 
-    void next_batch(vectorized::Block* block) override {
+    void next_batch(vectorized::Block* block) {
         block->clear();
         std::vector<ColumnId> col_ids = _schema->column_ids();
         for (size_t i = 0; i < col_ids.size(); ++i) {
             const TableColumn& column = _schema->column(col_ids[i]);
-            block->insert({_return_columns[i], column.get_column_type(), column.get_name()});
+            size_t column_index = _col_id_to_column_index[col_ids[i]];
+            block->insert({_return_columns[column_index], column.get_column_type(), column.get_name()});
         }
         assert(_schema->num_columns() == block->columns());
     }
 
-    PartialSchemaSPtr schema() const override {
+    PartialSchemaSPtr schema() const {
         return _schema;
     }
 
@@ -88,7 +92,7 @@ public:
         }
 
         // reset _return_columns
-        _return_columns = std::move(_schema->create_block().mutate_columns());
+        _return_columns = _schema->create_block().mutate_columns();
 
         assert(block.rows() <= 1);
         return {std::move(block.to_rows()[0])};
@@ -114,7 +118,7 @@ public:
         }
 
         // reset _return_columns
-        _return_columns = std::move(_schema->create_block().mutate_columns());
+        _return_columns = _schema->create_block().mutate_columns();
 
         return {std::move(block)};
     }
@@ -128,7 +132,7 @@ public:
     }
 
     void next_batch(size_t* n, vectorized::Block* dst) {
-        _read_columns(_schema->column_ids(), _return_columns, n);
+        _read_columns(_schema->column_ids(), n);
         size_t i = 0;
 
         for (auto& item : *dst) {
@@ -231,15 +235,15 @@ private:
         _column_readers[1]->next_batch(&num_rows, _short_key_columns[1]);
     }
 
-    void _read_columns_by_index(const RowRange& range) {
-        for (auto& column : _return_columns) {
-            column->clear();
-        }
-        size_t num_to_read = range.to() - range.from();
-        _seek_columns(_schema->column_ids(), range.from());
-        _read_columns(_schema->column_ids(), _return_columns, &num_to_read);
-        assert(num_to_read == (range.to() - range.from()));
-    }
+    // void _read_columns_by_index(const RowRange& range) {
+    //     for (auto& column : _return_columns) {
+    //         column->clear();
+    //     }
+    //     size_t num_to_read = range.to() - range.from();
+    //     _seek_columns(_schema->column_ids(), range.from());
+    //     _read_columns(_schema->column_ids(), &num_to_read);
+    //     assert(num_to_read == (range.to() - range.from()));
+    // }
 
     // [start_ordinal, end_ordinal)
     void _read_columns_by_range(const std::vector<ColumnId>& column_ids, size_t start_ordinal, size_t end_ordinal) {
@@ -248,7 +252,7 @@ private:
         }
         size_t num_to_read = end_ordinal - start_ordinal;
         _seek_columns(column_ids, start_ordinal);
-        _read_columns(column_ids, _return_columns, &num_to_read);
+        _read_columns(column_ids, &num_to_read);
         assert(num_to_read == (end_ordinal - start_ordinal));
     }
 
@@ -266,11 +270,11 @@ private:
         }
     }
 
-    void _read_columns(const std::vector<ColumnId>& column_ids,
-                       vectorized::SMutableColumns& column_block, size_t* num_rows) {
+    void _read_columns(const std::vector<ColumnId>& column_ids, size_t* num_rows) {
         for (auto col_id : column_ids) {
             assert(_column_readers.find(col_id) != _column_readers.end());
-            _column_readers[col_id]->next_batch(num_rows, column_block[col_id]);
+            size_t column_index = _col_id_to_column_index[col_id];
+            _column_readers[col_id]->next_batch(num_rows, _return_columns[column_index]);
         }
     }
 
@@ -283,6 +287,7 @@ private:
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
     vectorized::SMutableColumns _short_key_columns;
     vectorized::SMutableColumns _return_columns;
+    std::unordered_map<uint32_t, size_t> _col_id_to_column_index;
 };
 
 }

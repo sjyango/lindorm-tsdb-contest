@@ -21,8 +21,8 @@
 #ifndef LINDORM_TSDB_CONTEST_CPP_REQUESTS_H
 #define LINDORM_TSDB_CONTEST_CPP_REQUESTS_H
 
-#include "Vin.h"
-#include "Row.h"
+#include "struct/Vin.h"
+#include "struct/Row.h"
 
 namespace LindormContest {
 

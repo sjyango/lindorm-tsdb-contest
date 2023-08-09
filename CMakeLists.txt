@@ -16,6 +16,18 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(lindorm-tsdb-contest-cpp)
 
+set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_MACOSX_RPATH 1)
+if( CMAKE_BUILD_TYPE STREQUAL "Debug" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
+else( CMAKE_BUILD_TYPE STREQUAL "Release" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -O3")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -O3")
+endif( CMAKE_BUILD_TYPE STREQUAL "Debug" )
+
 # We use g++-12 to compile, so that we recommend you to use the same compiler to test for better compatibility.
 message("Your OS: ${CMAKE_HOST_SYSTEM_NAME}")
 if (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
@@ -39,4 +51,4 @@ file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 add_library(DBLib ${sources_c} ${sources_cpp})
 
 add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
-target_link_libraries(testMyDb DBLib)
+target_link_libraries(testMyDb DBLib pthread)

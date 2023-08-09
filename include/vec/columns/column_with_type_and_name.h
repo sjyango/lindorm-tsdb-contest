@@ -15,9 +15,9 @@
 
 #pragma once
 
-#include "IColumn.h"
 #include "Root.h"
-#include "ColumnFactory.h"
+#include "vec/columns/IColumn.h"
+#include "vec/columns/ColumnFactory.h"
 
 namespace LindormContest::vectorized {
 

@@ -16,11 +16,11 @@
 #pragma once
 
 #include "Root.h"
-#include "column_writer.h"
-#include "data_convertor.h"
+#include "storage/column_writer.h"
+#include "storage/data_convertor.h"
 #include "storage/indexs/key_coder.h"
 #include "storage/indexs/short_key_index.h"
-#include "table_schema.h"
+#include "storage/table_schema.h"
 #include "vec/blocks/block.h"
 
 namespace LindormContest::storage {

@@ -17,9 +17,9 @@
 
 #include "Root.h"
 #include "struct/Schema.h"
-#include "skiplist.h"
-#include "table_schema.h"
-#include "segment_writer.h"
+#include "storage/skiplist.h"
+#include "storage/table_schema.h"
+#include "storage/segment_writer.h"
 #include "vec/blocks/block.h"
 #include "vec/blocks/mutable_block.h"
 

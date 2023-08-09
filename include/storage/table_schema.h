@@ -133,7 +133,7 @@ public:
         if (field_names.empty()) {
             return _cols;
         }
-        std::vector<TableColumn> columns = {_cols[0], _cols[1]};
+        std::vector<TableColumn> columns = {_cols[0], _cols[1]}; // vin + timestamp
         for (const auto& field_name : field_names) {
             assert(_field_name_to_index.count(field_name) != 0);
             const auto& it = _field_name_to_index.find(field_name);

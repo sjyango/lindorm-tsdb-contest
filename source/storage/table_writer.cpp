@@ -13,15 +13,15 @@
 * limitations under the License.
 */
 
-#include "storage/table_writer.h"
-
 #include <optional>
+
+#include "storage/table_writer.h"
 
 namespace LindormContest::storage {
 
 TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::atomic<size_t>* next_segment_id, size_t MEM_TABLE_FLUSH_THRESHOLD)
-        : _fs(fs), _schema(schema), _next_segment_id(next_segment_id), _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD) {
-    _init_mem_table();
+        : _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _fs(fs), _schema(schema), _next_segment_id(next_segment_id) {
+    // _init_mem_table();
 }
 
 TableWriter::~TableWriter() = default;
@@ -47,22 +47,33 @@ void TableWriter::close() {
 }
 
 bool TableWriter::_need_to_flush() {
+    if (_mem_table == nullptr) {
+        return false;
+    }
     return _mem_table->rows() >= _MEM_TABLE_FLUSH_THRESHOLD;
 }
 
 void TableWriter::_write(const vectorized::Block&& block) {
-    _mem_table->insert(std::move(block));
+    {
+        std::lock_guard<std::mutex> l(_latch);
+        if (_mem_table == nullptr) {
+            _init_mem_table();
+        }
+        _mem_table->insert(std::move(block));
+    }
     if (_need_to_flush()) {
         flush();
     }
 }
 
 void TableWriter::flush() {
+    std::lock_guard<std::mutex> l(_latch);
     if (_mem_table == nullptr || _mem_table->rows() == 0) {
         return;
     }
     size_t num_rows_written_in_table = 0;
     _mem_table->flush(&num_rows_written_in_table);
+    INFO_LOG("segment_%zu has been flushed %zu rows into disk, path is %s", _next_segment_id->load() - 1, num_rows_written_in_table, _fs->root_path().c_str())
     if (num_rows_written_in_table == 0) {
         return;
     }
@@ -70,11 +81,14 @@ void TableWriter::flush() {
     _mem_table.reset();
     _file_writer->finalize();
     _file_writer->close();
-    INFO_LOG("segment_%zu has been flushed %zu rows into disk, path is %s", _next_segment_id->load() - 1, num_rows_written_in_table, _fs->root_path().c_str())
-    _init_mem_table();
+    _file_writer.reset();
+    // _init_mem_table();
 }
 
 size_t TableWriter::rows() const {
+    if (_mem_table == nullptr) {
+        return 0;
+    }
     return _mem_table->rows();
 }
 
@@ -87,6 +101,7 @@ void TableWriter::_init_mem_table() {
     }
     _file_writer = _fs->create_file(segment_path);
     _mem_table = std::make_unique<MemTable>(_file_writer.get(), _schema, segment_id);
+    INFO_LOG("segment_%zu file has been created, path is %s", segment_id, segment_path.c_str())
 }
 
 }

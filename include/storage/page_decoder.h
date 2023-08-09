@@ -17,9 +17,9 @@
 
 #include "Root.h"
 #include "common/coding.h"
-#include "page_encoder.h"
 #include "struct/ColumnValue.h"
-#include "table_schema.h"
+#include "storage/page_encoder.h"
+#include "storage/table_schema.h"
 #include "storage/segment_traits.h"
 
 namespace LindormContest::storage {
@@ -251,6 +251,9 @@ public:
         const uint8_t* start_offset =
                 reinterpret_cast<const uint8_t*>(_data._data + PLAIN_PAGE_HEADER_SIZE + (_cur_idx * _type_size()));
         _cur_idx += max_fetch;
+        assert(_type->column_type() == COLUMN_TYPE_INTEGER
+               || _type->column_type() == COLUMN_TYPE_TIMESTAMP
+               || _type->column_type() == COLUMN_TYPE_DOUBLE_FLOAT);
         dst->insert_many_data(start_offset, max_fetch);
         *n = max_fetch;
     }

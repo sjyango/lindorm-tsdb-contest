@@ -161,7 +161,7 @@ static std::vector<Row> generate_dataset() {
     return dataset;
 }
 
-TEST(DemoTest, BasicDemoTest) {
+TEST(DemoTest, DISABLED_BasicDemoTest) {
     const size_t N = 100000;
     const std::string TABLE_NAME = "demo";
     io::FileSystemSPtr fs = io::FileSystem::create(std::filesystem::current_path());

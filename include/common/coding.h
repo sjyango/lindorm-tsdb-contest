@@ -16,7 +16,7 @@
 #pragma once
 
 #include "Root.h"
-#include "slice.h"
+#include "common/slice.h"
 
 namespace LindormContest {
 

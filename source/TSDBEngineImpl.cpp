@@ -104,7 +104,7 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
     }
     TableSPtr table = _tables[writeRequest.tableName];
     {
-        std::unique_lock<std::mutex> lock(_latch);
+        // std::unique_lock<std::mutex> l(_latch);
         table->_table_writer->append(writeRequest.rows);
     }
     return 0;
@@ -117,16 +117,15 @@ int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::
         return -1;
     }
     TableSPtr table = it->second;
-    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(pReadReq.requestedColumns));
-
-    if (table->_table_writer->rows() != 0) {
-        std::unique_lock<std::mutex> lock(_latch);
-        table->_table_writer->flush();
-    }
-
     {
-        std::unique_lock<std::mutex> lock(_latch);
-        table->_table_reader->init(partial_schema);
+        std::unique_lock<std::mutex> l(_latch);
+        if (table->_table_writer->rows() != 0) {
+            table->_table_writer->flush();
+        }
+    }
+    {
+        std::unique_lock<std::mutex> l(_latch);
+        table->_table_reader->init(std::make_shared<PartialSchema>(std::move(table->_table_schema->column_by_names(pReadReq.requestedColumns))));
         table->_table_reader->handle_latest_query(pReadReq.vins, pReadRes);
         table->_table_reader->reset();
     }
@@ -140,16 +139,15 @@ int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq
         return -1;
     }
     TableSPtr table = it->second;
-    PartialSchemaSPtr partial_schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(trReadReq.requestedColumns));
-
-    if (table->_table_writer->rows() != 0) {
-        std::unique_lock<std::mutex> lock(_latch);
-        table->_table_writer->flush();
-    }
-
     {
-        std::unique_lock<std::mutex> lock(_latch);
-        table->_table_reader->init(partial_schema);
+        std::unique_lock<std::mutex> l(_latch);
+        if (table->_table_writer->rows() != 0) {
+            table->_table_writer->flush();
+        }
+    }
+    {
+        std::unique_lock<std::mutex> l(_latch);
+        table->_table_reader->init(std::make_shared<PartialSchema>(std::move(table->_table_schema->column_by_names(trReadReq.requestedColumns))));
         table->_table_reader->handle_time_range_query(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound, trReadRes);
         table->_table_reader->reset();
     }

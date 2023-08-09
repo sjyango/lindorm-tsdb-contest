@@ -19,10 +19,9 @@
 #include <unordered_map>
 
 #include "Root.h"
-#include "partial_schema.h"
-#include "rowwise_iterator.h"
-#include "segment_reader.h"
-#include "segment_traits.h"
+#include "storage/partial_schema.h"
+#include "storage/segment_reader.h"
+#include "storage/segment_traits.h"
 #include "struct/Requests.h"
 #include "vec/blocks/block.h"
 #include "io/io_utils.h"
@@ -57,7 +56,7 @@ public:
     }
 
     void reset() {
-        _schema = nullptr;
+        _schema.reset();
         _segment_readers.clear();
         _file_readers.clear();
     }
@@ -94,20 +93,35 @@ public:
                 results.emplace_back(result_row);
             }
         }
+        INFO_LOG("handle latest query success, results size is %zu", vins.size())
     }
 
     void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
-        std::vector<std::vector<Row>> table_rows;
+        std::vector<Row> table_rows;
 
         for (auto& [segment_id, segment_reader] : _segment_readers) {
             auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
             if (result.has_value()) {
-                table_rows.push_back(std::move((*result).to_rows()));
+                table_rows = std::move((*result).to_rows());
             }
         }
 
-        _deduplication(table_rows, results);
+        results.insert(results.end(), table_rows.begin(), table_rows.end());
+        INFO_LOG("handle time range query success, results size is %zu", table_rows.size())
     }
+
+    // void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
+    //     std::vector<std::vector<Row>> table_rows;
+    //
+    //     for (auto& [segment_id, segment_reader] : _segment_readers) {
+    //         auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
+    //         if (result.has_value()) {
+    //             table_rows.push_back(std::move((*result).to_rows()));
+    //         }
+    //     }
+    //
+    //     _deduplication(table_rows, results);
+    // }
 
 private:
     void _deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {

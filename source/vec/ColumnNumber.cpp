@@ -91,4 +91,10 @@ void ColumnNumber<T>::insert_many_data(const uint8_t* p, size_t num) {
     _data.insert(_data.end(), reinterpret_cast<const T*>(p), reinterpret_cast<const T*>(p) + num);
 }
 
+template <typename T>
+void ColumnNumber<T>::insert_binary_data(const char* data, const uint32_t* offsets, const size_t num) {
+    INFO_LOG("%s invokes insert_binary_data", typeid(*this).name())
+    throw std::runtime_error("ColumnNumber doesn't implement insert_binary_data");
+}
+
 }

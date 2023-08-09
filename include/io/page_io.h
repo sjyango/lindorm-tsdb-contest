@@ -17,8 +17,8 @@
 
 #include "Root.h"
 #include "common/slice.h"
-#include "compression.h"
-#include "file_writer.h"
+#include "io/compression.h"
+#include "io/file_writer.h"
 #include "io/io_utils.h"
 #include "storage/segment_traits.h"
 

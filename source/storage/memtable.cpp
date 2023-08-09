@@ -13,8 +13,8 @@
 * limitations under the License.
 */
 
-#include "storage/memtable.h"
 #include "utils.h"
+#include "storage/memtable.h"
 
 namespace LindormContest::storage {
 

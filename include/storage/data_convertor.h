@@ -16,7 +16,7 @@
 #pragma once
 
 #include "Root.h"
-#include "table_schema.h"
+#include "storage/table_schema.h"
 #include "vec/columns/column_with_type_and_name.h"
 
 namespace LindormContest::storage {

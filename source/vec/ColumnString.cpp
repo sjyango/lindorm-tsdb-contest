@@ -159,6 +159,11 @@ void ColumnString::insert_binary_data(const char* data, const uint32_t* offsets,
     assert(_chars.size() == _offsets.back());
 }
 
+void ColumnString::insert_many_data(const uint8_t* data, size_t num) {
+    INFO_LOG("%s invokes insert_many_data", typeid(*this).name())
+    throw std::runtime_error("ColumnString doesn't implement insert_many_data");
+}
+
 // void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices_begin,
 //                                           const size_t* indices_end) {
 //     const ColumnString& src_str = static_cast<const ColumnString&>(src);

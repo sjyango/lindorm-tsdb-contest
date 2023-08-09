@@ -18,7 +18,7 @@
 #include <unordered_map>
 
 #include "Root.h"
-#include "block.h"
+#include "vec/blocks/block.h"
 #include "vec/columns/IColumn.h"
 #include "struct/Row.h"
 
