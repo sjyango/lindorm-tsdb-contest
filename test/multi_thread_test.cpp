@@ -230,13 +230,13 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
 static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
     TimeRangeQueryRequest trqr;
     trqr.tableName = TABLE_NAME;
-    if (generate_random_float64() < 0.5) {
+    if (generate_random_float64() < 0.2) {
         trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
     } else {
         trqr.vin = generate_random_string(17);
     }
-    trqr.timeUpperBound = std::numeric_limits<int64_t>::max() / 100;
-    trqr.timeLowerBound = std::numeric_limits<int64_t>::max() / 1000;
+    trqr.timeUpperBound = std::numeric_limits<int64_t>::max();
+    trqr.timeLowerBound = 0;
     // trqr.timeLowerBound = trqr.timeUpperBound / 1000;
     trqr.requestedColumns = {"col1", "col3"};
     std::string key(trqr.vin.vin, 17);
@@ -371,6 +371,10 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
 
     const size_t N = 100;
 
+    // handle query
+    const size_t QUERY_THREADS = N;
+    std::thread query_threads[QUERY_THREADS];
+
     // handle latest query
     const size_t LATEST_QUERY_THREADS = N;
     std::thread latest_query_threads[LATEST_QUERY_THREADS];
@@ -429,6 +433,96 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     }
 
     INFO_LOG("####################### finished after reset [handle_time_range_query] #######################")
+
+    // shutdown
+    ASSERT_EQ(0, demo->shutdown());
+}
+
+TEST(MultiThreadTest, MultiThreadRandomQueryDemoTest) {
+    const size_t READ_FILE_THREADS = 10;
+    std::thread read_file_threads[READ_FILE_THREADS];
+
+    // prepare global datasets
+
+    for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
+        read_file_threads[i] = std::thread(generate_dataset, i);
+    }
+
+    for (auto& thread : read_file_threads) {
+        thread.join();
+    }
+
+    // create DBEngine
+    const std::string TABLE_NAME = "demo";
+    io::FileSystemSPtr fs = io::FileSystem::create(std::filesystem::current_path());
+    io::Path table_path = std::filesystem::current_path() / io::Path("test_data");
+    if (fs->exists(table_path)) {
+        fs->delete_directory(table_path);
+    }
+    fs->create_directory(table_path);
+    std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(table_path);
+    // connect database
+    ASSERT_EQ(0, demo->connect());
+    // create schema
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col1", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col2", COLUMN_TYPE_INTEGER});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    // create table
+    ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
+
+    generate_index_dataset();
+    INFO_LOG("####################### [generate_index_dataset] finished #######################")
+
+    // insert_data
+    insert_data_into_db_engine(*demo, TABLE_NAME);
+    INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+
+    const size_t N = 200;
+
+    // handle query
+    const size_t QUERY_THREADS = N;
+    std::thread query_threads[QUERY_THREADS];
+
+    for (size_t i = 0; i < QUERY_THREADS; ++i) {
+        query_threads[i] = std::thread([&demo, TABLE_NAME, i]() {
+            if (generate_random_float64() < 0.5) {
+                handle_latest_query(*demo, TABLE_NAME, i + 1);
+            } else {
+                handle_time_range_query(*demo, TABLE_NAME, i + 1);
+            }
+        });
+    }
+
+    for (auto& thread : query_threads) {
+        thread.join();
+    }
+
+    // shutdown
+    ASSERT_EQ(0, demo->shutdown());
+    INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
+    // reset db
+    demo.reset(new TSDBEngineImpl(table_path));
+    // connect database
+    ASSERT_EQ(0, demo->connect());
+    INFO_LOG("####################### [demo->connect()] finished #######################")
+
+    for (size_t i = 0; i < QUERY_THREADS; ++i) {
+        query_threads[i] = std::thread([&demo, TABLE_NAME, i]() {
+            if (generate_random_float64() < 0.5) {
+                handle_latest_query(*demo, TABLE_NAME, i + 1);
+            } else {
+                handle_time_range_query(*demo, TABLE_NAME, i + 1);
+            }
+        });
+    }
+
+    for (auto& thread : query_threads) {
+        thread.join();
+    }
 
     // shutdown
     ASSERT_EQ(0, demo->shutdown());

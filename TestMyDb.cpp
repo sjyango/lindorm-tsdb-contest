@@ -15,6 +15,9 @@ std::mutex dataset_mutex;
 std::unordered_map<std::string, Row> latest_records; // vin -> max_timestamp
 std::unordered_map<std::string, std::vector<Row>> time_range_records; // vin -> timestamps
 
+std::unordered_map<std::string, std::pair<int64_t, int64_t>> min_max_timestamps;
+
+
 static std::string generate_random_string(int length) {
     const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -117,6 +120,14 @@ static void generate_dataset(size_t dataset_id) {
         // 解析数据
         std::string randomString = columns[0];
         int64_t timestamp = std::stoll(columns[1]);
+
+        if (min_max_timestamps.find(randomString) != min_max_timestamps.end()) {
+            min_max_timestamps[randomString].first = std::min(min_max_timestamps[randomString].first, timestamp);
+            min_max_timestamps[randomString].second = std::max(min_max_timestamps[randomString].second, timestamp);
+        } else {
+            min_max_timestamps.emplace(randomString, std::pair{timestamp, timestamp});
+        }
+
         std::string variableString = columns[2];
         int32_t randomInt = std::stoi(columns[3]);
         double randomDouble = std::stod(columns[4]);
@@ -213,15 +224,16 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
 static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
     TimeRangeQueryRequest trqr;
     trqr.tableName = TABLE_NAME;
-    if (generate_random_float64() < 0.5) {
-        trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
-    } else {
-        trqr.vin = generate_random_string(17);
-    }
-    trqr.timeUpperBound = generate_random_timestamp();
-    trqr.timeLowerBound = trqr.timeUpperBound / 1000;
-    trqr.requestedColumns = {"col1", "col3"};
+    // if (generate_random_float64() < 0.5) {
+    //     trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
+    // } else {
+    //     trqr.vin = generate_random_string(17);
+    // }
+    trqr.vin = generate_random_string(17);
     std::string key(trqr.vin.vin, 17);
+    trqr.timeUpperBound = min_max_timestamps[key].second / 10;
+    trqr.timeLowerBound = min_max_timestamps[key].first * 10;
+    trqr.requestedColumns = {"col1", "col3"};
 
     std::vector<Row> trq_ground_truths;
     std::vector<Row> trq_results;

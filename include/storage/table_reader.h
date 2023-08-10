@@ -93,21 +93,16 @@ public:
                 results.emplace_back(result_row);
             }
         }
-        INFO_LOG("handle latest query success, results size is %zu", vins.size())
     }
 
     void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
-        std::vector<Row> table_rows;
-
         for (auto& [segment_id, segment_reader] : _segment_readers) {
             auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
             if (result.has_value()) {
-                table_rows = std::move((*result).to_rows());
+                std::vector<Row> segment_rows = (*result).to_rows();
+                results.insert(results.end(), segment_rows.begin(), segment_rows.end());
             }
         }
-
-        results.insert(results.end(), table_rows.begin(), table_rows.end());
-        INFO_LOG("handle time range query success, results size is %zu", table_rows.size())
     }
 
     // void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {

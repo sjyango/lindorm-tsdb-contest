@@ -35,6 +35,7 @@ static size_t load_next_segment_id_from_file(std::string file_path) {
 TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
         : TSDBEngine(dataDirPath) {
     _fs = io::FileSystem::create(dataDirPath);
+    INFO_LOG("TSDBEngine created success")
 }
 
 TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -93,6 +94,7 @@ int TSDBEngineImpl::shutdown() {
         save_schema_to_file(table.second->_table_schema, schema_path);
         save_next_segment_id_to_file(table.second->_next_segment_id.load(), next_segment_id_path);
     }
+    INFO_LOG("TSDBEngine shutdown success")
     return 0;
 }
 
@@ -103,29 +105,23 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         return -1;
     }
     TableSPtr table = _tables[writeRequest.tableName];
-    {
-        // std::unique_lock<std::mutex> l(_latch);
-        table->_table_writer->append(writeRequest.rows);
-    }
+    table->_table_writer->append(writeRequest.rows);
     return 0;
 }
 
 int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
     auto it = _tables.find(pReadReq.tableName);
     if (it == _tables.cend()) {
-        ERR_LOG("No such table [%s], cannot upsert to", pReadReq.tableName.c_str())
+        ERR_LOG("No such table [%s], cannot execute latest query", pReadReq.tableName.c_str())
         return -1;
     }
-    TableSPtr table = it->second;
     {
         std::unique_lock<std::mutex> l(_latch);
+        TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
             table->_table_writer->flush();
         }
-    }
-    {
-        std::unique_lock<std::mutex> l(_latch);
-        table->_table_reader->init(std::make_shared<PartialSchema>(std::move(table->_table_schema->column_by_names(pReadReq.requestedColumns))));
+        table->_table_reader->init(std::make_shared<PartialSchema>(table->_table_schema->column_by_names(pReadReq.requestedColumns)));
         table->_table_reader->handle_latest_query(pReadReq.vins, pReadRes);
         table->_table_reader->reset();
     }
@@ -135,19 +131,16 @@ int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::
 int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
     auto it = _tables.find(trReadReq.tableName);
     if (it == _tables.cend()) {
-        ERR_LOG("No such table [%s], cannot upsert to", trReadReq.tableName.c_str())
+        ERR_LOG("No such table [%s], cannot execute time range query", trReadReq.tableName.c_str())
         return -1;
     }
-    TableSPtr table = it->second;
     {
         std::unique_lock<std::mutex> l(_latch);
+        TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
             table->_table_writer->flush();
         }
-    }
-    {
-        std::unique_lock<std::mutex> l(_latch);
-        table->_table_reader->init(std::make_shared<PartialSchema>(std::move(table->_table_schema->column_by_names(trReadReq.requestedColumns))));
+        table->_table_reader->init(std::make_shared<PartialSchema>(table->_table_schema->column_by_names(trReadReq.requestedColumns)));
         table->_table_reader->handle_time_range_query(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound, trReadRes);
         table->_table_reader->reset();
     }
