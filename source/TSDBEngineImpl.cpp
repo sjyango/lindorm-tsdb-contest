@@ -9,6 +9,74 @@
 
 namespace LindormContest {
 
+static std::string column_type_to_string(ColumnType type) {
+    switch (type) {
+    case COLUMN_TYPE_INTEGER:
+        return "COLUMN_TYPE_INTEGER";
+    case COLUMN_TYPE_TIMESTAMP:
+        return "COLUMN_TYPE_TIMESTAMP";
+    case COLUMN_TYPE_DOUBLE_FLOAT:
+        return "COLUMN_TYPE_DOUBLE_FLOAT";
+    case COLUMN_TYPE_STRING:
+        return "COLUMN_TYPE_STRING";
+    case COLUMN_TYPE_UNINITIALIZED:
+        return "COLUMN_TYPE_UNINITIALIZED";
+    }
+    return "COLUMN_TYPE_UNINITIALIZED";
+}
+
+static ColumnType string_to_column_type(std::string s) {
+    if (s == "COLUMN_TYPE_INTEGER") {
+        return COLUMN_TYPE_INTEGER;
+    }
+    if (s == "COLUMN_TYPE_TIMESTAMP") {
+        return COLUMN_TYPE_TIMESTAMP;
+    }
+    if (s == "COLUMN_TYPE_DOUBLE_FLOAT") {
+        return COLUMN_TYPE_DOUBLE_FLOAT;
+    }
+    if (s == "COLUMN_TYPE_STRING") {
+        return COLUMN_TYPE_STRING;
+    }
+    return COLUMN_TYPE_UNINITIALIZED;
+}
+
+static void save_schema_to_file(TableSchemaSPtr table_schema, std::string file_path) {
+    std::ofstream output_file(file_path);
+
+    for (const auto& column : table_schema->columns()) {
+        if (column.get_name() == "vin" || column.get_name() == "timestamp") {
+            continue;
+        }
+        output_file << column.get_name() << " " << column_type_to_string(column.get_column_type()) << std::endl;
+    }
+
+    output_file.close();
+}
+
+static TableSchemaSPtr load_schema_from_file(std::string file_path) {
+    std::map<std::string, ColumnType> column_type_map;
+    std::ifstream input_file(file_path);
+
+    if (input_file.is_open()) {
+        std::string column_name;
+        std::string column_type_str;
+
+        while (input_file >> column_name >> column_type_str) {
+            ColumnType column_type = string_to_column_type(column_type_str);
+            column_type_map[column_name] = column_type;
+        }
+
+        input_file.close();
+    } else {
+        throw std::runtime_error("Error opening schema file");
+    }
+
+    Schema schema;
+    schema.columnTypeMap = std::move(column_type_map);
+    return std::make_shared<TableSchema>(schema);
+}
+
 static void save_next_segment_id_to_file(size_t next_segment_id, std::string file_path) {
     std::ofstream output_file(file_path);
     output_file << next_segment_id << std::endl;

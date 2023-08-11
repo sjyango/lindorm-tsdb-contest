@@ -24,7 +24,7 @@
 namespace LindormContest::io {
 
 FileWriter::FileWriter(Path&& path, int fd, FileSystemSPtr fs)
-        : _path(std::move(path)), _fd(fd), _fs(fs), _opened(true) {}
+        : _path(std::move(path)), _fs(fs), _fd(fd), _opened(true) {}
 
 FileWriter::~FileWriter() {
     if (_opened) {

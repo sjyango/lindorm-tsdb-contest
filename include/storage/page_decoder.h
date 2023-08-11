@@ -126,7 +126,7 @@ public:
         uint32_t start_offset = _cur_idx == 0 ? 0 : _get_offset(_cur_idx);
         uint32_t offsets[max_fetch];
 
-        for (int i = 0; i < max_fetch; ++i) {
+        for (size_t i = 0; i < max_fetch; ++i) {
             offsets[i] = _get_offset(++_cur_idx) - start_offset;
         }
 

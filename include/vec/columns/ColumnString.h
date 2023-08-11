@@ -20,6 +20,13 @@
 
 namespace LindormContest::vectorized {
 
+/**
+ * | XXX | YY | Z |
+ * |  3  | 5  | 6 |
+ *
+ * | XXX || Z |
+ * |  3  |3|4|
+ */
 class ColumnString : public IColumn {
 public:
     using Char = UInt8;
@@ -42,11 +49,13 @@ public:
     }
 
     inline size_t offset_at(size_t i) const {
-        return _offsets[i - 1];
+        assert(i >= 0 && i <= _offsets.size());
+        return i != 0 ? _offsets[i - 1] : 0;
     }
 
     inline size_t size_at(size_t i) const {
-        return _offsets[i] - _offsets[i - 1];
+        assert(i >= 0 && i < _offsets.size());
+        return i != 0 ? _offsets[i] - _offsets[i - 1] : _offsets[0];
     }
 
     String get(size_t n) {

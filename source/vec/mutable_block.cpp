@@ -110,7 +110,7 @@ void MutableBlock::append_block(const Block* block, const size_t* row_begin, con
 void MutableBlock::append_block(const Block* block, size_t row_begin, size_t length) {
     assert(columns() <= block->columns());
     auto block_columns = block->get_columns();
-    for (int i = 0; i < _data.size(); ++i) {
+    for (size_t i = 0; i < _data.size(); ++i) {
         assert(_data[i]->get_type() == block_columns[i]->get_type());
         _data[i]->insert_range_from(*block_columns[i], row_begin, length);
     }

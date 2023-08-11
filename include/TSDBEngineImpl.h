@@ -17,6 +17,7 @@
 #include "storage/segment_traits.h"
 #include "storage/table_writer.h"
 #include "storage/table_reader.h"
+#include "storage/table_schema.h"
 #include "struct/Schema.h"
 #include "io/file_system.h"
 #include "io/io_utils.h"

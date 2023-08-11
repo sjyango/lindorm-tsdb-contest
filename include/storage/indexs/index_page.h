@@ -40,7 +40,7 @@ public:
     }
 
     void finish(OwnedSlice* body, IndexPageFooter* footer) {
-        *body = std::move(OwnedSlice(_buffer));
+        *body = OwnedSlice(_buffer);
         footer->_page_type = PageType::INDEX_PAGE;
         footer->_uncompressed_size = body->size();
         footer->_num_entries = _count;
@@ -92,13 +92,13 @@ public:
         return _footer._num_entries;
     }
 
-    Slice get_key(int idx) const {
+    Slice get_key(uint32_t idx) const {
         assert(_parsed);
         assert(idx >= 0 && idx < _footer._num_entries);
         return _keys[idx];
     }
 
-    io::PagePointer get_value(int idx) const {
+    io::PagePointer get_value(uint32_t idx) const {
         assert(_parsed);
         assert(idx >= 0 && idx < _footer._num_entries);
         return _values[idx];

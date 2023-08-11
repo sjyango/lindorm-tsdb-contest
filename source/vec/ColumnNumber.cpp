@@ -24,7 +24,7 @@ bool ColumnNumber<T>::operator==(const ColumnNumber<T>& rhs) const {
         return false;
     }
 
-    for (int i = 0; i < size(); ++i) {
+    for (size_t i = 0; i < size(); ++i) {
         if (get(i) != rhs.get(i)) {
             return false;
         }
@@ -59,7 +59,7 @@ void ColumnNumber<T>::insert_indices_from(const IColumn& src, const size_t* indi
     _data.resize(origin_size + new_size);
     const ColumnNumber<T>& src_data = reinterpret_cast<const ColumnNumber<T>&>(src);
 
-    for (int i = 0; i < new_size; ++i) {
+    for (size_t i = 0; i < new_size; ++i) {
         _data[origin_size + i] = src_data[indices_begin[i]];
     }
 }

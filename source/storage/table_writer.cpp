@@ -20,9 +20,7 @@
 namespace LindormContest::storage {
 
 TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::atomic<size_t>* next_segment_id, size_t MEM_TABLE_FLUSH_THRESHOLD)
-        : _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _fs(fs), _schema(schema), _next_segment_id(next_segment_id) {
-    // _init_mem_table();
-}
+        : _MEM_TABLE_FLUSH_THRESHOLD(MEM_TABLE_FLUSH_THRESHOLD), _fs(fs), _schema(schema), _next_segment_id(next_segment_id) {}
 
 TableWriter::~TableWriter() = default;
 
@@ -31,7 +29,7 @@ void TableWriter::append(const std::vector<Row>& append_rows) {
         return;
     }
     std::unique_ptr<vectorized::MutableBlock> input_block =
-            std::make_unique<vectorized::MutableBlock>(std::move(_schema->create_block()));
+            std::make_unique<vectorized::MutableBlock>(_schema->create_block());
     assert(input_block->columns() == append_rows[0].columns.size() + 2); // 2 means vin + timestamp
 
     for (const auto& row : append_rows) {
@@ -82,7 +80,6 @@ void TableWriter::flush() {
     _file_writer->finalize();
     _file_writer->close();
     _file_writer.reset();
-    // _init_mem_table();
 }
 
 size_t TableWriter::rows() const {

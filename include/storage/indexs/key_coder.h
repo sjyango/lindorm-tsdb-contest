@@ -22,7 +22,6 @@
 
 namespace LindormContest::storage {
 
-// using FullEncodeAscendingFunc = void (*)(const void* value, std::string* buf);
 using EncodeAscendingFunc = void (*)(const void* value, std::string* buf);
 using DecodeAscendingFunc = void (*)(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr);
 
@@ -34,13 +33,13 @@ static std::string padding_format(int64_t value, size_t width) {
     return str_value;
 }
 
-static std::string padding_format(uint64_t value, size_t width) {
-    std::string str_value = std::to_string(value);
-    if (str_value.length() < width) {
-        str_value = std::string(width - str_value.length(), '0') + str_value;
-    }
-    return str_value;
-}
+// static std::string padding_format(uint64_t value, size_t width) {
+//     std::string str_value = std::to_string(value);
+//     if (str_value.length() < width) {
+//         str_value = std::string(width - str_value.length(), '0') + str_value;
+//     }
+//     return str_value;
+// }
 
 // Order-preserving binary encoding for values of a particular type so that
 // those values can be compared by memcpy their encoded bytes.
@@ -50,22 +49,13 @@ class KeyCoder {
 public:
     template <typename TraitsType>
     KeyCoder(TraitsType traits)
-            : _encode_ascending(traits.encode_ascending),
-              _decode_ascending(traits.decode_ascending) {}
+            : _decode_ascending(traits.decode_ascending),
+              _encode_ascending(traits.encode_ascending) {}
 
-    // _full_encode_ascending(traits.full_encode_ascending),
-    // encode the provided `value` into `buf`.
-    // void full_encode_ascending(const void* value, std::string* buf) const {
-    //     _full_encode_ascending(value, buf);
-    // }
-
-    // similar to `full_encode_ascending`, but only encode part (the first `index_size` bytes) of the value.
-    // only applicable to string type
     void encode_ascending(const void* value, std::string* buf) const {
         _encode_ascending(value, buf);
     }
 
-    // Only used for test, should delete it in the future
     void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) const {
         return _decode_ascending(encoded_key, index_size, cell_ptr);
     }
@@ -73,7 +63,6 @@ public:
 private:
     DecodeAscendingFunc _decode_ascending;
     EncodeAscendingFunc _encode_ascending;
-    // FullEncodeAscendingFunc _full_encode_ascending;
 };
 
 template <ColumnType column_type>
@@ -83,12 +72,6 @@ template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
     using KeyType = Int32;
 
-    // static void full_encode_ascending(const void* value, std::string* buf) {
-    //     KeyType key_val;
-    //     std::memcpy(&key_val, value, sizeof(KeyType));
-    //     buf->append((char*) &key_val, sizeof(KeyType));
-    // }
-
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
@@ -96,11 +79,6 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
-        // decode_ascending only used in orinal index page, maybe should remove it in the future.
-        // currently, we reduce the usage of this method.
-        // if (encoded_key->_size < sizeof(KeyType)) {
-        //     return Status::InvalidArgument("Key is too short", "");
-        // }
         KeyType key_val;
         memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
         memcpy(cell_ptr, &key_val, sizeof(KeyType));
@@ -112,17 +90,11 @@ template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_TIMESTAMP> {
     using KeyType = Int64;
 
-    // static void full_encode_ascending(const void* value, std::string* buf) {
-    //     KeyType key_val;
-    //     std::memcpy(&key_val, value, sizeof(KeyType));
-    //     buf->append((char*) &key_val, sizeof(KeyType));
-    // }
-
     // encoded(37) = vin(17) + timestamp(20)
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
-        std::string encoded_str = std::move(padding_format(key_val, 20));
+        std::string encoded_str = padding_format(key_val, 20);
         buf->append(encoded_str);
     }
 
@@ -138,12 +110,6 @@ template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_DOUBLE_FLOAT> {
     using KeyType = Float64;
 
-    // static void full_encode_ascending(const void* value, std::string* buf) {
-    //     KeyType key_val;
-    //     std::memcpy(&key_val, value, sizeof(KeyType));
-    //     buf->append((char*) &key_val, sizeof(KeyType));
-    // }
-
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
@@ -151,11 +117,6 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_DOUBLE_FLOAT> {
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
-        // decode_ascending only used in orinal index page, maybe should remove it in the future.
-        // currently, we reduce the usage of this method.
-        // if (encoded_key->_size < sizeof(KeyType)) {
-        //     return Status::InvalidArgument("Key is too short", "");
-        // }
         KeyType key_val;
         memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
         memcpy(cell_ptr, &key_val, sizeof(KeyType));
@@ -166,11 +127,6 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_DOUBLE_FLOAT> {
 template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_STRING> {
     using KeyType = Slice;
-
-    // static void full_encode_ascending(const void* value, std::string* buf) {
-    //     auto slice = reinterpret_cast<const Slice*>(value);
-    //     buf->append(slice->_data, slice->_size);
-    // }
 
     static void encode_ascending(const void* value, std::string* buf) {
         auto slice = reinterpret_cast<const Slice*>(value);
@@ -186,12 +142,6 @@ template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_UNINITIALIZED> {
     using KeyType = uint64_t;
 
-    // static void full_encode_ascending(const void* value, std::string* buf) {
-    //     KeyType key_val;
-    //     std::memcpy(&key_val, value, sizeof(KeyType));
-    //     buf->append((char*) &key_val, sizeof(KeyType));
-    // }
-
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
@@ -199,11 +149,6 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_UNINITIALIZED> {
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
-        // decode_ascending only used in orinal index page, maybe should remove it in the future.
-        // currently, we reduce the usage of this method.
-        // if (encoded_key->_size < sizeof(KeyType)) {
-        //     return Status::InvalidArgument("Key is too short", "");
-        // }
         KeyType key_val;
         memcpy(&key_val, encoded_key->_data, sizeof(KeyType));
         memcpy(cell_ptr, &key_val, sizeof(KeyType));

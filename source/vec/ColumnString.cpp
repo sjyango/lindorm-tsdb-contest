@@ -23,7 +23,7 @@ bool ColumnString::operator==(const ColumnString& rhs) const {
         return false;
     }
 
-    for (int i = 0; i < size(); ++i) {
+    for (size_t i = 0; i < size(); ++i) {
         if (get(i) != rhs.get(i)) {
             return false;
         }
@@ -38,14 +38,14 @@ bool ColumnString::operator!=(const ColumnString& rhs) const {
 
 void ColumnString::insert_from(const IColumn& src, size_t n) {
     const ColumnString& src_vec = static_cast<const ColumnString&>(src);
-    const size_t size_to_append = src_vec._offsets[n] - src_vec._offsets[n - 1];
+    const size_t size_to_append = n != 0 ? src_vec._offsets[n] - src_vec._offsets[n - 1] : src_vec._offsets[0];
 
-    if (!size_to_append) {
+    if (size_to_append == 0) {
         // insert empty string
         _offsets.push_back(_chars.size());
     } else {
         const size_t old_size = _chars.size();
-        const size_t offset = src_vec._offsets[n - 1];
+        const size_t offset = src_vec.offset_at(n);
         const size_t new_size = old_size + size_to_append;
 
         _chars.resize(new_size);
@@ -65,22 +65,22 @@ void ColumnString::insert_range_from(const IColumn& src, size_t start, size_t le
         std::cerr << "Parameter out of bound in IColumnString::insert_range_from method.";
     }
 
-    size_t nested_offset = src_vec.offset_at(start);
-    size_t nested_length = src_vec._offsets[start + length - 1] - nested_offset;
+    size_t src_offset = src_vec.offset_at(start);
+    size_t src_length = src_vec.offset_at(start + length) - src_offset;
 
-    size_t old__chars_size = _chars.size();
-    _chars.resize(old__chars_size + nested_length);
-    memcpy(&_chars[old__chars_size], &src_vec._chars[nested_offset], nested_length);
+    size_t old_size = _chars.size();
+    _chars.resize(old_size + src_length);
+    std::memcpy(&_chars[old_size], &src_vec._chars[src_offset], src_length);
 
     if (start == 0 && _offsets.empty()) {
         _offsets.assign(src_vec._offsets.begin(), src_vec._offsets.begin() + length);
     } else {
-        size_t old_size = _offsets.size();
-        size_t prev_max_offset = _offsets.back();
-        _offsets.resize(old_size + length);
+        size_t old_offset_size = _offsets.size();
+        size_t old_max_offset = _offsets.back();
+        _offsets.resize(old_offset_size + length);
 
         for (size_t i = 0; i < length; ++i) {
-            _offsets[old_size + i] = src_vec._offsets[start + i] - nested_offset + prev_max_offset;
+            _offsets[old_offset_size + i] = src_vec._offsets[start + i] - src_offset + old_max_offset;
         }
     }
 }
@@ -90,10 +90,10 @@ void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices
         return;
     }
     size_t new_size = indices_end - indices_begin;
-    const ColumnString& src_data = static_cast<const ColumnString&>(src);
+    const ColumnString& src_vec = static_cast<const ColumnString&>(src);
 
-    for (int i = 0; i < new_size; ++i) {
-        push_string(src_data[indices_begin[i]]);
+    for (size_t i = 0; i < new_size; ++i) {
+        push_string(src_vec[indices_begin[i]]);
     }
 }
 
@@ -102,7 +102,7 @@ int ColumnString::compare_at(size_t n, size_t m, const IColumn& rhs_) const {
     size_t lhs_length = size_at(n);
     size_t rhs_length = rhs.size_at(m);
     size_t min_length = std::min(lhs_length, rhs_length);
-    int res = memcmp(_chars.data() + offset_at(n), rhs._chars.data() + rhs.offset_at(m), min_length);
+    int res = std::memcmp(_chars.data() + offset_at(n), rhs._chars.data() + rhs.offset_at(m), min_length);
     if (res) {
         return res;
     }
@@ -163,41 +163,5 @@ void ColumnString::insert_many_data(const uint8_t* data, size_t num) {
     INFO_LOG("%s invokes insert_many_data", typeid(*this).name())
     throw std::runtime_error("ColumnString doesn't implement insert_many_data");
 }
-
-// void ColumnString::insert_indices_from(const IColumn& src, const size_t* indices_begin,
-//                                           const size_t* indices_end) {
-//     const ColumnString& src_str = static_cast<const ColumnString&>(src);
-//     auto src_offset_data = src_str._offsets.data();
-//
-//     auto old_char_size = _chars.size();
-//     size_t total_chars_size = old_char_size;
-//
-//     auto dst_offsets_pos = _offsets.size();
-//     _offsets.resize(_offsets.size() + indices_end - indices_begin);
-//     auto* dst_offsets_data = _offsets.data();
-//
-//     for (auto x = indices_begin; x != indices_end; ++x) {
-//         if (*x != -1) {
-//             total_chars_size += src_offset_data[*x] - src_offset_data[*x - 1];
-//         }
-//         dst_offsets_data[dst_offsets_pos++] = total_chars_size;
-//     }
-//
-//     _chars.resize(total_chars_size);
-//
-//     auto* src_data_ptr = src_str._chars.data();
-//     auto* dst_data_ptr = _chars.data();
-//
-//     size_t dst_chars_pos = old_char_size;
-//
-//     for (auto x = indices_begin; x != indices_end; ++x) {
-//         if (*x != -1) {
-//             const size_t size_to_append = src_offset_data[*x] - src_offset_data[*x - 1];
-//             const size_t offset = src_offset_data[*x - 1];
-//             memcpy(dst_data_ptr + dst_chars_pos, src_data_ptr + offset, size_to_append);
-//             dst_chars_pos += size_to_append;
-//         }
-//     }
-// }
 
 }

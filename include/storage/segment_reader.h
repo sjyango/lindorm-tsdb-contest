@@ -284,10 +284,10 @@ private:
     io::FileReaderSPtr _file_reader;
     SegmentFooter _footer;
     std::unordered_map<uint32_t, std::unique_ptr<ColumnReader>> _column_readers;
+    std::unordered_map<uint32_t, size_t> _col_id_to_column_index;
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
     vectorized::SMutableColumns _short_key_columns;
     vectorized::SMutableColumns _return_columns;
-    std::unordered_map<uint32_t, size_t> _col_id_to_column_index;
 };
 
 }

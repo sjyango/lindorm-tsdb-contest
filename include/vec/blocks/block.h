@@ -69,7 +69,7 @@ public:
     SColumns get_columns() const {
         size_t num_columns = _data.size();
         SColumns columns(num_columns);
-        for (int i = 0; i < num_columns; ++i) {
+        for (size_t i = 0; i < num_columns; ++i) {
             columns[i] = _data[i]._column;
         }
         return columns;

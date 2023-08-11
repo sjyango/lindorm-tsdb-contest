@@ -30,9 +30,8 @@ namespace LindormContest::storage {
 
 class TableColumn {
 public:
-    TableColumn(uint32_t uid, String col_name, ColumnType type, bool is_key = false)
-            : _type(DataTypeFactory::instance().get_column_data_type(type)),
-              _uid(uid), _col_name(col_name), _is_key(is_key) {}
+    TableColumn(uint32_t uid, String col_name, ColumnType type, bool is_key)
+            : _uid(uid), _col_name(col_name), _type(DataTypeFactory::instance().get_column_data_type(type)), _is_key(false) {}
 
     uint32_t get_uid() const { return _uid; }
 
@@ -139,7 +138,7 @@ public:
             const auto& it = _field_name_to_index.find(field_name);
             columns.emplace_back(_cols[it->second]);
         }
-        return std::move(columns);
+        return columns;
     }
 
     bool have_column(const std::string& field_name) const {
@@ -176,7 +175,7 @@ public:
 
     vectorized::Block create_block(const std::vector<uint32_t>& return_columns) const {
         vectorized::Block block;
-        for (int i = 0; i < return_columns.size(); ++i) {
+        for (size_t i = 0; i < return_columns.size(); ++i) {
             const auto& col = _cols[return_columns[i]];
             vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(col.get_column_type(), col.get_name());
             block.insert({ptr, col.get_column_type(), col.get_name()});
@@ -200,73 +199,5 @@ private:
     std::unordered_map<std::string, int32_t> _field_name_to_index;
     std::unordered_map<int32_t, int32_t> _field_id_to_index;
 };
-
-static std::string column_type_to_string(ColumnType type) {
-    switch (type) {
-    case COLUMN_TYPE_INTEGER:
-        return "COLUMN_TYPE_INTEGER";
-    case COLUMN_TYPE_TIMESTAMP:
-        return "COLUMN_TYPE_TIMESTAMP";
-    case COLUMN_TYPE_DOUBLE_FLOAT:
-        return "COLUMN_TYPE_DOUBLE_FLOAT";
-    case COLUMN_TYPE_STRING:
-        return "COLUMN_TYPE_STRING";
-    case COLUMN_TYPE_UNINITIALIZED:
-        return "COLUMN_TYPE_UNINITIALIZED";
-    }
-    return "COLUMN_TYPE_UNINITIALIZED";
-}
-
-static ColumnType string_to_column_type(std::string s) {
-    if (s == "COLUMN_TYPE_INTEGER") {
-        return COLUMN_TYPE_INTEGER;
-    }
-    if (s == "COLUMN_TYPE_TIMESTAMP") {
-        return COLUMN_TYPE_TIMESTAMP;
-    }
-    if (s == "COLUMN_TYPE_DOUBLE_FLOAT") {
-        return COLUMN_TYPE_DOUBLE_FLOAT;
-    }
-    if (s == "COLUMN_TYPE_STRING") {
-        return COLUMN_TYPE_STRING;
-    }
-    return COLUMN_TYPE_UNINITIALIZED;
-}
-
-static void save_schema_to_file(TableSchemaSPtr table_schema, std::string file_path) {
-    std::ofstream output_file(file_path);
-
-    for (const auto& column : table_schema->columns()) {
-        if (column.get_name() == "vin" || column.get_name() == "timestamp") {
-            continue;
-        }
-        output_file << column.get_name() << " " << column_type_to_string(column.get_column_type()) << std::endl;
-    }
-
-    output_file.close();
-}
-
-static TableSchemaSPtr load_schema_from_file(std::string file_path) {
-    std::map<std::string, ColumnType> column_type_map;
-    std::ifstream input_file(file_path);
-
-    if (input_file.is_open()) {
-        std::string column_name;
-        std::string column_type_str;
-
-        while (input_file >> column_name >> column_type_str) {
-            ColumnType column_type = string_to_column_type(column_type_str);
-            column_type_map[column_name] = column_type;
-        }
-
-        input_file.close();
-    } else {
-        throw std::runtime_error("Error opening schema file");
-    }
-
-    Schema schema;
-    schema.columnTypeMap = std::move(column_type_map);
-    return std::make_shared<TableSchema>(schema);
-}
 
 }

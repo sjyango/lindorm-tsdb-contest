@@ -16,17 +16,32 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(lindorm-tsdb-contest-cpp)
 
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "LSAN")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_MACOSX_RPATH 1)
-if( CMAKE_BUILD_TYPE STREQUAL "Debug" )
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
-else( CMAKE_BUILD_TYPE STREQUAL "Release" )
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -O3")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -O3")
-endif( CMAKE_BUILD_TYPE STREQUAL "Debug" )
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
+
+set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -O0 -fsanitize=address -DADDRESS_SANITIZER")
+
+set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -O0 -fsanitize=leak -DLEAK_SANITIZER")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -O3")
+
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
+    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+    set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
+elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "ASAN")
+    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_ASAN}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    # export LD_LIBRARY_PATH='/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/asan/.libs/'
+elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "LSAN")
+    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_LSAN}")
+    # LD_PRELOAD=/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/lsan/.libs/liblsan.so.0 ./multi_thread_test
+else()
+    message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
+endif()
 
 # We use g++-12 to compile, so that we recommend you to use the same compiler to test for better compatibility.
 message("Your OS: ${CMAKE_HOST_SYSTEM_NAME}")

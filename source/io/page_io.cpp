@@ -28,11 +28,11 @@ void PageIO::compress_page_body(CompressionUtil* compression_util, const Slice& 
         if (space_saving > 0 && space_saving >= min_space_saving) {
             // shrink the buf to fit the len size to avoid taking
             // up the memory of the size MAX_COMPRESSED_SIZE
-            *compressed_body = std::move(OwnedSlice(buf));
+            *compressed_body = OwnedSlice(buf);
         }
     }
     // otherwise, do not compress
-    *compressed_body = std::move(OwnedSlice());
+    *compressed_body = OwnedSlice();
 }
 
 void PageIO::write_page(FileWriter* writer, OwnedSlice&& body, const storage::PageFooter& footer, PagePointer* result) {

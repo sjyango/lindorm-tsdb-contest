@@ -187,22 +187,6 @@ struct OrdinalIndexMeta : public ColumnIndexMeta {
     }
 };
 
-// struct ShortKeyIndexPage : public PageFooter {
-//     UInt32 _num_items;
-//     UInt32 _key_bytes;
-//     UInt32 _offset_bytes;
-//     UInt32 _segment_id;
-//     UInt32 _num_segment_rows;
-//     OwnedSlice _data;
-//
-//     ShortKeyIndexPage(size_t uncompressed_size, UInt32 num_items,
-//                       UInt32 key_bytes, UInt32 offset_bytes,
-//                       UInt32 segment_id, UInt32 num_segment_rows, OwnedSlice&& data)
-//             : PageFooter(PageType::SHORT_KEY_PAGE, uncompressed_size),
-//               _num_items(num_items), _key_bytes(key_bytes), _offset_bytes(offset_bytes),
-//               _segment_id(segment_id), _num_segment_rows(num_segment_rows), _data(std::move(data)) {}
-// };
-
 struct OrdinalIndexPage : public PageFooter {
     ColumnIndexType _index_type;
     UInt32 _num_items;
@@ -264,38 +248,6 @@ struct ColumnMeta {
     }
 };
 
-// struct ColumnMeta {
-//     UInt32 _column_id;
-//     const DataType* _type;
-//     std::shared_ptr<OrdinalIndexPage> _ordinal_index;
-//     // EncodingType _encoding_type;
-//     // CompressionType _compression_type;
-//
-//     ColumnType get_column_type() const {
-//         return _type->column_type();
-//     }
-//
-//     size_t get_type_size() const {
-//         return _type->type_size();
-//     }
-// };
-
-// struct DataPage {
-//     OwnedSlice _data;
-//     DataPageFooter _footer;
-//
-//     DataPage(OwnedSlice&& data, DataPageFooter footer)
-//             : _data(std::move(data)), _footer(footer) {}
-//
-//     bool contains(ordinal_t ordinal) const {
-//         return ordinal >= _footer._first_ordinal && ordinal < (_footer._first_ordinal + _footer._num_rows);
-//     }
-//
-//     ordinal_t get_first_ordinal() const {
-//         return _footer._first_ordinal;
-//     }
-// };
-
 struct DataPage {
 public:
     DataPage() = default;
@@ -307,11 +259,11 @@ public:
 
     ~DataPage() = default;
 
-    char* data() {
+    char* data() const {
         return (char*)_data.data();
     }
 
-    size_t size() {
+    size_t size() const {
         return _data.size();
     }
 
@@ -353,18 +305,6 @@ struct ColumnData {
         return _column_meta.get_type_size();
     }
 };
-
-// struct SegmentData;
-//
-// using SegmentSPtr = std::shared_ptr<SegmentData>;
-//
-// struct SegmentData : public std::vector<ColumnSPtr>, public std::enable_shared_from_this<SegmentData> {
-//     UInt32 _version;
-//     UInt32 _segment_id;
-//     UInt32 _num_rows = 0;
-//     TableSchemaSPtr _table_schema;
-//     // std::shared_ptr<ShortKeyIndexPage> _short_key_index_page;
-// };
 
 struct SegmentFooter {
     SegmentFooter() = default;
