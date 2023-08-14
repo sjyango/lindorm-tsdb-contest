@@ -33,44 +33,34 @@ class SegmentReader {
     static constexpr size_t NUM_ROWS_PER_GROUP = 1024;
 
 public:
-    SegmentReader(size_t segment_id, io::FileReaderSPtr file_reader,
-                  TableSchemaSPtr table_schema, PartialSchemaSPtr schema)
-            : _segment_id(segment_id), _schema(schema), _table_schema(table_schema) {
+    SegmentReader(io::FileReaderSPtr file_reader, TableSchemaSPtr table_schema)
+            : _table_schema(table_schema) {
+        // init file reader
         _file_reader = file_reader;
+        // init segment footer
         _parse_footer();
+        // init short key index
         _load_short_key_index();
-
-        for (const auto& col_id : _schema->column_ids()) {
-            _column_readers.emplace(col_id, std::make_unique<ColumnReader>(_footer._column_metas[col_id], _footer._num_rows, _file_reader));
+        // init all column readers
+        for (const auto& column : _table_schema->columns()) {
+            _column_readers.emplace(column.get_uid(), std::make_unique<ColumnReader>(_footer._column_metas[column.get_uid()], _footer._num_rows, _file_reader));
         }
-
-        _short_key_columns = _schema->create_block({0, 1}).mutate_columns();
-        _return_columns = _schema->create_block().mutate_columns();
-        size_t column_index = 0;
-
-        for (const auto& col_id : _schema->column_ids()) {
-            _col_id_to_column_index[col_id] = column_index++;
-        }
+        // init short key columns
+        _short_key_columns = _table_schema->create_block({0, 1}).mutate_columns();
     }
 
     ~SegmentReader() = default;
 
-    void next_batch(vectorized::Block* block) {
-        block->clear();
-        std::vector<ColumnId> col_ids = _schema->column_ids();
-        for (size_t i = 0; i < col_ids.size(); ++i) {
-            const TableColumn& column = _schema->column(col_ids[i]);
-            size_t column_index = _col_id_to_column_index[col_ids[i]];
-            block->insert({_return_columns[column_index], column.get_column_type(), column.get_name()});
+    std::optional<Row> handle_latest_query(PartialSchemaSPtr schema, Vin key_vin) {
+        INFO_LOG("handle_latest_query(PartialSchemaSPtr schema, Vin key_vin)")
+        vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
+        std::unordered_map<uint32_t, size_t> col_id_to_column_index;
+        size_t column_index = 0;
+
+        for (const auto& col_id : schema->column_ids()) {
+            col_id_to_column_index[col_id] = column_index++;
         }
-        assert(_schema->num_columns() == block->columns());
-    }
 
-    PartialSchemaSPtr schema() const {
-        return _schema;
-    }
-
-    std::optional<Row> handle_latest_query(Vin key_vin) {
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
         size_t result_ordinal = _lower_bound(increase_vin(key_vin), 0) - 1;
@@ -81,24 +71,29 @@ public:
         if (std::strncmp(key_vin.vin, column_vin[0].c_str(), 17) != 0) {
             return std::nullopt;
         }
-        _read_columns_by_range(_schema->column_ids(), result_ordinal, result_ordinal + 1);
-        vectorized::Block block = _schema->create_block();
-        assert(block.columns() == _return_columns.size());
+        _read_columns_by_range(schema->column_ids(), return_columns, col_id_to_column_index, result_ordinal, result_ordinal + 1);
+        vectorized::Block block = schema->create_block();
+        assert(block.columns() == return_columns.size());
 
         size_t i = 0;
 
         for (auto& item : block) {
-            item._column = std::move(_return_columns[i++]);
+            item._column = std::move(return_columns[i++]);
         }
-
-        // reset _return_columns
-        _return_columns = _schema->create_block().mutate_columns();
 
         assert(block.rows() <= 1);
         return {std::move(block.to_rows()[0])};
     }
 
-    std::optional<vectorized::Block> handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
+    std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
+        INFO_LOG("handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp)")
+        vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
+        std::unordered_map<uint32_t, size_t> col_id_to_column_index;
+        size_t column_index = 0;
+
+        for (const auto& col_id : schema->column_ids()) {
+            col_id_to_column_index[col_id] = column_index++;
+        }
         std::string key_vin(query_vin.vin, 17);
         size_t start_ordinal = _lower_bound(key_vin, lower_bound_timestamp);
         size_t end_ordinal = _lower_bound(key_vin, upper_bound_timestamp);
@@ -107,44 +102,42 @@ public:
         if (start_ordinal == end_ordinal) {
             return std::nullopt;
         }
-        _read_columns_by_range(_schema->column_ids(), start_ordinal, end_ordinal);
-        assert(_return_columns[0]->size() == end_ordinal - start_ordinal);
-        vectorized::Block block = _schema->create_block();
-        assert(block.columns() == _return_columns.size());
+        _read_columns_by_range(schema->column_ids(), return_columns, col_id_to_column_index, start_ordinal, end_ordinal);
+        assert(return_columns[0]->size() == end_ordinal - start_ordinal);
+        vectorized::Block block = schema->create_block();
+        assert(block.columns() == return_columns.size());
         size_t i = 0;
 
         for (auto& item : block) {
-            item._column = std::move(_return_columns[i++]);
+            item._column = std::move(return_columns[i++]);
         }
-
-        // reset _return_columns
-        _return_columns = _schema->create_block().mutate_columns();
 
         return {std::move(block)};
     }
 
-    void seek_to_first() {
-        _seek_columns_first(_schema->column_ids());
-    }
-
-    void seek_to_ordinal(ordinal_t ordinal) {
-        _seek_columns(_schema->column_ids(), ordinal);
-    }
-
-    void next_batch(size_t* n, vectorized::Block* dst) {
-        _read_columns(_schema->column_ids(), n);
-        size_t i = 0;
-
-        for (auto& item : *dst) {
-            item._column = std::move(_return_columns[i++]);
-        }
-    }
+    // void seek_to_first() {
+    //     _seek_columns_first(_schema->column_ids());
+    // }
+    //
+    // void seek_to_ordinal(ordinal_t ordinal) {
+    //     _seek_columns(_schema->column_ids(), ordinal);
+    // }
+    //
+    // void next_batch(size_t* n, vectorized::Block* dst) {
+    //     _read_columns(_schema->column_ids(), n);
+    //     size_t i = 0;
+    //
+    //     for (auto& item : *dst) {
+    //         item._column = std::move(_return_columns[i++]);
+    //     }
+    // }
 
 private:
     void _parse_footer() {
         // Footer => SegmentFooter + SegmentFooterSize
         size_t file_size = _file_reader->size();
         if (file_size < 4) {
+            ERR_LOG("Bad segment file")
             throw std::runtime_error("Bad segment file");
         }
         uint32_t footer_size;
@@ -152,6 +145,7 @@ private:
         _file_reader->read_at(file_size - 4, Slice((char*)&footer_size, 4), &bytes_read);
         assert(bytes_read == 4);
         if (file_size < 4 + footer_size) {
+            ERR_LOG("Bad segment file")
             throw std::runtime_error("Bad segment file");
         }
         std::string footer_buffer;
@@ -235,33 +229,23 @@ private:
         _column_readers[1]->next_batch(&num_rows, _short_key_columns[1]);
     }
 
-    // void _read_columns_by_index(const RowRange& range) {
-    //     for (auto& column : _return_columns) {
-    //         column->clear();
-    //     }
-    //     size_t num_to_read = range.to() - range.from();
-    //     _seek_columns(_schema->column_ids(), range.from());
-    //     _read_columns(_schema->column_ids(), &num_to_read);
-    //     assert(num_to_read == (range.to() - range.from()));
-    // }
-
     // [start_ordinal, end_ordinal)
-    void _read_columns_by_range(const std::vector<ColumnId>& column_ids, size_t start_ordinal, size_t end_ordinal) {
-        for (auto& column : _return_columns) {
-            column->clear();
-        }
+    void _read_columns_by_range(const std::vector<ColumnId>& column_ids,
+                                vectorized::SMutableColumns& return_columns,
+                                std::unordered_map<uint32_t, size_t>& col_id_to_column_index,
+                                std::size_t start_ordinal, size_t end_ordinal) {
         size_t num_to_read = end_ordinal - start_ordinal;
         _seek_columns(column_ids, start_ordinal);
-        _read_columns(column_ids, &num_to_read);
+        _read_columns(column_ids, return_columns, col_id_to_column_index, &num_to_read);
         assert(num_to_read == (end_ordinal - start_ordinal));
     }
 
-    void _seek_columns_first(const std::vector<ColumnId>& column_ids) {
-        for (auto col_id : column_ids) {
-            assert(_column_readers.find(col_id) != _column_readers.end());
-            _column_readers[col_id]->seek_to_first();
-        }
-    }
+    // void _seek_columns_first(const std::vector<ColumnId>& column_ids) {
+    //     for (auto col_id : column_ids) {
+    //         assert(_column_readers.find(col_id) != _column_readers.end());
+    //         _column_readers[col_id]->seek_to_first();
+    //     }
+    // }
 
     void _seek_columns(const std::vector<ColumnId>& column_ids, size_t ordinal) {
         for (auto col_id : column_ids) {
@@ -270,24 +254,23 @@ private:
         }
     }
 
-    void _read_columns(const std::vector<ColumnId>& column_ids, size_t* num_rows) {
+    void _read_columns(const std::vector<ColumnId>& column_ids,
+                       vectorized::SMutableColumns& return_columns,
+                       std::unordered_map<uint32_t, size_t>& col_id_to_column_index,
+                       size_t* num_rows) {
         for (auto col_id : column_ids) {
             assert(_column_readers.find(col_id) != _column_readers.end());
-            size_t column_index = _col_id_to_column_index[col_id];
-            _column_readers[col_id]->next_batch(num_rows, _return_columns[column_index]);
+            size_t column_index = col_id_to_column_index[col_id];
+            _column_readers[col_id]->next_batch(num_rows, return_columns[column_index]);
         }
     }
 
-    size_t _segment_id;
-    PartialSchemaSPtr _schema;
     TableSchemaSPtr _table_schema;
     io::FileReaderSPtr _file_reader;
     SegmentFooter _footer;
     std::unordered_map<uint32_t, std::unique_ptr<ColumnReader>> _column_readers;
-    std::unordered_map<uint32_t, size_t> _col_id_to_column_index;
     std::unique_ptr<ShortKeyIndexReader> _short_key_index_reader;
     vectorized::SMutableColumns _short_key_columns;
-    vectorized::SMutableColumns _return_columns;
 };
 
 }

@@ -25,6 +25,7 @@ TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::ato
 TableWriter::~TableWriter() = default;
 
 void TableWriter::append(const std::vector<Row>& append_rows) {
+    INFO_LOG("TableWriter::append(const std::vector<Row>& append_rows)")
     if (append_rows.empty()) {
         return;
     }
@@ -54,6 +55,7 @@ bool TableWriter::_need_to_flush() {
 void TableWriter::_write(const vectorized::Block&& block) {
     {
         std::lock_guard<std::mutex> l(_latch);
+        INFO_LOG("TableWriter::_write(const vectorized::Block&& block)")
         if (_mem_table == nullptr) {
             _init_mem_table();
         }
