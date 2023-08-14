@@ -26,7 +26,7 @@ namespace LindormContest {
 
 using namespace storage;
 
-constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 1000000;
+constexpr size_t MEM_TABLE_FLUSH_THRESHOLD = 2000000;
 
 struct Table;
 
