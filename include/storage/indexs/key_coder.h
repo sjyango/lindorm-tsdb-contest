@@ -134,6 +134,7 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_STRING> {
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
+        ERR_LOG("decode_ascending is not implemented")
         throw std::runtime_error("decode_ascending is not implemented");
     }
 };

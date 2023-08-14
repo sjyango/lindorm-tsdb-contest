@@ -75,9 +75,11 @@ public:
             Slice key;
             io::PagePointer value(0, 0);
             if (!get_length_prefixed_slice(&input, &key)) {
+                ERR_LOG("Data corruption")
                 throw std::runtime_error("Data corruption");
             }
             if (!value.decode_from(&input)) {
+                ERR_LOG("Data corruption")
                 throw std::runtime_error("Data corruption");
             }
             _keys.push_back(key);

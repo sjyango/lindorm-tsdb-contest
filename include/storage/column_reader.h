@@ -38,6 +38,7 @@ public:
                 break;
             }
             default:
+                ERR_LOG("invalid column index type")
                 throw std::runtime_error("invalid column index type");
             }
         }
@@ -56,6 +57,8 @@ public:
         default:
             _page_decoder = nullptr;
         }
+
+        _data_page = std::make_unique<DataPage>();
     }
 
     ~ColumnReader() = default;
@@ -72,21 +75,23 @@ public:
     }
 
     void seek_to_ordinal(ordinal_t ordinal) {
+        std::lock_guard<std::mutex> l(_latch);
         if (ordinal == 0) {
             seek_to_first();
             return;
         }
         // if ordinal is not in current data page
-        if (!_data_page.contains(ordinal) || !_ordinal_index_iter.valid()) {
+        if (_data_page == nullptr || !_data_page->contains(ordinal) || !_ordinal_index_iter.valid()) {
             _ordinal_index_iter = _ordinal_index_reader->seek_at_or_before(ordinal);
             assert(_ordinal_index_iter.valid());
             _load_data_page(_ordinal_index_iter.page_pointer());
         }
-        _seek_to_pos_in_page(ordinal - _data_page.get_first_ordinal());
+        _seek_to_pos_in_page(ordinal - _data_page->get_first_ordinal());
         _current_ordinal = ordinal;
     }
 
     void next_batch(size_t* n, vectorized::MutableColumnSPtr& dst) {
+        std::lock_guard<std::mutex> l(_latch);
         dst->reserve(*n);
         size_t remaining = *n;
 
@@ -110,25 +115,9 @@ public:
         *n -= remaining;
     }
 
-    // void read_by_rowids(const rowid_t* rowids, const size_t count, vectorized::MutableColumnSPtr& dst) {
-    //     size_t remaining = count;
-    //     size_t total_read_count = 0;
-    //     size_t num_rows_to_read = 0;
-    //
-    //     while (remaining > 0) {
-    //         seek_to_ordinal(rowids[total_read_count]);
-    //         // number of rows to be read from this page
-    //         num_rows_to_read = std::min(remaining, _remaining());
-    //         _page_decoder->read_by_rowids(&rowids[total_read_count],_data_page->get_first_ordinal(),
-    //                                       &num_rows_to_read, dst);
-    //         total_read_count += num_rows_to_read;
-    //         remaining -= num_rows_to_read;
-    //     }
+    // ordinal_t get_current_ordinal() const {
+    //     return _current_ordinal;
     // }
-
-    ordinal_t get_current_ordinal() const {
-        return _current_ordinal;
-    }
 
 private:
     void _seek_to_pos_in_page(ordinal_t offset_in_page) {
@@ -141,9 +130,10 @@ private:
 
     void _load_data_page(const io::PagePointer& page_pointer) {
         Slice page_body;
+        _data_page = std::make_unique<DataPage>();
         io::PageIO::read_and_decompress_page(
                 _compression_util, page_pointer, _file_reader,
-                &page_body, _data_page._footer, &_data_page._data);
+                &page_body, _data_page->_footer, &_data_page->_data);
         _page_decoder->init(page_body);
         _seek_to_pos_in_page(0);
     }
@@ -159,15 +149,16 @@ private:
     }
 
     bool _has_remaining() const {
-        return _offset_in_page < _data_page._footer._num_rows;
+        return _offset_in_page < _data_page->_footer._num_rows;
     }
 
     size_t _remaining() const {
-        return _data_page._footer._num_rows - _offset_in_page;
+        return _data_page->_footer._num_rows - _offset_in_page;
     }
 
+    std::mutex _latch;
     ColumnMetaSPtr _meta;
-    DataPage _data_page;
+    std::unique_ptr<DataPage> _data_page;
     io::CompressionUtil* _compression_util = nullptr;
     uint64_t _num_rows;
     io::FileReaderSPtr _file_reader;

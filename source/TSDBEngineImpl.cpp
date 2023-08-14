@@ -69,6 +69,7 @@ static TableSchemaSPtr load_schema_from_file(std::string file_path) {
 
         input_file.close();
     } else {
+        ERR_LOG("Error opening schema file")
         throw std::runtime_error("Error opening schema file");
     }
 
@@ -91,7 +92,8 @@ static size_t load_next_segment_id_from_file(std::string file_path) {
         input_file.close();
         return std::stoi(next_segment_id_str);
     } else {
-        throw std::runtime_error("Error opening schema file");
+        ERR_LOG("Error opening next_segment_id file")
+        throw std::runtime_error("Error opening next_segment_id file");
     }
 }
 
@@ -188,10 +190,10 @@ int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::
         TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
             table->_table_writer->flush();
+            table->_table_reader->init_segment_readers();
         }
-        table->_table_reader->init(std::make_shared<PartialSchema>(table->_table_schema->column_by_names(pReadReq.requestedColumns)));
-        table->_table_reader->handle_latest_query(pReadReq.vins, pReadRes);
-        table->_table_reader->reset();
+        PartialSchemaSPtr schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(pReadReq.requestedColumns));
+        table->_table_reader->handle_latest_query(schema, pReadReq.vins, pReadRes);
     }
     return 0;
 }
@@ -207,10 +209,10 @@ int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq
         TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
             table->_table_writer->flush();
+            table->_table_reader->init_segment_readers();
         }
-        table->_table_reader->init(std::make_shared<PartialSchema>(table->_table_schema->column_by_names(trReadReq.requestedColumns)));
-        table->_table_reader->handle_time_range_query(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound, trReadRes);
-        table->_table_reader->reset();
+        PartialSchemaSPtr schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(trReadReq.requestedColumns));
+        table->_table_reader->handle_time_range_query(schema, trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound, trReadRes);
     }
     return 0;
 }

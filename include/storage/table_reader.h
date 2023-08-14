@@ -31,55 +31,66 @@ namespace LindormContest::storage {
 class TableReader {
 public:
     TableReader(io::FileSystemSPtr fs, TableSchemaSPtr table_schema)
-            : _fs(fs), _table_schema(table_schema) {}
+            : _fs(fs), _table_schema(table_schema) {
+        init_segment_readers();
+    }
 
     ~TableReader() = default;
 
-    void init(PartialSchemaSPtr schema) {
-        _schema = schema;
+    void init_segment_readers() {
         std::vector<io::FileInfo> file_infos;
         _fs->list(_fs->root_path(), true, &file_infos);
-        assert(file_infos.size() > 0);
 
         for (const auto& file_info : file_infos) {
             if (file_info._file_size <= 4 || file_info._file_name == "schema.txt" || file_info._file_name == "next_segment_id") {
                 continue;
             }
-            io::Path segment_path = _fs->root_path() / file_info._file_name;
-            io::FileReaderSPtr file_reader = _fs->open_file(segment_path);
             size_t segment_id;
             std::sscanf(file_info._file_name.c_str(), "segment_%zd.dat", &segment_id);
-            std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(segment_id, file_reader, _table_schema, _schema);
+            if (_segment_readers.find(segment_id) != _segment_readers.end()) {
+                continue;
+            }
+            io::Path segment_path = _fs->root_path() / file_info._file_name;
+            io::FileReaderSPtr file_reader = _fs->open_file(segment_path);
+            std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(file_reader, _table_schema);
             _segment_readers.emplace(segment_id, std::move(segment_reader));
             _file_readers.emplace(segment_id, file_reader);
         }
     }
 
-    void reset() {
-        _schema.reset();
-        _segment_readers.clear();
-        _file_readers.clear();
-    }
+    // void load_segment_reader(size_t segment_id) {
+    //     if (_segment_readers.find(segment_id) != _segment_readers.end()) {
+    //         return;
+    //     }
+    //     std::stringstream ss;
+    //     ss << "segment_" << segment_id << ".dat";
+    //     io::Path segment_path = _fs->root_path() / ss.str();
+    //     assert(_fs->exists(segment_path));
+    //     io::FileReaderSPtr file_reader = _fs->open_file(segment_path);
+    //     std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(file_reader, _table_schema);
+    //     _segment_readers.emplace(segment_id, std::move(segment_reader));
+    //     _file_readers.emplace(segment_id, file_reader);
+    // }
 
     // just for ut debug
-    void scan_all(size_t* n, std::vector<Row>& results) {
-        for (auto& item : _segment_readers) {
-            std::unique_ptr<SegmentReader>& segment_reader = item.second;
-            vectorized::Block block = _table_schema->create_block();
-            segment_reader->seek_to_first();
-            segment_reader->next_batch(n, &block);
-            std::vector<Row> read_rows = block.to_rows();
-            results.insert(results.end(), read_rows.begin(), read_rows.end());
-        }
-    }
+    // void scan_all(size_t* n, std::vector<Row>& results) {
+    //     for (auto& item : _segment_readers) {
+    //         std::unique_ptr<SegmentReader>& segment_reader = item.second;
+    //         vectorized::Block block = _table_schema->create_block();
+    //         segment_reader->seek_to_first();
+    //         segment_reader->next_batch(n, &block);
+    //         std::vector<Row> read_rows = block.to_rows();
+    //         results.insert(results.end(), read_rows.begin(), read_rows.end());
+    //     }
+    // }
 
-    void handle_latest_query(const std::vector<Vin>& vins, std::vector<Row>& results) {
+    void handle_latest_query(PartialSchemaSPtr schema, const std::vector<Vin>& vins, std::vector<Row>& results) {
         for (const auto& vin : vins) {
             Row result_row;
             result_row.timestamp = -1;
 
             for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
-                auto result = it->second->handle_latest_query(vin);
+                auto result = it->second->handle_latest_query(schema, vin);
                 if (result.has_value()) {
                     if ((*result).timestamp > result_row.timestamp) {
                         std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
@@ -95,9 +106,9 @@ public:
         }
     }
 
-    void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
+    void handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
         for (auto& [segment_id, segment_reader] : _segment_readers) {
-            auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
+            auto result = segment_reader->handle_time_range_query(schema, query_vin, lower_bound_timestamp, upper_bound_timestamp);
             if (result.has_value()) {
                 std::vector<Row> segment_rows = (*result).to_rows();
                 results.insert(results.end(), segment_rows.begin(), segment_rows.end());
@@ -145,7 +156,6 @@ private:
     };
 
     io::FileSystemSPtr _fs;
-    PartialSchemaSPtr _schema;
     TableSchemaSPtr _table_schema;
     std::map<size_t, std::unique_ptr<SegmentReader>> _segment_readers;
     std::unordered_map<size_t, io::FileReaderSPtr> _file_readers;

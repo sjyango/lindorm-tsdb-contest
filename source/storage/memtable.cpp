@@ -69,7 +69,7 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
 
     _output_mutable_block.append_block(&in_block, row_pos_vec.data(),
                                    row_pos_vec.data() + row_pos_vec.size());
-    _segment_writer->append_block(_output_mutable_block.to_block(),
+    _segment_writer->append_block(std::move(_output_mutable_block.to_block()),
                                   num_rows_written_in_table);
 }
 

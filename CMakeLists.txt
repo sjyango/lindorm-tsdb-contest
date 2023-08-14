@@ -13,36 +13,63 @@
 # limitations under the License.
 #
 
+#cmake_minimum_required(VERSION 2.8.12)
+#project(lindorm-tsdb-contest-cpp)
+#
+#set(CMAKE_BUILD_TYPE "DEBUG")
+#set(CMAKE_CXX_STANDARD_REQUIRED ON)
+#set(CMAKE_CXX_STANDARD 17)
+#
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC")
+#
+#set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -O0 -fsanitize=address -DADDRESS_SANITIZER")
+#
+#set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -O0 -fsanitize=leak -DLEAK_SANITIZER")
+#
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -O3")
+#
+#if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
+#    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+#elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+#    set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
+#elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "ASAN")
+#    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_ASAN}")
+#    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+#    # export LD_LIBRARY_PATH='/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/asan/.libs/'
+#elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "LSAN")
+#    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_LSAN}")
+#    # LD_PRELOAD=/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/lsan/.libs/liblsan.so.0 ./multi_thread_test
+#else()
+#    message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
+#endif()
+#
+## We use g++-12 to compile, so that we recommend you to use the same compiler to test for better compatibility.
+#message("Your OS: ${CMAKE_HOST_SYSTEM_NAME}")
+#if (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
+#    set(CMAKE_C_COMPILER "gcc-12")
+#    set(CMAKE_CXX_COMPILER "g++-12")
+#elseif (MAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+#    # Add w64devkit\bin to PATH.
+#else ()
+#    set(CMAKE_C_COMPILER "gcc")
+#    set(CMAKE_CXX_COMPILER "g++")
+#endif ()
+#
+#include_directories(${PROJECT_SOURCE_DIR}/include)
+#
+#add_subdirectory(example)
+#add_subdirectory(test)
+#
+#file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
+#file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
+#
+#add_library(DBLib ${sources_c} ${sources_cpp})
+#
+#add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
+#target_link_libraries(testMyDb DBLib pthread)
+
 cmake_minimum_required(VERSION 2.8.12)
 project(lindorm-tsdb-contest-cpp)
-
-set(CMAKE_BUILD_TYPE "LSAN")
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 17)
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable")
-
-set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -O0 -fsanitize=address -DADDRESS_SANITIZER")
-
-set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -O0 -fsanitize=leak -DLEAK_SANITIZER")
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -O3")
-
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
-    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-    set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
-elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "ASAN")
-    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_ASAN}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-    # export LD_LIBRARY_PATH='/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/asan/.libs/'
-elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "LSAN")
-    set(CMAKE_CXX_FLAGS "${CXX_FLAGS_LSAN}")
-    # LD_PRELOAD=/home/ysj/gcc-11.1.0/x86_64-pc-linux-gnu/libsanitizer/lsan/.libs/liblsan.so.0 ./multi_thread_test
-else()
-    message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
-endif()
-
 # We use g++-12 to compile, so that we recommend you to use the same compiler to test for better compatibility.
 message("Your OS: ${CMAKE_HOST_SYSTEM_NAME}")
 if (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
@@ -56,14 +83,9 @@ else ()
 endif ()
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
-
-add_subdirectory(example)
 add_subdirectory(test)
 
 file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
 add_library(DBLib ${sources_c} ${sources_cpp})
-
-add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
-target_link_libraries(testMyDb DBLib pthread)

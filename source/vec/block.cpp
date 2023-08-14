@@ -178,6 +178,7 @@ Row Block::to_row(size_t num_row) const {
             break;
         }
         default: {
+            ERR_LOG("unknown column type")
             throw std::runtime_error("unknown column type");
         }
         }
@@ -221,6 +222,7 @@ std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
                 break;
             }
             default: {
+                ERR_LOG("unknown column type")
                 throw std::runtime_error("unknown column type");
             }
             }

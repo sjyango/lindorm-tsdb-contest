@@ -68,6 +68,7 @@ void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const P
     const uint32_t page_size = page_pointer._size;
     const uint64_t page_offset = page_pointer._offset;
     if (page_size < 8) {
+        ERR_LOG("Bad page: too small size")
         throw std::runtime_error("Bad page: too small size");
     }
     // std::unique_ptr<storage::DataPage> page = std::make_unique<storage::DataPage>(page_size);
@@ -85,6 +86,7 @@ void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const P
 
     if (body_size != footer._uncompressed_size) { // need decompress body
         if (compression_util == nullptr) {
+            ERR_LOG("Bad page: page is compressed but decoder is nullptr")
             throw std::runtime_error("Bad page: page is compressed but decoder is nullptr");
         }
 
@@ -99,6 +101,7 @@ void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const P
         compression_util->decompress(compressed_body, &decompressed_body);
 
         if (decompressed_body._size != footer._uncompressed_size) {
+            ERR_LOG("Bad page: record uncompressed size != real decompressed size")
             throw std::runtime_error("Bad page: record uncompressed size != real decompressed size");
         }
 

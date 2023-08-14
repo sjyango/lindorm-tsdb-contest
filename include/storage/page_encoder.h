@@ -124,6 +124,7 @@ public:
 
     void get_first_value(void* value) const override {
         if (_offsets.size() == 0) {
+            ERR_LOG("page is empty")
             throw std::runtime_error("page is empty");
         }
         *reinterpret_cast<Slice*>(value) = Slice(_first_value);
@@ -131,6 +132,7 @@ public:
 
     void get_last_value(void* value) const override {
         if (_offsets.size() == 0) {
+            ERR_LOG("page is empty")
             throw std::runtime_error("page is empty");
         }
         *reinterpret_cast<Slice*>(value) = Slice(_last_value);
@@ -229,6 +231,7 @@ public:
 
     void get_first_value(void* value) const override {
         if (_count == 0) {
+            ERR_LOG("page is empty")
             throw std::logic_error("page is empty");
         }
         std::memcpy(value, _first_value.data(), _type_size);
@@ -236,6 +239,7 @@ public:
 
     void get_last_value(void* value) const override {
         if (_count == 0) {
+            ERR_LOG("page is empty")
             throw std::logic_error("page is empty");
         }
         std::memcpy(value, _last_value.data(), _type_size);

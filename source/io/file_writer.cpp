@@ -57,6 +57,7 @@ void FileWriter::appendv(const Slice* data, size_t data_cnt) {
         ssize_t res;
         RETRY_ON_EINTR(res, ::writev(_fd, iov + completed_iov, iov_count));
         if (res < 0) {
+            ERR_LOG("cannot write to path")
             throw std::runtime_error("cannot write to path");
         }
         if (res == n_left) {
@@ -96,6 +97,7 @@ void FileWriter::write_at(size_t offset, const Slice& data) {
     while (bytes_req != 0) {
         auto res = ::pwrite(_fd, from, bytes_req, offset);
         if (-1 == res && errno != EINTR) {
+            ERR_LOG("cannot write to path")
             throw std::runtime_error("cannot write to path");
         }
         if (res > 0) {
@@ -110,6 +112,7 @@ void FileWriter::finalize() const {
     if (_dirty) {
         int flags = SYNC_FILE_RANGE_WRITE;
         if (sync_file_range(_fd, 0, 0, flags) < 0) {
+            ERR_LOG("cannot sync file")
             throw std::runtime_error("cannot sync file");
         }
     }
@@ -126,12 +129,14 @@ void FileWriter::_close(bool sync) {
     _closed = true;
     if (sync && _dirty) {
         if (0 != ::fdatasync(_fd)) {
+            ERR_LOG("cannot fdatasync")
             throw std::runtime_error("cannot fdatasync");
         }
         _sync_dir(_path.parent_path());
         _dirty = false;
     }
     if (0 != ::close(_fd)) {
+        ERR_LOG("cannot close file")
         throw std::runtime_error("cannot close file");
     }
 }
@@ -140,9 +145,11 @@ void FileWriter::_sync_dir(const Path& dirname) {
     int fd;
     RETRY_ON_EINTR(fd, ::open(dirname.c_str(), O_DIRECTORY | O_RDONLY));
     if (-1 == fd) {
+        ERR_LOG("cannot open dir")
         throw std::runtime_error("cannot open dir");
     }
     if (0 != ::fdatasync(fd)) {
+        ERR_LOG("cannot fdatasync dir")
         throw std::runtime_error("cannot fdatasync dir");
     }
     ::close(fd);

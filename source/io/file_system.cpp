@@ -28,6 +28,7 @@ FileWriterPtr FileSystem::create_file(const Path& file) {
     Path abs_path = absolute_path(file);
     int fd = ::open(abs_path.c_str(), O_TRUNC | O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
     if (-1 == fd) {
+        ERR_LOG("failed to open file")
         throw std::runtime_error("failed to open file");
     }
     return std::move(std::make_unique<FileWriter>(std::move(abs_path), fd, shared_from_this()));
@@ -42,6 +43,7 @@ FileReaderSPtr FileSystem::open_file(const FileDescription& file_desc) {
     int fd = -1;
     RETRY_ON_EINTR(fd, open(abs_path.c_str(), O_RDONLY));
     if (fd < 0) {
+        ERR_LOG("failed to open file")
         throw std::runtime_error("failed to open file");
     }
     return std::make_shared<FileReader>(std::move(abs_path), fsize, fd, shared_from_this());
@@ -52,12 +54,14 @@ void FileSystem::create_directory(const Path& dir, bool failed_if_exists) const 
     Path abs_path = absolute_path(dir);
     if (failed_if_exists) {
         if (exists(abs_path)) {
+            ERR_LOG("failed to create file, already exists")
             throw std::runtime_error("failed to create file, already exists");
         }
     }
     std::error_code ec;
     std::filesystem::create_directories(abs_path, ec);
     if (ec) {
+        ERR_LOG("failed to create directory")
         throw std::runtime_error("failed to create directory");
     }
 }
@@ -67,6 +71,7 @@ bool FileSystem::exists(const Path& path) const {
     std::error_code ec;
     bool res = std::filesystem::exists(abs_path, ec);
     if (ec) {
+        ERR_LOG("failed to check file exists")
         throw std::runtime_error("failed to check file exists");
     }
     return res;
@@ -96,6 +101,7 @@ void FileSystem::list(const Path& dir, bool only_file, std::vector<FileInfo>* fi
         files->push_back(std::move(file_info));
     }
     if (ec) {
+        ERR_LOG("failed to list directory")
         throw std::runtime_error("failed to list directory");
     }
 }
@@ -106,11 +112,13 @@ void FileSystem::delete_file(const Path& file) const {
         return;
     }
     if (!std::filesystem::is_regular_file(abs_path)) {
+        ERR_LOG("failed to delete file, because not a file")
         throw std::runtime_error("failed to delete file, because not a file");
     }
     std::error_code ec;
     std::filesystem::remove(abs_path, ec);
     if (ec) {
+        ERR_LOG("failed to delete file")
         throw std::runtime_error("failed to delete file");
     }
 }
@@ -121,11 +129,13 @@ void FileSystem::delete_directory(const Path& dir) const {
         return;
     }
     if (!std::filesystem::is_directory(abs_path)) {
+        ERR_LOG("failed to delete directory, because not a directory")
         throw std::runtime_error("failed to delete directory, because not a directory");
     }
     std::error_code ec;
     std::filesystem::remove_all(abs_path, ec);
     if (ec) {
+        ERR_LOG("failed to delete directory")
         throw std::runtime_error("failed to delete directory");
     }
 }
@@ -135,6 +145,7 @@ int64_t FileSystem::file_size(const Path& file) const {
     std::error_code ec;
     int64_t file_size = std::filesystem::file_size(abs_path, ec);
     if (ec) {
+        ERR_LOG("failed to get file size")
         throw std::runtime_error("failed to get file size");
     }
     return file_size;

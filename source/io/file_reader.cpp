@@ -32,6 +32,7 @@ void FileReader::close() {
         int res = -1;
         res = ::close(_fd);
         if (-1 == res) {
+            ERR_LOG("failed to close file")
             throw std::runtime_error("failed to close file");
         }
         _fd = -1;
@@ -51,9 +52,11 @@ void FileReader::read_at(size_t offset, Slice result, size_t* bytes_read) const 
     while (bytes_req != 0) {
         auto res = ::pread(_fd, to, bytes_req, offset);
         if (-1 == res && errno != EINTR) {
+            ERR_LOG("cannot read from file")
             throw std::runtime_error("cannot read from file");
         }
         if (res == 0) {
+            ERR_LOG("cannot read from file: unexpected EOF")
             throw std::runtime_error("cannot read from file: unexpected EOF");
         }
         if (res > 0) {

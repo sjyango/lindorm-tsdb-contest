@@ -57,11 +57,6 @@ private:
     String _offset_buffer;
 };
 
-// Used to decode short key to header and encoded index data.
-// Usage:
-//      ShortKeyIndexDecoder decoder;
-//      decoder.parse(body, footer);
-//      auto iter = decoder.lower_bound(key);
 class ShortKeyIndexReader {
 public:
     // An Iterator to iterate one short key index.
@@ -141,18 +136,17 @@ public:
             uint32_t offset = decode_fixed32_le(reinterpret_cast<const uint8_t*>(offset_slice._data));
             offset_slice._data += sizeof(uint32_t);
             offset_slice._size -= sizeof(uint32_t);
-            // if (!get_varint32(&offset_slice, &offset)) {
-            //     throw std::logic_error("Fail to get varint from index offset buffer");
-            // }
             assert(offset <= _footer._key_bytes);
             _offsets[i] = offset;
         }
 
         _offsets[_footer._num_items] = _footer._key_bytes;
         if (offset_slice._size != 0) {
+            ERR_LOG("Still has data after parse all key offset")
             throw std::logic_error("Still has data after parse all key offset");
         }
         _parsed = true;
+        // INFO_LOG("load short key index success, index data size is %zu, num items is %u", _short_key_data.size(), _footer._num_items)
     }
 
     inline ShortKeyIndexIterator begin() const {
