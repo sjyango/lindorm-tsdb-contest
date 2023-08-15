@@ -19,11 +19,11 @@
 namespace LindormContest::storage {
 
 SegmentWriter::SegmentWriter(io::FileWriter* file_writer, TableSchemaSPtr schema, size_t segment_id)
-        : _file_writer(file_writer), _schema(schema), _segment_id(segment_id) {
+        : _file_writer(file_writer), _schema(schema) {
     _num_key_columns = _schema->num_key_columns();
-    _num_short_key_columns = _schema->num_short_key_columns();
     _column_writers.reserve(_schema->num_columns());
-    _data_convertor.reserve(_schema->num_columns());
+    _data_convertor = std::make_unique<BlockDataConvertor>();
+    _data_convertor->reserve(_schema->num_columns());
     _short_key_index_writer = std::make_unique<ShortKeyIndexWriter>();
 
     for (const auto& column : _schema->columns()) {
@@ -46,16 +46,16 @@ void SegmentWriter::_create_column_writer(const TableColumn& column) {
     meta->_compression_type = CompressionType::NO_COMPRESSION;
     _footer._column_metas.emplace_back(meta);
     _column_writers.emplace_back(std::make_unique<ColumnWriter>(meta, _file_writer));
-    _data_convertor.add_column_data_convertor(column);
+    _data_convertor->add_column_data_convertor(column);
 }
 
-void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_written_in_table) {
+void SegmentWriter::append_block(const vectorized::Block* block, size_t* num_rows_written_in_table) {
     *num_rows_written_in_table = 0;
-    size_t num_rows = block.rows();
+    size_t num_rows = block->rows();
     if (num_rows == 0) {
         return;
     }
-    _data_convertor.set_source_content(&block, 0, num_rows);
+    _data_convertor->set_source_content(block, 0, num_rows);
     std::vector<size_t> short_key_pos;
 
     if (_short_key_row_pos == 0) {
@@ -72,19 +72,13 @@ void SegmentWriter::append_block(vectorized::Block&& block, size_t* num_rows_wri
     std::vector<ColumnDataConvertor*> key_columns;
 
     for (size_t cid = 0; cid < _column_writers.size(); ++cid) {
-        auto converted_result = _data_convertor.convert_column_data(cid);
+        auto converted_result = _data_convertor->convert_column_data(cid);
         if (cid < _num_key_columns) {
             key_columns.push_back(converted_result);
         }
         const uint8_t* data = reinterpret_cast<const uint8_t*>(converted_result->get_data());
         _column_writers[cid]->append_data(&data, num_rows);
     }
-
-    if (_is_first_row) {
-        _min_key = std::move(_encode_keys(key_columns, 0));
-        _is_first_row = false;
-    }
-    _max_key = std::move(_encode_keys(key_columns, num_rows - 1));
 
     for (const auto pos : short_key_pos) {
         _short_key_index_writer->add_item(_encode_keys(key_columns, pos));
@@ -110,7 +104,7 @@ void SegmentWriter::_write_short_key_index(io::PagePointer* page_pointer) {
     OwnedSlice short_key_index_body;
     ShortKeyIndexFooter short_key_index_footer;
     _short_key_index_writer->finalize(_num_rows_written, &short_key_index_body, &short_key_index_footer);
-    io::PageIO::write_page(_file_writer, std::move(short_key_index_body), short_key_index_footer, page_pointer);
+    io::PageIO::write_page(_file_writer, &short_key_index_body, short_key_index_footer, page_pointer);
 }
 
 void SegmentWriter::close() {

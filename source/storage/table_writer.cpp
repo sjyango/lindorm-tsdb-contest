@@ -34,10 +34,11 @@ void TableWriter::append(const std::vector<Row>& append_rows) {
 
     for (const auto& row : append_rows) {
         input_block->add_row(row);
+        INFO_LOG("vin: %s, timestamp: %ld", row.vin.vin, row.timestamp)
     }
 
-    _write(std::move(input_block->to_block()));
-    input_block.reset();
+    vectorized::Block block = input_block->to_block();
+    _write(&block);
 }
 
 void TableWriter::close() {
@@ -51,13 +52,13 @@ bool TableWriter::_need_to_flush() {
     return _mem_table->rows() >= _MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-void TableWriter::_write(const vectorized::Block&& block) {
+void TableWriter::_write(const vectorized::Block* block) {
     {
         std::lock_guard<std::mutex> l(_latch);
         if (_mem_table == nullptr) {
             _init_mem_table();
         }
-        _mem_table->insert(std::move(block));
+        _mem_table->insert(block);
     }
     if (_need_to_flush()) {
         flush();

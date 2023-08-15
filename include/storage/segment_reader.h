@@ -52,7 +52,7 @@ public:
     ~SegmentReader() = default;
 
     std::optional<Row> handle_latest_query(PartialSchemaSPtr schema, Vin key_vin) {
-        vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
+        vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
 
@@ -67,7 +67,7 @@ public:
         _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
         const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
         assert(column_vin.size() == 1);
-        if (std::strncmp(key_vin.vin, column_vin[0].c_str(), 17) != 0) {
+        if (std::strncmp(key_vin.vin, column_vin[0].data(), 17) != 0) {
             return std::nullopt;
         }
         _read_columns_by_range(schema->column_ids(), return_columns, col_id_to_column_index, result_ordinal, result_ordinal + 1);
@@ -85,7 +85,7 @@ public:
     }
 
     std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
-        vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
+        vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
 
@@ -113,23 +113,6 @@ public:
         return {std::move(block)};
     }
 
-    // void seek_to_first() {
-    //     _seek_columns_first(_schema->column_ids());
-    // }
-    //
-    // void seek_to_ordinal(ordinal_t ordinal) {
-    //     _seek_columns(_schema->column_ids(), ordinal);
-    // }
-    //
-    // void next_batch(size_t* n, vectorized::Block* dst) {
-    //     _read_columns(_schema->column_ids(), n);
-    //     size_t i = 0;
-    //
-    //     for (auto& item : *dst) {
-    //         item._column = std::move(_return_columns[i++]);
-    //     }
-    // }
-
 private:
     void _parse_footer() {
         // Footer => SegmentFooter + SegmentFooterSize
@@ -153,6 +136,7 @@ private:
         const uint8_t* footer_start = reinterpret_cast<const uint8_t*>(footer_buffer.c_str());
         _footer.deserialize(footer_start, _table_schema->num_columns());
         assert(_footer._column_metas.size() == _table_schema->num_columns());
+        INFO_LOG("Parse segment footer success, footer size is %u", footer_size)
     }
 
     void _load_short_key_index() {
@@ -165,6 +149,7 @@ private:
         assert(footer._page_type == PageType::SHORT_KEY_PAGE);
         _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
         _short_key_index_reader->load(body, footer);
+        INFO_LOG("Load short key index success, mem size is %zu", body._size)
     }
 
     // lookup the ordinal of given key from short key index

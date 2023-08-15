@@ -26,25 +26,39 @@ namespace LindormContest::vectorized {
 
 class MutableBlock {
 public:
-    static MutableBlock build_mutable_block(Block* block) {
-        return block == nullptr ? MutableBlock() : MutableBlock(block);
+    static std::unique_ptr<MutableBlock> build_mutable_block(Block* block) {
+        if (block == nullptr) {
+            return std::make_unique<MutableBlock>();
+        } else {
+            return std::make_unique<MutableBlock>(block);
+        }
     }
 
     MutableBlock() = default;
 
     MutableBlock(Block* block)
-            : _data {std::move(block->mutate_columns())}, _data_types(std::move(block->get_data_types())), _names(std::move(block->get_names())) {
+            : _data {block->mutate_columns()}, _data_types(block->get_data_types()), _names(block->get_names()) {
         initialize_index_by_name();
     }
 
     MutableBlock(Block& block)
-            : _data {std::move(block.mutate_columns())}, _data_types(std::move(block.get_data_types())), _names(std::move(block.get_names())) {
+            : _data {block.mutate_columns()}, _data_types(block.get_data_types()), _names(block.get_names()) {
         initialize_index_by_name();
     }
 
     MutableBlock(Block&& block)
-            : _data {std::move(block.mutate_columns())}, _data_types(std::move(block.get_data_types())), _names(std::move(block.get_names())) {
+            : _data {block.mutate_columns()}, _data_types(block.get_data_types()), _names(block.get_names()) {
         initialize_index_by_name();
+    }
+
+    ~MutableBlock() {
+        for (auto& col : _data) {
+            col.reset();
+        }
+        _data.clear();
+        _index_by_name.clear();
+        _data_types.clear();
+        _names.clear();
     }
 
     void initialize_index_by_name() {
@@ -81,17 +95,17 @@ public:
         return _data[_index_by_name.at(name)];
     }
 
+    size_t memory_usage() const {
+        size_t mem_usage = 0;
+        for (const auto& item : _data) {
+            mem_usage += item->memory_usage();
+        }
+        return mem_usage;
+    }
+
     size_t columns() const { return _data.size(); }
 
     bool empty() const { return rows() == 0; }
-
-    void clear() {
-//        for (auto& column : data) {
-//            column->clear();
-//        }
-        _data.clear();
-        _index_by_name.clear();
-    }
 
     void erase(const String& name);
 

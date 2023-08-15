@@ -34,7 +34,11 @@ ColumnWriter::ColumnWriter(ColumnMetaSPtr meta, io::FileWriter* file_writer)
     }
 }
 
-ColumnWriter::~ColumnWriter() = default;
+ColumnWriter::~ColumnWriter() {
+    _page_encoder.reset();
+    _data_pages.clear();
+    _ordinal_index_writer.reset();
+}
 
 void ColumnWriter::append_data(const uint8_t** data, size_t num_rows) {
     size_t remaining = num_rows;
@@ -53,7 +57,7 @@ void ColumnWriter::write_column_data() {
 
     for (auto& data_page : _data_pages) {
         io::PagePointer page_pointer;
-        io::PageIO::write_page(_file_writer, std::move(data_page._data), data_page._footer, &page_pointer);
+        io::PageIO::write_page(_file_writer, &data_page._data, data_page._footer, &page_pointer);
         _ordinal_index_writer->append_entry(data_page._footer._first_ordinal, page_pointer);
         // INFO_LOG("first_ordinal [%lu], Page Pointer [%s]", data_page._footer._first_ordinal, page_pointer.to_string().c_str())
     }

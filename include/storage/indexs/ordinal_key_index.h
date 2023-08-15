@@ -34,7 +34,9 @@ public:
         _page_encoder = std::make_unique<IndexPageEncoder>();
     }
 
-    ~OrdinalIndexWriter() = default;
+    ~OrdinalIndexWriter() {
+        _page_encoder.reset();
+    }
 
     void append_entry(ordinal_t ordinal, const io::PagePointer& page_pointer) {
         std::string key;
@@ -53,7 +55,7 @@ public:
         IndexPageFooter page_footer;
         _page_encoder->finish(&page_body, &page_footer);
         io::PagePointer page_pointer;
-        io::PageIO::write_page(file_writer, std::move(page_body), page_footer, &page_pointer);
+        io::PageIO::write_page(file_writer, &page_body, page_footer, &page_pointer);
         meta->_page_pointer = page_pointer;
     }
 

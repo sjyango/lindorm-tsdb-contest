@@ -58,19 +58,19 @@ public:
         return i != 0 ? _offsets[i] - _offsets[i - 1] : _offsets[0];
     }
 
-    String get(size_t n) {
+    std::string_view get(size_t n) {
         return (*this)[n];
     }
 
-    String get(size_t n) const {
+    std::string_view get(size_t n) const {
         return (*this)[n];
     }
 
-    String operator[](size_t n) {
+    std::string_view operator[](size_t n) {
         return {reinterpret_cast<const char*>(_chars.data() + offset_at(n)), size_at(n)};
     }
 
-    String operator[](size_t n) const {
+    std::string_view operator[](size_t n) const {
         return {reinterpret_cast<const char*>(_chars.data() + offset_at(n)), size_at(n)};
     }
 
@@ -91,8 +91,16 @@ public:
         _chars.clear();
     }
 
+    size_t memory_usage() const override {
+        return _offsets.size() * sizeof(uint32_t) + _chars.size();
+    }
+
     void push_string(const String& str) {
         push_string(str.c_str(), str.size());
+    }
+
+    void push_string(const std::string_view& str) {
+        push_string(str.data(), str.size());
     }
 
     void push_string(const char* pos, size_t length) {

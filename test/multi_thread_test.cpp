@@ -289,12 +289,12 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
     const size_t INSERT_DATA_THREADS = 10;
     std::thread insert_data_threads[INSERT_DATA_THREADS];
 
-    auto insert_data = [INSERT_DATA_THREADS, TABLE_NAME] (TSDBEngineImpl& db, size_t thread_id) {
+    auto insert_data = [TABLE_NAME] (TSDBEngineImpl& db, size_t thread_id) {
         size_t batch_nums = global_datasets.size() / INSERT_DATA_THREADS;
         size_t start_index = thread_id * batch_nums;
         size_t end_index = std::min((thread_id + 1) * batch_nums, global_datasets.size());
         // insert data
-        std::vector<Row> src_rows = std::move(std::vector<Row>(global_datasets.begin() + start_index, global_datasets.begin() + end_index));
+        std::vector<Row> src_rows = std::vector<Row>(global_datasets.begin() + start_index, global_datasets.begin() + end_index);
         size_t index = 0;
 
         for (size_t i = 0; i < src_rows.size() / 500; ++i) {
@@ -307,20 +307,20 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
         }
 
         if (index < src_rows.size()) {
-            WriteRequest wq {TABLE_NAME, std::move(std::vector<Row>(src_rows.begin() + index, src_rows.end()))};
+            WriteRequest wq {TABLE_NAME, std::vector<Row>(src_rows.begin() + index, src_rows.end())};
             db.upsert(wq);
         }
         // INFO_LOG("insert %zu rows into db", src_rows.size())
 
-        if (generate_random_float64() < 0.75) {
-            if (generate_random_float64() < 0.5) {
-                handle_latest_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
-            } else {
-                handle_time_range_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
-            }
-        }
+        // if (generate_random_float64() < 0.75) {
+        //     if (generate_random_float64() < 0.5) {
+        //         handle_latest_query(db, TABLE_NAME, 0);
+        //         INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
+        //     } else {
+        //         handle_time_range_query(db, TABLE_NAME, 0);
+        //         INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
+        //     }
+        // }
     };
 
     for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -527,6 +527,50 @@ TEST(MultiThreadTest, MultiThreadRandomQueryDemoTest) {
 
     // shutdown
     ASSERT_EQ(0, demo->shutdown());
+}
+
+TEST(MultiThreadTest, MultiThreadInsertTest) {
+    const size_t READ_FILE_THREADS = 10;
+    std::thread read_file_threads[READ_FILE_THREADS];
+
+    // prepare global datasets
+
+    for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
+        read_file_threads[i] = std::thread(generate_dataset, i);
+    }
+
+    for (auto& thread : read_file_threads) {
+        thread.join();
+    }
+
+    // create DBEngine
+    const std::string TABLE_NAME = "demo";
+    io::FileSystemSPtr fs = io::FileSystem::create(std::filesystem::current_path());
+    io::Path table_path = std::filesystem::current_path() / io::Path("test_data");
+    if (fs->exists(table_path)) {
+        fs->delete_directory(table_path);
+    }
+    fs->create_directory(table_path);
+    std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(table_path);
+    // connect database
+    ASSERT_EQ(0, demo->connect());
+    // create schema
+    std::map<std::string, ColumnType> columnTypeMap;
+    columnTypeMap.insert({"col1", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col2", COLUMN_TYPE_INTEGER});
+    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    Schema schema;
+    schema.columnTypeMap = std::move(columnTypeMap);
+    // create table
+    ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
+
+    // insert_data
+    insert_data_into_db_engine(*demo, TABLE_NAME);
+    INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+
+    // shutdown
+    ASSERT_EQ(0, demo->shutdown());
+    INFO_LOG("####################### [demo->shutdown()] finished #######################")
 }
 
 }

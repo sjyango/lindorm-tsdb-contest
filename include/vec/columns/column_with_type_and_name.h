@@ -35,6 +35,10 @@ public:
     ColumnWithTypeAndName(ColumnType type, const String& name)
             : _column(ColumnFactory::instance().create_column(type, name)), _type(type), _name(name) {}
 
+    ~ColumnWithTypeAndName() {
+        _column.reset();
+    }
+
     bool operator==(const ColumnWithTypeAndName& rhs) const {
         if (_type != rhs._type) {
             return false;

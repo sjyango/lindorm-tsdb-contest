@@ -33,7 +33,7 @@ public:
 
     ~SegmentWriter();
 
-    void append_block(vectorized::Block&& block, size_t* num_rows_written);
+    void append_block(const vectorized::Block* block, size_t* num_rows_written);
 
     void finalize();
 
@@ -46,23 +46,13 @@ private:
 
     std::string _encode_keys(const std::vector<ColumnDataConvertor*>& key_columns, size_t pos);
 
-    size_t _segment_id;
     io::FileWriter* _file_writer;
     SegmentFooter _footer;
     TableSchemaSPtr _schema;
     size_t _num_key_columns;
-    size_t _num_short_key_columns;
     size_t _short_key_row_pos = 0;
-    // _num_rows_written means row count already written in this current column group
-    size_t _num_rows_written = 0;
-    // _row_count means total row count of this segment
-    // In vertical compaction row count is recorded when key columns group finish
-    //  and _num_rows_written will be updated in value column group
-    // size_t _row_count = 0;
-    bool _is_first_row = true;
-    String _min_key;
-    String _max_key;
-    BlockDataConvertor _data_convertor;
+    size_t _num_rows_written = 0;;
+    std::unique_ptr<BlockDataConvertor> _data_convertor;
     std::vector<const KeyCoder*> _key_coders;
     std::vector<std::unique_ptr<ColumnWriter>> _column_writers;
     std::unique_ptr<ShortKeyIndexWriter> _short_key_index_writer;

@@ -156,7 +156,9 @@ public:
         return *this;
     }
 
-    ~OwnedSlice() = default;
+    ~OwnedSlice() {
+        _owned_data.reset();
+    }
 
     Slice slice() const {
         return Slice(_owned_data.get(), _size);

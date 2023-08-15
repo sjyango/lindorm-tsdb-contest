@@ -57,6 +57,8 @@ public:
 
     virtual void clear() = 0;
 
+    virtual size_t memory_usage() const = 0;
+
     /// Appends n-th element from other column with the same type.
     /// Is used in merge-sort and merges. It could be implemented in inherited classes more optimally than default implementation.
     virtual void insert_from(const IColumn& src, size_t n) = 0;

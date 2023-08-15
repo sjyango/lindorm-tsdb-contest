@@ -35,13 +35,13 @@ void PageIO::compress_page_body(CompressionUtil* compression_util, const Slice& 
     *compressed_body = OwnedSlice();
 }
 
-void PageIO::write_page(FileWriter* writer, OwnedSlice&& body, const storage::PageFooter& footer, PagePointer* result) {
+void PageIO::write_page(FileWriter* writer, OwnedSlice* body, const storage::PageFooter& footer, PagePointer* result) {
     std::string footer_buffer; // serialize footer content + footer size
     footer.serialize(&footer_buffer);
     put_fixed32_le(&footer_buffer, static_cast<uint32_t>(footer_buffer.size()));
 
     std::vector<Slice> data;
-    data.emplace_back(body.slice());
+    data.emplace_back(body->slice());
     data.emplace_back(footer_buffer);
 
     uint64_t offset = writer->bytes_appended();
@@ -57,9 +57,9 @@ void PageIO::compress_and_write_page(CompressionUtil* compression_util, FileWrit
     OwnedSlice compressed_body;
     compress_page_body(compression_util, body.slice(), min_space_saving, &compressed_body);
     if (compressed_body.size() == 0) { // uncompressed
-        return write_page(writer, std::move(body), footer, result);
+        return write_page(writer, &body, footer, result);
     }
-    return write_page(writer, std::move(compressed_body), footer, result);
+    return write_page(writer, &compressed_body, footer, result);
 }
 
 void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const PagePointer& page_pointer,

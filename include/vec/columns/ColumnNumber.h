@@ -90,6 +90,10 @@ public:
         _data.clear();
     }
 
+    size_t memory_usage() const override {
+        return _data.size() * sizeof(T);
+    }
+
     std::string_view get_string_view() const override {
         return std::string_view {reinterpret_cast<const char*>(_data.data()), _data.size() * sizeof(T)};
     }

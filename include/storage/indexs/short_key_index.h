@@ -57,11 +57,6 @@ private:
     String _offset_buffer;
 };
 
-// Used to decode short key to header and encoded index data.
-// Usage:
-//      ShortKeyIndexDecoder decoder;
-//      decoder.parse(body, footer);
-//      auto iter = decoder.lower_bound(key);
 class ShortKeyIndexReader {
 public:
     // An Iterator to iterate one short key index.

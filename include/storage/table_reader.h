@@ -59,18 +59,6 @@ public:
         }
     }
 
-    // just for ut debug
-    // void scan_all(size_t* n, std::vector<Row>& results) {
-    //     for (auto& item : _segment_readers) {
-    //         std::unique_ptr<SegmentReader>& segment_reader = item.second;
-    //         vectorized::Block block = _table_schema->create_block();
-    //         segment_reader->seek_to_first();
-    //         segment_reader->next_batch(n, &block);
-    //         std::vector<Row> read_rows = block.to_rows();
-    //         results.insert(results.end(), read_rows.begin(), read_rows.end());
-    //     }
-    // }
-
     void handle_latest_query(const PartialSchemaSPtr& schema, const std::vector<Vin>& vins, std::vector<Row>& results) {
         for (const auto& vin : vins) {
             Row result_row;

@@ -29,7 +29,7 @@ public:
     static void compress_page_body(CompressionUtil* compression_util, const Slice& body,
                                    double min_space_saving, OwnedSlice* compressed_body);
 
-    static void write_page(io::FileWriter* writer, OwnedSlice&& body,
+    static void write_page(io::FileWriter* writer, OwnedSlice* body,
                            const storage::PageFooter& footer, PagePointer* result);
 
     static void compress_and_write_page(CompressionUtil* compression_util, io::FileWriter* writer, OwnedSlice&& body,

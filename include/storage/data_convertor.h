@@ -25,10 +25,10 @@ class ColumnDataConvertor {
 public:
     ColumnDataConvertor() = default;
 
-    ~ColumnDataConvertor() = default;
+    virtual ~ColumnDataConvertor() = default;
 
-    virtual void set_source_column(const vectorized::ColumnWithTypeAndName& column, size_t row_pos, size_t num_rows) {
-        assert(row_pos + num_rows <= column._column->size());
+    virtual void set_source_column(const vectorized::ColumnWithTypeAndName* column, size_t row_pos, size_t num_rows) {
+        assert(row_pos + num_rows <= column->_column->size());
         _column = column;
         _row_pos = row_pos;
         _num_rows = num_rows;
@@ -41,7 +41,7 @@ public:
     virtual const void* get_data_at(size_t offset) const = 0;
 
 protected:
-    vectorized::ColumnWithTypeAndName _column;
+    const vectorized::ColumnWithTypeAndName* _column;
     size_t _row_pos = 0;
     size_t _num_rows = 0;
 };
@@ -51,7 +51,7 @@ class NumberColumnDataConvertor : public ColumnDataConvertor {
 public:
     NumberColumnDataConvertor() = default;
 
-    ~NumberColumnDataConvertor() = default;
+    ~NumberColumnDataConvertor() override = default;
 
     const void* get_data() const override {
         return _data;
@@ -62,8 +62,8 @@ public:
     }
 
     void convert() override {
-        assert(_column._column);
-        const vectorized::ColumnNumber<T>& column = reinterpret_cast<const vectorized::ColumnNumber<T>&>(*_column._column);
+        assert(_column->_column);
+        const vectorized::ColumnNumber<T>& column = reinterpret_cast<const vectorized::ColumnNumber<T>&>(*_column->_column);
         _data = column.get_data().data() + _row_pos;
     }
 
@@ -75,7 +75,7 @@ class StringColumnDataConvertor : public ColumnDataConvertor {
 public:
     StringColumnDataConvertor() = default;
 
-    ~StringColumnDataConvertor() = default;
+    ~StringColumnDataConvertor() override = default;
 
     const void* get_data() const override {
         return _data.data();
@@ -87,8 +87,8 @@ public:
     }
 
     void convert() override {
-        assert(_column._column);
-        const vectorized::ColumnString& column = reinterpret_cast<const vectorized::ColumnString&>(*_column._column);
+        assert(_column->_column);
+        const vectorized::ColumnString& column = reinterpret_cast<const vectorized::ColumnString&>(*_column->_column);
         const char* char_data = reinterpret_cast<const char*>(column.get_chars().data());
 
         for (size_t pos = _row_pos, i = 0; i < _num_rows; ++i) {
@@ -123,20 +123,20 @@ public:
         }
     }
 
+    ~BlockDataConvertor() {
+        for (auto& convertor : _convertors) {
+            convertor.reset();
+        }
+        _convertors.clear();
+    }
+
     void set_source_content(const vectorized::Block* block, size_t row_pos, size_t num_rows) {
         assert(block && num_rows > 0 && row_pos + num_rows <= block->rows() && block->columns() == _convertors.size());
         size_t cid = 0;
 
         for (const auto& column : *block) {
-            _convertors[cid]->set_source_column(column, row_pos, num_rows);
+            _convertors[cid]->set_source_column(&column, row_pos, num_rows);
             ++cid;
-        }
-    }
-
-    void set_source_content(const vectorized::Block* block, size_t row_pos, size_t num_rows, std::vector<uint32_t> cids) {
-        assert(block && num_rows > 0 && row_pos + num_rows <= block->rows() && block->columns() <= _convertors.size());
-        for (auto cid : cids) {
-            _convertors[cid]->set_source_column(block->get_by_position(cid), row_pos, num_rows);
         }
     }
 
@@ -157,24 +157,24 @@ public:
     void reset() { _convertors.clear(); }
 
 private:
-    using ColumnDataConvertorSPtr = std::shared_ptr<ColumnDataConvertor>;
+    using ColumnDataConvertorUPtr = std::shared_ptr<ColumnDataConvertor>;
 
-    ColumnDataConvertorSPtr _create_column_data_convertor(const TableColumn& column) {
+    ColumnDataConvertorUPtr _create_column_data_convertor(const TableColumn& column) {
         switch (column.get_column_type()) {
         case COLUMN_TYPE_INTEGER:
-            return std::make_shared<NumberColumnDataConvertor<Int32>>();
+            return std::make_unique<NumberColumnDataConvertor<Int32>>();
         case COLUMN_TYPE_DOUBLE_FLOAT:
-            return std::make_shared<NumberColumnDataConvertor<Float64>>();
+            return std::make_unique<NumberColumnDataConvertor<Float64>>();
         case COLUMN_TYPE_STRING:
-            return std::make_shared<StringColumnDataConvertor>();
+            return std::make_unique<StringColumnDataConvertor>();
         case COLUMN_TYPE_TIMESTAMP:
-            return std::make_shared<NumberColumnDataConvertor<Int64>>();
+            return std::make_unique<NumberColumnDataConvertor<Int64>>();
         default:
             return nullptr;
         }
     }
 
-    std::vector<ColumnDataConvertorSPtr> _convertors;
+    std::vector<ColumnDataConvertorUPtr> _convertors;
 };
 
 }

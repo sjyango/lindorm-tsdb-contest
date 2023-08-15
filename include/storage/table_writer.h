@@ -44,7 +44,7 @@ public:
     size_t rows() const;
 
 private:
-    void _write(const vectorized::Block&& block);
+    void _write(const vectorized::Block* block);
     void _init_mem_table();
     bool _need_to_flush();
 

@@ -44,7 +44,13 @@ public:
     Block(Block&& block)
             : _data(std::move(block._data)), _index_by_name(std::move(block._index_by_name)) {}
 
-    ~Block() = default;
+    ~Block() {
+        for (auto& item : _data) {
+            item._column.reset();
+        }
+        _data.clear();
+        _index_by_name.clear();
+    }
 
     bool operator==(const Block& rhs) const;
 
@@ -144,7 +150,15 @@ public:
                 n, m, *(rhs.get_by_position(col_idx)._column));
     }
 
-    Row to_row(size_t num_row) const;
+    size_t memory_usage() const {
+        size_t mem_usage = 0;
+        for (const auto& item : _data) {
+            mem_usage += item._column->memory_usage();
+        }
+        return mem_usage;
+    }
+
+    // Row to_row(size_t num_row) const;
 
     // [start_row, end_row)
     std::vector<Row> to_rows(size_t start_row, size_t end_row) const;
@@ -179,25 +193,5 @@ private:
     Container _data;
     IndexByName _index_by_name;
 };
-
-struct IteratorRowRef {
-    std::shared_ptr<Block> block;
-    int row_pos;
-    bool is_same;
-
-    template <typename T>
-    int compare(const IteratorRowRef& rhs, const T& compare_arguments) const {
-        return block->compare_at(row_pos, rhs.row_pos, compare_arguments, *rhs.block);
-    }
-
-    void reset() {
-        block = nullptr;
-        row_pos = -1;
-        is_same = false;
-    }
-};
-
-using BlockView = std::vector<IteratorRowRef>;
-using BlockUPtr = std::unique_ptr<Block>;
 
 }

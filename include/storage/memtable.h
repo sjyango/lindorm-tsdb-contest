@@ -60,21 +60,19 @@ public:
 
     ~MemTable();
 
-    void insert(const vectorized::Block&& input_block);
+    void insert(const vectorized::Block* input_block);
 
     void flush(size_t* num_rows_written_in_table);
 
     void finalize();
 
-    void close();
-
     size_t rows() const {
         return _rows;
     }
 
-    void handle_latest_query(std::vector<Row> rows, vectorized::Block* block);
-
-    void handle_time_range_query(Row lower_bound_row, Row upper_bound_row, vectorized::Block* block);
+    // void handle_latest_query(std::vector<Row> rows, vectorized::Block* block);
+    //
+    // void handle_time_range_query(Row lower_bound_row, Row upper_bound_row, vectorized::Block* block);
 
     /// The iterator of memtable, so that the data in this memtable can be visited outside.
     class Iterator {
@@ -105,11 +103,10 @@ private:
     std::unique_ptr<RowInBlockComparator> _row_comparator;
     std::unique_ptr<Arena> _arena;
     std::unique_ptr<VecTable> _skip_list;
-    VecTable::Hint _hint;
     std::vector<std::unique_ptr<RowInBlock>> _row_in_blocks;
     int64_t _rows = 0;
-    vectorized::MutableBlock _input_mutable_block;
-    vectorized::MutableBlock _output_mutable_block;
+    std::unique_ptr<vectorized::MutableBlock> _input_mutable_block;
+    std::unique_ptr<vectorized::MutableBlock> _output_mutable_block;
     std::unique_ptr<SegmentWriter> _segment_writer;
 }; // class MemTable
 
