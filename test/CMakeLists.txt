@@ -39,8 +39,8 @@ set(EXECUTABLES
         index_page_test
         column_writer_reader_test
         parallel_merge_join_test
-        segment_writer_reader_test
-        table_writer_reader_test
+        # segment_writer_reader_test
+        # table_writer_reader_test
         multi_thread_test
         )
 

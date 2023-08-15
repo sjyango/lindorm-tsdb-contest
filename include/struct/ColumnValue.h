@@ -25,7 +25,7 @@
 
 namespace LindormContest {
 
-    /**
+/**
     * The data in a column may be of one of the following three types: <br>
     *   1. string: no fixed length, stores a string
     *      (No character '\0' would be explicitly added to the tail.
@@ -36,19 +36,19 @@ namespace LindormContest {
     *   2. integer: 4 bytes, supporting negative value<br>
     *   3. double float: 8 bytes, supporting negative value
     */
-    enum ColumnType {
-        COLUMN_TYPE_STRING = 1,
-        COLUMN_TYPE_INTEGER = 2,
-        COLUMN_TYPE_DOUBLE_FLOAT = 3,
-        COLUMN_TYPE_UNINITIALIZED = 4,
-        COLUMN_TYPE_TIMESTAMP = 5
-    };
+enum ColumnType {
+    COLUMN_TYPE_STRING = 1,
+    COLUMN_TYPE_INTEGER = 2,
+    COLUMN_TYPE_DOUBLE_FLOAT = 3,
+    COLUMN_TYPE_UNINITIALIZED = 4,
+    COLUMN_TYPE_TIMESTAMP = 5
+};
 
-    std::string getNameFromColumnType(ColumnType columnType);
+std::string getNameFromColumnType(ColumnType columnType);
 
-    ColumnType getColumnTypeFromString(const std::string &str);
+ColumnType getColumnTypeFromString(const std::string &str);
 
-    /**
+/**
      * A column object relates to a data stored in this column for a specific row and a specific vin.
      * A column's data may be of type integer, double float or string. Each column has its columnFieldName for navigating.<br>
      * The memory structure of columnData:<br>
@@ -83,63 +83,63 @@ namespace LindormContest {
      * &nbsp;&nbsp;&nbsp;&nbsp;char *charPtr = p.second; <br>
      * &nbsp;&nbsp;} <br>
      */
-    typedef struct ColumnValue {
-        ColumnType columnType;
-        char *columnData;
+typedef struct ColumnValue {
+    ColumnType columnType;
+    char *columnData;
 
-        /**
+    /**
          * Create with empty data. You may want to manipulate the inner
          * data structures by yourself, so that you can use this constructor.
          */
-        explicit ColumnValue();
+    explicit ColumnValue();
 
-        /**
+    /**
          * Create with integer type value.
          */
-        explicit ColumnValue(int32_t value);
+    explicit ColumnValue(int32_t value);
 
-        /**
+    /**
          * Create with double float type value.
          */
-        explicit ColumnValue(double_t value);
+    explicit ColumnValue(double_t value);
 
-        /**
+    /**
          * Create with raw binary string value.
          */
-        explicit ColumnValue(const char *valuePtr, int32_t valueLength);
+    explicit ColumnValue(const char *valuePtr, int32_t valueLength);
 
-        /**
+    /**
          * Create with a string value capsuled by std::string.
          * The data at value[index, value.size()) would be copied and stored at this object.
          * Pay attention the '\0' at value.c_str[value.size()] is not copied.
          */
-        explicit ColumnValue(const std::string &value);
+    explicit ColumnValue(const std::string &value);
 
-        /**
+    /**
          * Create with raw binary string value stored in vector object.
          * The value[0, value.size()) would be copied.
          */
-        explicit ColumnValue(const std::vector<char> &value);
+    explicit ColumnValue(const std::vector<char> &value);
 
-        ColumnValue(const ColumnValue &rhs);
+    ColumnValue(const ColumnValue &rhs);
 
-        ColumnValue(ColumnValue &&rhs) noexcept;
+    ColumnValue(ColumnValue &&rhs) noexcept;
 
-        ColumnType getColumnType() const;
+    ColumnType getColumnType() const;
 
-        /**
+    /**
          * If this column is of integer type, upsert the value as the column's value.
          * @return 0 if the column is of integer type and the value written.
          */
-        int getIntegerValue(int32_t &value) const;
+    int getIntegerValue(int32_t &value) const;
 
-        /**
+    /**
          * If this column is of double float type, upsert the value as the column's value.
          * @return 0 if the column is of double float type and the value written.
          */
-        int getDoubleFloatValue(double_t &value) const;
+    int getDoubleFloatValue(double_t &value) const;
 
-        /**
+    /**
          * Write lengthStrPair with the first as its string's length, the second as the header pointer of the string.
          * The lifespan of the returned second string header pointer is the same with this object. You should not release the pointer.
          * The parameter lengthStrPair.second must be nullptr or this function would do nothing, this function won't overwrite a non-null pointer.
@@ -147,24 +147,24 @@ namespace LindormContest {
          *         -1 if the column's type is not string.
          *         -2 if the lengthStrPair.second is not nullptr.
          */
-        int getStringValue(std::pair<int32_t, const char *> &lengthStrPair) const;
+    int getStringValue(std::pair<int32_t, const char *> &lengthStrPair) const;
 
-        /**
+    /**
          * Return the data array size of this column.
          * For string column, the size is the string's size + sizeof(int32_t) (4) Bytes (storing the string's length).
          * For integer column, the size is sizeof(int32_t) (4) Bytes.
          * For double float column, the size is sizeof(double_t) (8) Bytes.
          */
-        int32_t getRawDataSize() const;
+    int32_t getRawDataSize() const;
 
-        bool operator==(const ColumnValue &rhs) const;
+    bool operator==(const ColumnValue &rhs) const;
 
-        bool operator!=(const ColumnValue &rhs) const;
+    bool operator!=(const ColumnValue &rhs) const;
 
-        ColumnValue& operator=(const ColumnValue &rhs);
+    ColumnValue& operator=(const ColumnValue &rhs);
 
-        ~ColumnValue();
-    }ColumnValue;
+    ~ColumnValue();
+}ColumnValue;
 
 }
 

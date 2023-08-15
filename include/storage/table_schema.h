@@ -31,7 +31,7 @@ namespace LindormContest::storage {
 class TableColumn {
 public:
     TableColumn(uint32_t uid, String col_name, ColumnType type, bool is_key)
-            : _uid(uid), _col_name(col_name), _type(DataTypeFactory::instance().get_column_data_type(type)), _is_key(false) {}
+            : _uid(uid), _col_name(col_name), _type(DataTypeFactory::instance().get_column_data_type(type)), _is_key(is_key) {}
 
     uint32_t get_uid() const { return _uid; }
 

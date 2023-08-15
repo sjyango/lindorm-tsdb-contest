@@ -32,6 +32,12 @@ std::mutex dataset_mutex;
 std::unordered_map<std::string, Row> latest_records; // vin -> max_timestamp
 std::unordered_map<std::string, std::vector<Row>> time_range_records; // vin -> timestamps
 
+static Vin generate_vin(std::string s) {
+    Vin vin;
+    std::strncpy(vin.vin, s.c_str(), 17);
+    return vin;
+}
+
 static std::string generate_random_string(int length) {
     const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -146,7 +152,7 @@ static void generate_dataset(size_t dataset_id) {
         ColumnValue col3_val(randomDouble);
         columns_map.insert({"col3", col3_val});
         Row row;
-        row.vin = Vin(randomString);
+        row.vin = generate_vin(randomString);
         row.timestamp = timestamp;
         row.columns = std::move(columns_map);
         dataset.push_back(std::move(row));
@@ -188,7 +194,7 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
             request_vins.push_back(std::string(global_datasets[rand_index].vin.vin, 17));
         } else {
             std::string rand_vin = generate_random_string(17);
-            lqr.vins.push_back(Vin(rand_vin));
+            lqr.vins.push_back(generate_vin(rand_vin));
             request_vins.push_back(rand_vin);
         }
     }
@@ -196,7 +202,6 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
     std::vector<Row> lq_ground_truths;
     std::vector<Row> lq_results;
     db.executeLatestQuery(lqr, lq_results);
-    // ASSERT_EQ(N, lq_results.size());
 
     for (const auto& vin : request_vins) {
         if (latest_records.find(vin) != latest_records.end()) {
@@ -233,7 +238,7 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
     if (generate_random_float64() < 0.2) {
         trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
     } else {
-        trqr.vin = generate_random_string(17);
+        trqr.vin = generate_vin(generate_random_string(17));
     }
     trqr.timeUpperBound = std::numeric_limits<int64_t>::max();
     trqr.timeLowerBound = 0;
@@ -305,7 +310,7 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
             WriteRequest wq {TABLE_NAME, std::move(std::vector<Row>(src_rows.begin() + index, src_rows.end()))};
             db.upsert(wq);
         }
-        INFO_LOG("insert %zu rows into db", src_rows.size())
+        // INFO_LOG("insert %zu rows into db", src_rows.size())
 
         if (generate_random_float64() < 0.75) {
             if (generate_random_float64() < 0.5) {
@@ -370,10 +375,6 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
 
     const size_t N = 100;
-
-    // handle query
-    const size_t QUERY_THREADS = N;
-    std::thread query_threads[QUERY_THREADS];
 
     // handle latest query
     const size_t LATEST_QUERY_THREADS = N;

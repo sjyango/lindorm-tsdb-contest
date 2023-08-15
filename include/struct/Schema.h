@@ -21,34 +21,34 @@
 #ifndef LINDORM_TSDB_CONTEST_CPP_SCHEMA_H
 #define LINDORM_TSDB_CONTEST_CPP_SCHEMA_H
 
-#include "struct/ColumnValue.h"
+#include "ColumnValue.h"
 
 namespace LindormContest {
 
-    /**
+/**
      * Delivered into TSDB Engine when TSDBEngine#creatTable() is called.
      * This object describe the table schema.
      */
-    typedef struct Schema {
-        // KEY: columnFieldName, VALUE: The column data type of this column field.
-        std::map<std::string, ColumnType> columnTypeMap;
+typedef struct Schema {
+    // KEY: columnFieldName, VALUE: The column data type of this column field.
+    std::map<std::string, ColumnType> columnTypeMap;
 
-        explicit Schema();
+    explicit Schema();
 
-        explicit Schema(const std::map<std::string, ColumnType> &columnTypeMap);
+    explicit Schema(const std::map<std::string, ColumnType> &columnTypeMap);
 
-        explicit Schema(std::map<std::string, ColumnType> &&columnTypeMap);
+    explicit Schema(std::map<std::string, ColumnType> &&columnTypeMap);
 
-        Schema(const Schema &rhs);
+    Schema(const Schema &rhs);
 
-        Schema(Schema &&rhs) noexcept;
+    Schema(Schema &&rhs) noexcept;
 
-        bool operator==(const Schema &rhs) const;
+    bool operator==(const Schema &rhs) const;
 
-        bool operator!=(const Schema &rhs) const;
+    bool operator!=(const Schema &rhs) const;
 
-        Schema& operator=(const Schema &rhs);
-    }Schema;
+    Schema& operator=(const Schema &rhs);
+}Schema;
 
 }
 

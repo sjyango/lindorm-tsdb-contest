@@ -9,92 +9,6 @@
 
 namespace LindormContest {
 
-static std::string column_type_to_string(ColumnType type) {
-    switch (type) {
-    case COLUMN_TYPE_INTEGER:
-        return "COLUMN_TYPE_INTEGER";
-    case COLUMN_TYPE_TIMESTAMP:
-        return "COLUMN_TYPE_TIMESTAMP";
-    case COLUMN_TYPE_DOUBLE_FLOAT:
-        return "COLUMN_TYPE_DOUBLE_FLOAT";
-    case COLUMN_TYPE_STRING:
-        return "COLUMN_TYPE_STRING";
-    case COLUMN_TYPE_UNINITIALIZED:
-        return "COLUMN_TYPE_UNINITIALIZED";
-    }
-    return "COLUMN_TYPE_UNINITIALIZED";
-}
-
-static ColumnType string_to_column_type(std::string s) {
-    if (s == "COLUMN_TYPE_INTEGER") {
-        return COLUMN_TYPE_INTEGER;
-    }
-    if (s == "COLUMN_TYPE_TIMESTAMP") {
-        return COLUMN_TYPE_TIMESTAMP;
-    }
-    if (s == "COLUMN_TYPE_DOUBLE_FLOAT") {
-        return COLUMN_TYPE_DOUBLE_FLOAT;
-    }
-    if (s == "COLUMN_TYPE_STRING") {
-        return COLUMN_TYPE_STRING;
-    }
-    return COLUMN_TYPE_UNINITIALIZED;
-}
-
-static void save_schema_to_file(TableSchemaSPtr table_schema, std::string file_path) {
-    std::ofstream output_file(file_path);
-
-    for (const auto& column : table_schema->columns()) {
-        if (column.get_name() == "vin" || column.get_name() == "timestamp") {
-            continue;
-        }
-        output_file << column.get_name() << " " << column_type_to_string(column.get_column_type()) << std::endl;
-    }
-
-    output_file.close();
-}
-
-static TableSchemaSPtr load_schema_from_file(std::string file_path) {
-    std::map<std::string, ColumnType> column_type_map;
-    std::ifstream input_file(file_path);
-
-    if (input_file.is_open()) {
-        std::string column_name;
-        std::string column_type_str;
-
-        while (input_file >> column_name >> column_type_str) {
-            ColumnType column_type = string_to_column_type(column_type_str);
-            column_type_map[column_name] = column_type;
-        }
-
-        input_file.close();
-    } else {
-        throw std::runtime_error("Error opening schema file");
-    }
-
-    Schema schema;
-    schema.columnTypeMap = std::move(column_type_map);
-    return std::make_shared<TableSchema>(schema);
-}
-
-static void save_next_segment_id_to_file(size_t next_segment_id, std::string file_path) {
-    std::ofstream output_file(file_path);
-    output_file << next_segment_id << std::endl;
-    output_file.close();
-}
-
-static size_t load_next_segment_id_from_file(std::string file_path) {
-    std::ifstream input_file(file_path);
-    if (input_file.is_open()) {
-        std::string next_segment_id_str;
-        input_file >> next_segment_id_str;
-        input_file.close();
-        return std::stoi(next_segment_id_str);
-    } else {
-        throw std::runtime_error("Error opening schema file");
-    }
-}
-
 /**
  * This constructor's function signature should not be modified.
  * Our evaluation program will call this constructor.
@@ -162,12 +76,12 @@ int TSDBEngineImpl::shutdown() {
         save_schema_to_file(table.second->_table_schema, schema_path);
         save_next_segment_id_to_file(table.second->_next_segment_id.load(), next_segment_id_path);
     }
+    _tables.clear();
     INFO_LOG("TSDBEngine shutdown success")
     return 0;
 }
 
 int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
-    INFO_LOG("TSDBEngineImpl::upsert(const WriteRequest &writeRequest)")
     auto it = _tables.find(writeRequest.tableName);
     if (it == _tables.cend()) {
         ERR_LOG("No such table [%s], cannot upsert to", writeRequest.tableName.c_str())
@@ -179,7 +93,6 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
 }
 
 int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
-    INFO_LOG("TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes)")
     auto it = _tables.find(pReadReq.tableName);
     if (it == _tables.cend()) {
         ERR_LOG("No such table [%s], cannot execute latest query", pReadReq.tableName.c_str())
@@ -189,11 +102,9 @@ int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::
         std::unique_lock<std::mutex> l(_latch);
         TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
-            INFO_LOG("table->_table_writer->rows() != 0")
             table->_table_writer->flush();
             table->_table_reader->init_segment_readers();
         }
-        INFO_LOG("table->_table_reader->handle_latest_query(schema, pReadReq.vins, pReadRes)")
         PartialSchemaSPtr schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(pReadReq.requestedColumns));
         table->_table_reader->handle_latest_query(schema, pReadReq.vins, pReadRes);
     }
@@ -201,7 +112,6 @@ int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::
 }
 
 int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
-    INFO_LOG("TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes)")
     auto it = _tables.find(trReadReq.tableName);
     if (it == _tables.cend()) {
         ERR_LOG("No such table [%s], cannot execute time range query", trReadReq.tableName.c_str())
@@ -211,11 +121,9 @@ int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq
         std::unique_lock<std::mutex> l(_latch);
         TableSPtr table = it->second;
         if (table->_table_writer->rows() != 0) {
-            INFO_LOG("table->_table_writer->rows() != 0")
             table->_table_writer->flush();
             table->_table_reader->init_segment_readers();
         }
-        INFO_LOG("table->_table_reader->handle_time_range_query(schema, trReadReq.vin)")
         PartialSchemaSPtr schema = std::make_shared<PartialSchema>(table->_table_schema->column_by_names(trReadReq.requestedColumns));
         table->_table_reader->handle_time_range_query(schema, trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound, trReadRes);
     }

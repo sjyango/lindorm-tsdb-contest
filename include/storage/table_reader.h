@@ -31,7 +31,9 @@ namespace LindormContest::storage {
 class TableReader {
 public:
     TableReader(io::FileSystemSPtr fs, TableSchemaSPtr table_schema)
-            : _fs(fs), _table_schema(table_schema) {}
+            : _fs(fs), _table_schema(table_schema) {
+        init_segment_readers();
+    }
 
     ~TableReader() = default;
 
@@ -53,6 +55,7 @@ public:
             std::unique_ptr<SegmentReader> segment_reader = std::make_unique<SegmentReader>(file_reader, _table_schema);
             _segment_readers.emplace(segment_id, std::move(segment_reader));
             _file_readers.emplace(segment_id, file_reader);
+            INFO_LOG("Load segment %zu success", segment_id)
         }
     }
 

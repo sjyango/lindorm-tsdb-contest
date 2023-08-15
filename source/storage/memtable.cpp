@@ -35,7 +35,6 @@ MemTable::MemTable(io::FileWriter* file_writer, TableSchemaSPtr schema, size_t s
 MemTable::~MemTable() = default;
 
 void MemTable::insert(const vectorized::Block&& input_block) {
-    INFO_LOG("MemTable::insert(const vectorized::Block&& input_block)")
     assert(input_block.columns() == _schema->num_columns());
     size_t cursor_in_mutable_block = _input_mutable_block.rows();
     size_t num_rows = input_block.rows();

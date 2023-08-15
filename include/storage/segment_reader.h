@@ -52,7 +52,6 @@ public:
     ~SegmentReader() = default;
 
     std::optional<Row> handle_latest_query(PartialSchemaSPtr schema, Vin key_vin) {
-        INFO_LOG("handle_latest_query(PartialSchemaSPtr schema, Vin key_vin)")
         vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
@@ -86,7 +85,6 @@ public:
     }
 
     std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
-        INFO_LOG("handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp)")
         vectorized::SMutableColumns return_columns = std::move(schema->create_block().mutate_columns());
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;

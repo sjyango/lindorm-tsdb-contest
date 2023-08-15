@@ -34,6 +34,12 @@ namespace LindormContest::test {
 using namespace storage;
 using namespace vectorized;
 
+static Vin generate_vin(std::string s) {
+    Vin vin;
+    std::strncpy(vin.vin, s.c_str(), 17);
+    return vin;
+}
+
 inline std::string generate_random_string(int length) {
     const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -91,7 +97,7 @@ inline Row generate_row() {
     ColumnValue col4_val(generate_random_int32());
     columns.insert({"col4", col4_val});
     Row row;
-    row.vin = Vin(generate_random_string(17));
+    row.vin = generate_vin(generate_random_string(17));
     row.timestamp = generate_random_timestamp();
     row.columns = std::move(columns);
     return row;
@@ -116,7 +122,7 @@ static size_t generate_dataset(std::vector<Row>& rows, std::unordered_map<std::s
 
         for (size_t j = 0; j < BLOCK_RANGE; ++j) {
             Row row;
-            row.vin = Vin(rand_vin);
+            row.vin = generate_vin(rand_vin);
             row.timestamp = generate_random_timestamp();
             row.columns = columns;
             maps[rand_vin].push(row.timestamp);
@@ -309,7 +315,7 @@ TEST(MemTableTest, HandleLatestQueryMemTableTest) {
 
     Vin input_vin = rows[generate_random_int32() % rows.size()].vin;
     Row input_row = generate_row();
-    input_row.vin = Vin(increase_vin(input_vin));
+    input_row.vin = generate_vin(increase_vin(input_vin));
     input_row.timestamp = 0;
 
     auto result = handle_latest_query(input_vin, maps);

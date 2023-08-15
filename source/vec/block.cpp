@@ -156,7 +156,9 @@ int Block::compare_at(size_t n, size_t m, size_t num_columns, const Block& rhs) 
 Row Block::to_row(size_t num_row) const {
     assert(num_row < rows());
     Row row;
-    Vin vin {reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(num_row)};
+    std::string vin_str = reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(num_row);
+    Vin vin;
+    std::strncpy(vin.vin, vin_str.c_str(), 17);
     int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(0)._column).get(num_row);
     std::map<std::string, ColumnValue> columns;
 
@@ -196,7 +198,9 @@ std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
 
     for (int i = start_row; i < end_row; ++i) {
         Row row;
-        Vin vin {reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(i)};
+        std::string vin_str = reinterpret_cast<const ColumnString&>(*get_by_position(0)._column).get(i);
+        Vin vin;
+        std::strncpy(vin.vin, vin_str.c_str(), 17);
         int64_t timestamp = reinterpret_cast<const ColumnInt64&>(*get_by_position(1)._column).get(i);
         std::map<std::string, ColumnValue> columns;
 

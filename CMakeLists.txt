@@ -16,7 +16,7 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(lindorm-tsdb-contest-cpp)
 
-set(CMAKE_BUILD_TYPE "LSAN")
+set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -65,5 +65,5 @@ file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
 add_library(DBLib ${sources_c} ${sources_cpp})
 
-add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
-target_link_libraries(testMyDb DBLib pthread)
+#add_executable(testMyDb ${PROJECT_SOURCE_DIR}/TestMyDb.cpp)
+#target_link_libraries(testMyDb DBLib pthread)
