@@ -51,11 +51,12 @@ public:
 
     ~SegmentReader() = default;
 
-    std::optional<Row> handle_latest_query(PartialSchemaSPtr schema, Vin key_vin) {
-        int32_t vin = decode_vin(key_vin);
-        if (_footer._existed_vins.find(vin) == _footer._existed_vins.end()) {
-            return std::nullopt;
-        }
+    Row handle_latest_query(PartialSchemaSPtr schema, ordinal_t result_ordinal) {
+        // int32_t vin = decode_vin(key_vin);
+        // if (_footer._existed_vins.find(vin) == _footer._existed_vins.end()) {
+        //     return std::nullopt;
+        // }
+
         vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
@@ -66,14 +67,15 @@ public:
 
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
-        size_t result_ordinal = _lower_bound(vin + 1, 0) - 1;
+        // size_t result_ordinal = _lower_bound(vin + 1, 0) - 1;
         // the position we need is `result_ordinal - 1`
-        _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
-        const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*_short_key_columns[0]);
-        assert(column_vin.size() == 1);
-        if (vin != column_vin[0]) {
-            return std::nullopt;
-        }
+        // _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
+        // const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*_short_key_columns[0]);
+        // assert(column_vin.size() == 1);
+        // if (vin != column_vin[0]) {
+        //     return std::nullopt;
+        // }
+
         _read_columns_by_range(schema->column_ids(), return_columns, col_id_to_column_index, result_ordinal, result_ordinal + 1);
         vectorized::Block block = schema->create_block();
         assert(block.columns() == return_columns.size());
@@ -85,7 +87,7 @@ public:
         }
 
         assert(block.rows() <= 1);
-        return {std::move(block.to_rows()[0])};
+        return std::move(block.to_rows()[0]);
     }
 
     std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp) {

@@ -35,20 +35,20 @@ public:
 
     ~TableWriter();
 
-    void append(const std::vector<Row>& append_rows, bool* flushed);
+    void append(const std::vector<Row>& append_rows, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed_records);
 
-    void close();
+    std::optional<std::unordered_map<int32_t, RowPosition>> close();
 
-    void flush();
+    std::optional<std::unordered_map<int32_t, RowPosition>> flush();
 
     size_t rows() const;
 
 private:
-    void _write(const vectorized::Block* block, bool* flushed);
+    void _write(const vectorized::Block* block, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed);
     void _init_mem_table();
     bool _need_to_flush();
 
-    // std::mutex _latch;
+    std::mutex _latch;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
     io::FileWriterPtr _file_writer;

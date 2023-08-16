@@ -42,7 +42,10 @@ public:
         _fs->list(_fs->root_path(), true, &file_infos);
 
         for (const auto& file_info : file_infos) {
-            if (file_info._file_size <= 4 || file_info._file_name == "schema.txt" || file_info._file_name == "next_segment_id") {
+            if (file_info._file_size <= 4 ||
+                file_info._file_name == "schema.txt" ||
+                file_info._file_name == "next_segment_id" ||
+                file_info._file_name == "latest_records.dat") {
                 continue;
             }
             size_t segment_id;
@@ -59,26 +62,31 @@ public:
         }
     }
 
-    void handle_latest_query(const PartialSchemaSPtr& schema, const std::vector<Vin>& vins, std::vector<Row>& results) {
-        for (const auto& vin : vins) {
-            Row result_row;
-            result_row.timestamp = -1;
-
-            for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
-                auto result = it->second->handle_latest_query(schema, vin);
-                if (result.has_value()) {
-                    if ((*result).timestamp > result_row.timestamp) {
-                        std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
-                        result_row.timestamp = (*result).timestamp;
-                        result_row.columns = std::move((*result).columns);
-                    }
-                }
-            }
-
-            if (result_row.timestamp != -1) {
-                results.emplace_back(result_row);
-            }
+    void handle_latest_query(const PartialSchemaSPtr& schema, const std::vector<RowPosition>& row_positions, std::vector<Row>& results) {
+        for (const auto& row_position : row_positions) {
+            assert(_segment_readers.find(row_position._segment_id) != _segment_readers.end());
+            results.emplace_back(_segment_readers[row_position._segment_id]->handle_latest_query(schema, row_position._ordinal));
         }
+
+        // for (const auto& vin : vins) {
+        //     Row result_row;
+        //     result_row.timestamp = -1;
+        //
+        //     for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
+        //         auto result = it->second->handle_latest_query(schema, vin);
+        //         if (result.has_value()) {
+        //             if ((*result).timestamp > result_row.timestamp) {
+        //                 std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
+        //                 result_row.timestamp = (*result).timestamp;
+        //                 result_row.columns = std::move((*result).columns);
+        //             }
+        //         }
+        //     }
+        //
+        //     if (result_row.timestamp != -1) {
+        //         results.emplace_back(result_row);
+        //     }
+        // }
     }
 
     void handle_time_range_query(const PartialSchemaSPtr& schema, const Vin& query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp, std::vector<Row>& results) {

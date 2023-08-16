@@ -57,12 +57,12 @@ void MemTable::insert(const vectorized::Block* input_block) {
     }
 }
 
-void MemTable::flush(size_t* num_rows_written_in_table) {
+std::optional<std::unordered_map<int32_t, RowPosition>> MemTable::flush(size_t* num_rows_written_in_table) {
     if (_rows == 0) {
         *num_rows_written_in_table = 0;
-        return;
+        return std::nullopt;
     }
-    // INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
+    INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block->to_block();
     std::vector<size_t> row_pos_vec;
@@ -74,13 +74,23 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
 
     _output_mutable_block->append_block(&in_block, row_pos_vec.data(), row_pos_vec.data() + row_pos_vec.size());
     vectorized::Block out_block = _output_mutable_block->to_block();
-    auto min_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column).get(0);
-    auto max_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column).get(out_block.rows() - 1);
-    auto min_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column).get(0);
-    auto max_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column).get(out_block.rows() - 1);
-    INFO_LOG("[segment min] vin: %s, timestamp: %ld", encode_vin(min_vin).vin, encode_timestamp(min_timestamp))
-    INFO_LOG("[segment max] vin: %s, timestamp: %ld", encode_vin(max_vin).vin, encode_timestamp(max_timestamp))
+    const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column);
+    const vectorized::ColumnUInt16& column_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column);
+    std::unordered_map<int32_t, RowPosition> latest_records;
+    int64_t ordinal = column_vin.size() - 1;
+
+    while (ordinal >= 0) {
+        latest_records[column_vin[ordinal]] = RowPosition {_segment_id, static_cast<ordinal_t>(ordinal), column_timestamp[ordinal]};
+        while (ordinal > 0 && column_vin[ordinal] == column_vin[ordinal - 1]) {
+            ordinal--;
+        }
+        ordinal--;
+    }
+
+    INFO_LOG("[segment min] vin: %s, timestamp: %ld", encode_vin(column_vin[0]).vin, encode_timestamp(column_timestamp[0]))
+    INFO_LOG("[segment max] vin: %s, timestamp: %ld", encode_vin(column_vin[out_block.rows() - 1]).vin, encode_timestamp(column_timestamp[out_block.rows() - 1]))
     _segment_writer->append_block(&out_block, num_rows_written_in_table);
+    return {std::move(latest_records)};
 }
 
 void MemTable::finalize() {

@@ -24,8 +24,9 @@ TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::ato
 
 TableWriter::~TableWriter() = default;
 
-void TableWriter::append(const std::vector<Row>& append_rows, bool* flushed) {
+void TableWriter::append(const std::vector<Row>& append_rows, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed_records) {
     if (append_rows.empty()) {
+        *flushed_records = std::nullopt;
         return;
     }
     std::unique_ptr<vectorized::MutableBlock> input_block =
@@ -64,11 +65,11 @@ void TableWriter::append(const std::vector<Row>& append_rows, bool* flushed) {
     }
 
     vectorized::Block block = input_block->to_block();
-    _write(&block, flushed);
+    _write(&block, flushed_records);
 }
 
-void TableWriter::close() {
-    flush();
+std::optional<std::unordered_map<int32_t, RowPosition>> TableWriter::close() {
+    return std::move(flush());
 }
 
 bool TableWriter::_need_to_flush() {
@@ -78,37 +79,37 @@ bool TableWriter::_need_to_flush() {
     return _mem_table->rows() >= _MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-void TableWriter::_write(const vectorized::Block* block, bool* flushed) {
+void TableWriter::_write(const vectorized::Block* block, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed_records) {
     {
-        // std::lock_guard<std::mutex> l(_latch);
+        std::lock_guard<std::mutex> l(_latch);
         if (_mem_table == nullptr) {
             _init_mem_table();
         }
         _mem_table->insert(block);
-        *flushed = false;
+        *flushed_records = std::nullopt;
     }
     if (_need_to_flush()) {
-        flush();
-        *flushed = true;
+        *flushed_records = std::move(flush());
     }
 }
 
-void TableWriter::flush() {
-    // std::lock_guard<std::mutex> l(_latch);
+std::optional<std::unordered_map<int32_t, RowPosition>> TableWriter::flush() {
+    std::lock_guard<std::mutex> l(_latch);
     if (_mem_table == nullptr || _mem_table->rows() == 0) {
-        return;
+        return std::nullopt;
     }
     size_t num_rows_written_in_table = 0;
-    _mem_table->flush(&num_rows_written_in_table);
+    auto latest_records = _mem_table->flush(&num_rows_written_in_table);
     INFO_LOG("segment_%zu has been flushed %zu rows into disk, path is %s", _next_segment_id->load() - 1, num_rows_written_in_table, _fs->root_path().c_str())
     if (num_rows_written_in_table == 0) {
-        return;
+        return std::nullopt;
     }
     _mem_table->finalize();
     _mem_table.reset();
     _file_writer->finalize();
     _file_writer->close();
     _file_writer.reset();
+    return std::move(latest_records);
 }
 
 size_t TableWriter::rows() const {

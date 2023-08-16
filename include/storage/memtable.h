@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <optional>
+#include <unordered_map>
+
 #include "Root.h"
 #include "struct/Schema.h"
 #include "storage/skiplist.h"
@@ -62,7 +65,7 @@ public:
 
     void insert(const vectorized::Block* input_block);
 
-    void flush(size_t* num_rows_written_in_table);
+    std::optional<std::unordered_map<int32_t, RowPosition>> flush(size_t* num_rows_written_in_table);
 
     void finalize();
 

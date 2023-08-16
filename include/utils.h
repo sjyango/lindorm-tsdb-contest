@@ -22,6 +22,12 @@
 
 namespace LindormContest {
 
+struct RowPosition {
+    size_t _segment_id;
+    ordinal_t _ordinal;
+    uint16_t _timestamp;
+};
+
 // increase the last position char
 static std::string increase_vin(Vin vin) {
     vin.vin[16] += 1;
@@ -42,13 +48,13 @@ static int32_t decode_vin(Vin vin) {
     try {
         res = std::stoi(suffix_chars);
     } catch (const std::invalid_argument& e) {
-        INFO_LOG("decode_vin throw an invalid_argument exception, input vin is %s", vin.vin)
+        // INFO_LOG("decode_vin throw an invalid_argument exception, input vin is %s", vin.vin)
         return -1;
     } catch (const std::out_of_range& e) {
-        INFO_LOG("decode_vin throw an out_of_range exception, input vin is %s", vin.vin)
+        // INFO_LOG("decode_vin throw an out_of_range exception, input vin is %s", vin.vin)
         return -1;
     } catch (const std::exception& e) {
-        INFO_LOG("decode_vin throw an exception, input vin is %s", vin.vin)
+        // INFO_LOG("decode_vin throw an exception, input vin is %s", vin.vin)
         return -1;
     }
     return res;

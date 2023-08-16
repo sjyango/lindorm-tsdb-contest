@@ -38,6 +38,7 @@ struct Table {
     std::unique_ptr<TableWriter> _table_writer;
     std::unique_ptr<TableReader> _table_reader;
     std::atomic<size_t> _next_segment_id;
+    std::unordered_map<int32_t, RowPosition> _latest_records; // vin -> {segment_id, ordinal, latest_timestamp}
 };
 
 class TSDBEngineImpl : public TSDBEngine {
@@ -156,4 +157,39 @@ static size_t load_next_segment_id_from_file(std::string file_path) {
     }
 }
 
+static void save_latest_records_to_file(const std::unordered_map<int32_t, RowPosition>& latest_records, std::string file_path) {
+    std::ofstream output_file(file_path, std::ios::out | std::ios::binary);
+    if (!output_file.is_open()) {
+        std::cerr << "Failed to open file for writing." << std::endl;
+        return;
+    }
+
+    for (const auto& entry : latest_records) {
+        output_file.write(reinterpret_cast<const char*>(&entry.first), sizeof(entry.first));
+        output_file.write(reinterpret_cast<const char*>(&entry.second), sizeof(entry.second));
+    }
+
+    output_file.close();
+}
+
+static std::unordered_map<int32_t, RowPosition> load_latest_records_from_file(std::string file_path) {
+    std::unordered_map<int32_t, RowPosition> latest_records;
+
+    std::ifstream input(file_path, std::ios::in | std::ios::binary);
+    if (!input.is_open()) {
+        std::cerr << "Failed to open file for reading." << std::endl;
+        return latest_records;
+    }
+
+    int32_t vin;
+    RowPosition row_position;
+
+    while (input.read(reinterpret_cast<char*>(&vin), sizeof(vin)) &&
+           input.read(reinterpret_cast<char*>(&row_position), sizeof(row_position))) {
+        latest_records[vin] = row_position;
+    }
+
+    input.close();
+    return latest_records;
+}
 }
