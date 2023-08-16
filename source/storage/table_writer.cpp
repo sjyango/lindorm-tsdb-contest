@@ -81,7 +81,7 @@ bool TableWriter::_need_to_flush() {
 
 void TableWriter::_write(const vectorized::Block* block, std::optional<std::unordered_map<int32_t, Row>>* flushed_records) {
     {
-        std::lock_guard<std::mutex> l(_latch);
+        // std::lock_guard<std::mutex> l(_latch);
         if (_mem_table == nullptr) {
             _init_mem_table();
         }
@@ -94,7 +94,7 @@ void TableWriter::_write(const vectorized::Block* block, std::optional<std::unor
 }
 
 std::optional<std::unordered_map<int32_t, Row>> TableWriter::flush() {
-    std::lock_guard<std::mutex> l(_latch);
+    // std::lock_guard<std::mutex> l(_latch);
     if (_mem_table == nullptr || _mem_table->rows() == 0) {
         return std::nullopt;
     }

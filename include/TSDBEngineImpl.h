@@ -38,7 +38,7 @@ struct Table {
     std::unique_ptr<TableWriter> _table_writer;
     std::unique_ptr<TableReader> _table_reader;
     std::atomic<size_t> _next_segment_id;
-    std::unordered_map<int32_t, Row> _latest_records; // vin -> {segment_id, ordinal, latest_timestamp}
+    std::unordered_map<int32_t, Row> _latest_records; // vin -> row
 };
 
 class TSDBEngineImpl : public TSDBEngine {

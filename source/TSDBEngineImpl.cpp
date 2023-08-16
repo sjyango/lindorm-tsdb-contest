@@ -104,7 +104,7 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         return -1;
     }
     {
-        // std::unique_lock<std::mutex> l(_latch);
+        std::unique_lock<std::mutex> l(_latch);
         TableSPtr table = _tables[writeRequest.tableName];
         std::optional<std::unordered_map<int32_t, Row>> flushed_records;
         table->_table_writer->append(writeRequest.rows, &flushed_records);

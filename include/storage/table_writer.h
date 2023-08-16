@@ -48,7 +48,7 @@ private:
     void _init_mem_table();
     bool _need_to_flush();
 
-    std::mutex _latch;
+    // std::mutex _latch;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
     io::FileWriterPtr _file_writer;
