@@ -35,7 +35,7 @@ public:
 
     ~TableWriter();
 
-    void append(const std::vector<Row>& append_rows);
+    void append(const std::vector<Row>& append_rows, bool* flushed);
 
     void close();
 
@@ -44,11 +44,11 @@ public:
     size_t rows() const;
 
 private:
-    void _write(const vectorized::Block* block);
+    void _write(const vectorized::Block* block, bool* flushed);
     void _init_mem_table();
     bool _need_to_flush();
 
-    std::mutex _latch;
+    // std::mutex _latch;
     size_t _MEM_TABLE_FLUSH_THRESHOLD;
     io::FileSystemSPtr _fs;
     io::FileWriterPtr _file_writer;

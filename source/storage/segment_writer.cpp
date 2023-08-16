@@ -97,6 +97,7 @@ String SegmentWriter::_encode_keys(const std::vector<ColumnDataConvertor*>& key_
         _key_coders[cid]->encode_ascending(data, &encoded_keys);
         ++cid;
     }
+    assert(encoded_keys.size() == 10);
     return encoded_keys;
 }
 

@@ -87,8 +87,15 @@ int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         ERR_LOG("No such table [%s], cannot upsert to", writeRequest.tableName.c_str())
         return -1;
     }
-    TableSPtr table = _tables[writeRequest.tableName];
-    table->_table_writer->append(writeRequest.rows);
+    {
+        std::unique_lock<std::mutex> l(_latch);
+        bool flushed = false;
+        TableSPtr table = _tables[writeRequest.tableName];
+        table->_table_writer->append(writeRequest.rows, &flushed);
+        if (flushed) {
+            table->_table_reader->init_segment_readers();
+        }
+    }
     return 0;
 }
 

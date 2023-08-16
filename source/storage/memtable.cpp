@@ -51,7 +51,8 @@ void MemTable::insert(const vectorized::Block* input_block) {
 
     for (int i = 0; i < num_rows; i++) {
         _row_in_blocks.emplace_back(std::make_unique<RowInBlock>(cursor_in_mutable_block + i));
-        _skip_list->insert(_row_in_blocks.back().get());
+        bool is_exist = _skip_list->find(_row_in_blocks.back().get(), &_hint);
+        _skip_list->insert_with_hint(_row_in_blocks.back().get(), is_exist, &_hint);
         _rows++;
     }
 }
@@ -61,6 +62,7 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
         *num_rows_written_in_table = 0;
         return;
     }
+    INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block->to_block();
     std::vector<size_t> row_pos_vec;
@@ -72,6 +74,12 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
 
     _output_mutable_block->append_block(&in_block, row_pos_vec.data(), row_pos_vec.data() + row_pos_vec.size());
     vectorized::Block out_block = _output_mutable_block->to_block();
+    auto min_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column).get(0);
+    auto max_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column).get(out_block.rows() - 1);
+    auto min_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column).get(0);
+    auto max_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column).get(out_block.rows() - 1);
+    INFO_LOG("[segment min] vin: %s, timestamp: %ld", encode_vin(min_vin).vin, encode_timestamp(min_timestamp))
+    INFO_LOG("[segment max] vin: %s, timestamp: %ld", encode_vin(max_vin).vin, encode_timestamp(max_timestamp))
     _segment_writer->append_block(&out_block, num_rows_written_in_table);
 }
 

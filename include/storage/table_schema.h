@@ -86,7 +86,7 @@ class TableSchema {
 public:
     TableSchema(const Schema& schema) {
         size_t column_index = 0;
-        _cols.emplace_back(column_index, "vin", ColumnType::COLUMN_TYPE_STRING, true);
+        _cols.emplace_back(column_index, "vin", ColumnType::COLUMN_TYPE_INTEGER, true);
         _field_name_to_index[_cols.back().get_name()] = column_index;
         _field_id_to_index[_cols.back().get_uid()] = column_index;
         column_index++;

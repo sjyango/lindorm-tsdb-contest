@@ -62,12 +62,13 @@ public:
 
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
-        size_t result_ordinal = _lower_bound(increase_vin(key_vin), 0) - 1;
+        int32_t vin = decode_vin(key_vin);
+        size_t result_ordinal = _lower_bound(vin + 1, 0) - 1;
         // the position we need is `result_ordinal - 1`
         _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
-        const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
+        const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*_short_key_columns[0]);
         assert(column_vin.size() == 1);
-        if (std::strncmp(key_vin.vin, column_vin[0].data(), 17) != 0) {
+        if (vin != column_vin[0]) {
             return std::nullopt;
         }
         _read_columns_by_range(schema->column_ids(), return_columns, col_id_to_column_index, result_ordinal, result_ordinal + 1);
@@ -84,7 +85,7 @@ public:
         return {std::move(block.to_rows()[0])};
     }
 
-    std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp) {
+    std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp) {
         vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
@@ -92,9 +93,9 @@ public:
         for (const auto& col_id : schema->column_ids()) {
             col_id_to_column_index[col_id] = column_index++;
         }
-        std::string key_vin(query_vin.vin, 17);
-        size_t start_ordinal = _lower_bound(key_vin, lower_bound_timestamp);
-        size_t end_ordinal = _lower_bound(key_vin, upper_bound_timestamp);
+        int32_t vin = decode_vin(query_vin);
+        size_t start_ordinal = _lower_bound(vin, decode_timestamp(lower_bound_timestamp));
+        size_t end_ordinal = _lower_bound(vin, decode_timestamp(upper_bound_timestamp));
         assert(start_ordinal <= end_ordinal);
         // the range we need is [start_ordinal, end_ordinal) aka. [start_ordinal, end_ordinal - 1]
         if (start_ordinal == end_ordinal) {
@@ -136,7 +137,7 @@ private:
         const uint8_t* footer_start = reinterpret_cast<const uint8_t*>(footer_buffer.c_str());
         _footer.deserialize(footer_start, _table_schema->num_columns());
         assert(_footer._column_metas.size() == _table_schema->num_columns());
-        INFO_LOG("Parse segment footer success, footer size is %u", footer_size)
+        // INFO_LOG("Parse segment footer success, footer size is %u", footer_size)
     }
 
     void _load_short_key_index() {
@@ -149,14 +150,16 @@ private:
         assert(footer._page_type == PageType::SHORT_KEY_PAGE);
         _short_key_index_reader = std::make_unique<ShortKeyIndexReader>();
         _short_key_index_reader->load(body, footer);
-        INFO_LOG("Load short key index success, mem size is %zu", body._size)
+        // INFO_LOG("Load short key index success, mem size is %zu", body._size)
     }
 
     // lookup the ordinal of given key from short key index
     // key == vin + timestamp
-    size_t _lower_bound(const std::string& vin, int64_t timestamp) {
-        std::string key = vin;
+    size_t _lower_bound(int32_t vin, uint16_t timestamp) {
+        std::string key;
+        KeyCoderTraits<COLUMN_TYPE_INTEGER>::encode_ascending(&vin, &key);
         KeyCoderTraits<COLUMN_TYPE_TIMESTAMP>::encode_ascending(&timestamp, &key);
+        assert(key.size() == 10);
         auto end_iter = _short_key_index_reader->upper_bound(key);
         auto begin_iter = end_iter;
         --begin_iter;
@@ -181,9 +184,9 @@ private:
     // short key < input key, return -1
     // short key = input key, return 0
     // short key > input key, return 1
-    int _compare_with_input_key(const std::string& vin, int64_t timestamp) const {
-        const vectorized::ColumnString& column_vin = reinterpret_cast<const vectorized::ColumnString&>(*_short_key_columns[0]);
-        const vectorized::ColumnInt64& column_timestamp = reinterpret_cast<const vectorized::ColumnInt64&>(*_short_key_columns[1]);
+    int _compare_with_input_key(int32_t vin, uint16_t timestamp) const {
+        const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*_short_key_columns[0]);
+        const vectorized::ColumnUInt16& column_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*_short_key_columns[1]);
         assert(column_vin.size() == 1);
         assert(column_timestamp.size() == 1);
         if (column_vin.get(0) < vin) {
@@ -222,13 +225,6 @@ private:
         _read_columns(column_ids, return_columns, col_id_to_column_index, &num_to_read);
         assert(num_to_read == (end_ordinal - start_ordinal));
     }
-
-    // void _seek_columns_first(const std::vector<ColumnId>& column_ids) {
-    //     for (auto col_id : column_ids) {
-    //         assert(_column_readers.find(col_id) != _column_readers.end());
-    //         _column_readers[col_id]->seek_to_first();
-    //     }
-    // }
 
     void _seek_columns(const std::vector<ColumnId>& column_ids, size_t ordinal) {
         for (auto col_id : column_ids) {

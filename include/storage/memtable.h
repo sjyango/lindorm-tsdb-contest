@@ -104,6 +104,7 @@ private:
     std::unique_ptr<Arena> _arena;
     std::unique_ptr<VecTable> _skip_list;
     std::vector<std::unique_ptr<RowInBlock>> _row_in_blocks;
+    VecTable::Hint _hint;
     int64_t _rows = 0;
     std::unique_ptr<vectorized::MutableBlock> _input_mutable_block;
     std::unique_ptr<vectorized::MutableBlock> _output_mutable_block;

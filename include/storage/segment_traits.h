@@ -156,6 +156,8 @@ struct ColumnIndexMeta {
 
     ColumnIndexMeta(ColumnIndexType type) : _type(type) {}
 
+    virtual ~ColumnIndexMeta() = default;
+
     virtual void serialize(std::string* buf) const {
         // 4 Bytes = _type(4)
         put_fixed32_le(buf, static_cast<uint32_t>(_type));
@@ -171,6 +173,8 @@ struct OrdinalIndexMeta : public ColumnIndexMeta {
     io::PagePointer _page_pointer;
 
     OrdinalIndexMeta() = default;
+
+    ~OrdinalIndexMeta() override = default;
 
     OrdinalIndexMeta(io::PagePointer page_pointer)
             : ColumnIndexMeta(ColumnIndexType::ORDINAL_INDEX), _page_pointer(page_pointer) {}

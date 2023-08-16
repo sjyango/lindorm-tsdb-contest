@@ -161,7 +161,6 @@ public:
         _num_pages = decoder.count();
         _ordinals.resize(_num_pages);
         _pages.resize(_num_pages);
-        //_ordinals.resize(_num_pages + 1);
 
         for (int i = 0; i < _num_pages; i++) {
             Slice key = decoder.get_key(i);
@@ -171,8 +170,6 @@ public:
             _ordinals[i] = ordinal;
             _pages[i] = decoder.get_value(i);
         }
-
-        // _ordinals[_num_pages] = num_values;
     }
 
     // the returned iter points to the largest element which is less than `ordinal`,

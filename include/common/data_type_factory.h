@@ -103,7 +103,7 @@ struct DataTypeTraits<COLUMN_TYPE_INTEGER> {
 
 template <>
 struct DataTypeTraits<COLUMN_TYPE_TIMESTAMP> {
-    using CPP_TYPE = int64_t;
+    using CPP_TYPE = uint16_t;
     static constexpr ColumnType COLUMN_TYPE = COLUMN_TYPE_TIMESTAMP;
     static constexpr size_t TYPE_SIZE = sizeof(CPP_TYPE);
 

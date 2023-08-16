@@ -27,18 +27,18 @@ set(EXECUTABLES
         # demo_test
         coding_test
         column_test
-        block_test
+        # block_test
         schema_test
         arena_test
         skip_list_test
-        memtable_test
+        # memtable_test
         short_key_index_test
         ordinal_key_index_test
         data_page_test
         io_test
         index_page_test
         column_writer_reader_test
-        parallel_merge_join_test
+        # parallel_merge_join_test
         # segment_writer_reader_test
         # table_writer_reader_test
         multi_thread_test

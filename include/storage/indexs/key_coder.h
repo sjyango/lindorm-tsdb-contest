@@ -25,26 +25,6 @@ namespace LindormContest::storage {
 using EncodeAscendingFunc = void (*)(const void* value, std::string* buf);
 using DecodeAscendingFunc = void (*)(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr);
 
-static std::string padding_format(int64_t value, size_t width) {
-    std::string str_value = std::to_string(value);
-    if (str_value.length() < width) {
-        str_value = std::string(width - str_value.length(), '0') + str_value;
-    }
-    return str_value;
-}
-
-// static std::string padding_format(uint64_t value, size_t width) {
-//     std::string str_value = std::to_string(value);
-//     if (str_value.length() < width) {
-//         str_value = std::string(width - str_value.length(), '0') + str_value;
-//     }
-//     return str_value;
-// }
-
-// Order-preserving binary encoding for values of a particular type so that
-// those values can be compared by memcpy their encoded bytes.
-//
-// To obtain instance of this class, use the `get_key_coder(FieldType)` method.
 class KeyCoder {
 public:
     template <typename TraitsType>
@@ -75,7 +55,11 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
-        buf->append((char*) &key_val, sizeof(KeyType));
+        std::string key_str = std::to_string(key_val);
+        while (key_str.size() < 6) {
+            key_str = "0" + key_str;
+        }
+        buf->append(key_str);
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {
@@ -88,14 +72,16 @@ struct KeyCoderTraits<ColumnType::COLUMN_TYPE_INTEGER> {
 
 template <>
 struct KeyCoderTraits<ColumnType::COLUMN_TYPE_TIMESTAMP> {
-    using KeyType = Int64;
+    using KeyType = uint16_t;
 
-    // encoded(37) = vin(17) + timestamp(20)
     static void encode_ascending(const void* value, std::string* buf) {
         KeyType key_val;
         std::memcpy(&key_val, value, sizeof(KeyType));
-        std::string encoded_str = padding_format(key_val, 20);
-        buf->append(encoded_str);
+        std::string key_str = std::to_string(key_val);
+        while (key_str.size() < 4) {
+            key_str = "0" + key_str;
+        }
+        buf->append(key_str);
     }
 
     static void decode_ascending(Slice* encoded_key, size_t index_size, uint8_t* cell_ptr) {

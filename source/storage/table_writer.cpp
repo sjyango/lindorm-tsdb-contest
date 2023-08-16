@@ -24,7 +24,7 @@ TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::ato
 
 TableWriter::~TableWriter() = default;
 
-void TableWriter::append(const std::vector<Row>& append_rows) {
+void TableWriter::append(const std::vector<Row>& append_rows, bool* flushed) {
     if (append_rows.empty()) {
         return;
     }
@@ -34,11 +34,37 @@ void TableWriter::append(const std::vector<Row>& append_rows) {
 
     for (const auto& row : append_rows) {
         input_block->add_row(row);
-        INFO_LOG("vin: %s, timestamp: %ld", row.vin.vin, row.timestamp)
+        // INFO_LOG("########################################")
+        // INFO_LOG("vin: %s, timestamp: %ld", std::string(row.vin.vin, 17).c_str(), row.timestamp)
+        // for (const auto& item : row.columns) {
+        //     switch (item.second.columnType) {
+        //     case COLUMN_TYPE_STRING: {
+        //         std::pair<int32_t, const char *> lengthStrPair;
+        //         item.second.getStringValue(lengthStrPair);
+        //         INFO_LOG("name: %s, value: %s", item.first.c_str(), lengthStrPair.second)
+        //         break;
+        //     }
+        //     case COLUMN_TYPE_INTEGER: {
+        //         int32_t val;
+        //         item.second.getIntegerValue(val);
+        //         INFO_LOG("name: %s, value: %d", item.first.c_str(), val)
+        //         break;
+        //     }
+        //     case COLUMN_TYPE_DOUBLE_FLOAT: {
+        //         double val;
+        //         item.second.getDoubleFloatValue(val);
+        //         INFO_LOG("name: %s, value: %f", item.first.c_str(), val)
+        //         break;
+        //     }
+        //     default: {}
+        //     }
+        //
+        // }
+        // INFO_LOG("########################################")
     }
 
     vectorized::Block block = input_block->to_block();
-    _write(&block);
+    _write(&block, flushed);
 }
 
 void TableWriter::close() {
@@ -52,21 +78,23 @@ bool TableWriter::_need_to_flush() {
     return _mem_table->rows() >= _MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-void TableWriter::_write(const vectorized::Block* block) {
+void TableWriter::_write(const vectorized::Block* block, bool* flushed) {
     {
-        std::lock_guard<std::mutex> l(_latch);
+        // std::lock_guard<std::mutex> l(_latch);
         if (_mem_table == nullptr) {
             _init_mem_table();
         }
         _mem_table->insert(block);
+        *flushed = false;
     }
     if (_need_to_flush()) {
         flush();
+        *flushed = true;
     }
 }
 
 void TableWriter::flush() {
-    std::lock_guard<std::mutex> l(_latch);
+    // std::lock_guard<std::mutex> l(_latch);
     if (_mem_table == nullptr || _mem_table->rows() == 0) {
         return;
     }

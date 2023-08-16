@@ -85,7 +85,7 @@ public:
     //   >  0 iff "*this" >  "b"
     int compare(const Slice& b) const {
         const size_t min_len = (_size < b._size) ? _size : b._size;
-        int r = memcmp(_data, b._data, min_len);
+        int r = std::memcmp(_data, b._data, min_len);
         if (r == 0) {
             if (_size < b._size)
                 r = -1;

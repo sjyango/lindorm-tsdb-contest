@@ -33,32 +33,34 @@ static std::string decrease_vin(Vin vin) {
     return {vin.vin, 17};
 }
 
-struct RowPosition {
-    size_t _segment_id;
-    std::string _vin;
-    int64_t _timestamp;
-    ordinal_t _ordinal;
+// LSVNV2182E0107499 -> 107499
+static int32_t decode_vin(Vin vin) {
+    char suffix_chars[7];
+    std::memcpy(suffix_chars, vin.vin + 11, 6);
+    suffix_chars[6] = '\0';
+    return std::stoi(suffix_chars);
+}
 
-    RowPosition() = default;
-
-    RowPosition(size_t segment_id, std::string vin, int64_t timestamp, ordinal_t ordinal)
-            : _segment_id(segment_id), _vin(vin), _timestamp(timestamp), _ordinal(ordinal) {}
-
-    ~RowPosition() = default;
-
-    bool operator==(const RowPosition& other) const {
-        return _vin == other._vin && _timestamp == other._timestamp;
+// 107499 -> LSVNV2182E0107499
+static Vin encode_vin(int32_t vin_val) {
+    Vin vin;
+    std::string vin_val_str = std::to_string(vin_val);
+    while (vin_val_str.size() < 6) {
+        vin_val_str = "0" + vin_val_str;
     }
+    std::string vin_str = "LSVNV2182E0" + vin_val_str;
+    std::strncpy(vin.vin, vin_str.c_str(), 17);
+    return vin;
+}
 
-    bool operator!=(const RowPosition& other) const {
-        return !(*this == other);
-    }
+// 1689091499000 -> 1499
+static uint16_t decode_timestamp(int64_t timestamp) {
+    return (timestamp / 1000) % 10000;
+}
 
-    struct HashFunc {
-        size_t operator()(const RowPosition& row) const {
-            return std::hash<std::string>()(row._vin) ^ std::hash<int64_t>()(row._timestamp);
-        }
-    };
-};
+// 1499 -> 1689091499000
+static int64_t encode_timestamp(uint16_t timestamp_val) {
+    return 1689090000000 + timestamp_val * 1000;
+}
 
 }

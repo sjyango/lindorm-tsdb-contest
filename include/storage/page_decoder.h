@@ -142,41 +142,6 @@ public:
         return _cur_idx;
     }
 
-    // void read_by_rowids(const rowid_t* rowids, ordinal_t page_first_ordinal, size_t* n,
-    //                       vectorized::MutableColumnSPtr& dst) override {
-    //     assert(_parsed);
-    //     if (*n == 0) {
-    //         *n = 0;
-    //         return;
-    //     }
-    //     auto total = *n;
-    //     size_t read_count = 0;
-    //     uint32_t len_array[total];
-    //     uint32_t start_offset_array[total];
-    //     for (size_t i = 0; i < total; ++i) {
-    //         ordinal_t ord = rowids[i] - page_first_ordinal;
-    //         if (ord >= _num_elems) {
-    //             break;
-    //         }
-    //         const uint32_t start_offset = _offset(ord);
-    //         start_offset_array[read_count] = start_offset;
-    //         len_array[read_count] = _offset(ord + 1) - start_offset;
-    //         read_count++;
-    //     }
-    //
-    //     if (read_count > 0) {
-    //         dst->insert_binary_data(_data._data, len_array, start_offset_array, read_count);
-    //     }
-    //
-    //     *n = read_count;
-    // }
-
-    // Slice string_at_index(size_t idx) const {
-    //     const uint32_t start_offset = offset(idx);
-    //     uint32_t len = offset(idx + 1) - start_offset;
-    //     return Slice(&_data[start_offset], len);
-    // }
-
 private:
     uint32_t _get_offset(size_t idx) const {
         if (idx == 0) {

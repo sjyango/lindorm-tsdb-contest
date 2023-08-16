@@ -64,10 +64,6 @@ public:
             Row result_row;
             result_row.timestamp = -1;
 
-            if (_segment_readers.size() == 0) {
-                return;
-            }
-
             for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
                 auto result = it->second->handle_latest_query(schema, vin);
                 if (result.has_value()) {
@@ -85,11 +81,7 @@ public:
         }
     }
 
-    void handle_time_range_query(const PartialSchemaSPtr& schema, const Vin& query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
-        if (_segment_readers.size() == 0) {
-            return;
-        }
-
+    void handle_time_range_query(const PartialSchemaSPtr& schema, const Vin& query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp, std::vector<Row>& results) {
         for (auto& [segment_id, segment_reader] : _segment_readers) {
             auto result = segment_reader->handle_time_range_query(schema, query_vin, lower_bound_timestamp, upper_bound_timestamp);
             if (result.has_value()) {
@@ -98,19 +90,6 @@ public:
             }
         }
     }
-
-    // void handle_time_range_query(Vin query_vin, size_t lower_bound_timestamp, size_t upper_bound_timestamp, std::vector<Row>& results) {
-    //     std::vector<std::vector<Row>> table_rows;
-    //
-    //     for (auto& [segment_id, segment_reader] : _segment_readers) {
-    //         auto result = segment_reader->handle_time_range_query(query_vin, lower_bound_timestamp, upper_bound_timestamp);
-    //         if (result.has_value()) {
-    //             table_rows.push_back(std::move((*result).to_rows()));
-    //         }
-    //     }
-    //
-    //     _deduplication(table_rows, results);
-    // }
 
 private:
     static void _deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {

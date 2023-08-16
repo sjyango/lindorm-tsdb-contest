@@ -127,12 +127,14 @@ private:
 };
 
 /// Explicit template instantiations - to avoid code bloat in headers.
-template class ColumnNumber<Int32>;
-template class ColumnNumber<Int64>;
-template class ColumnNumber<Float64>;
+template class ColumnNumber<uint16_t>;
+template class ColumnNumber<int32_t>;
+template class ColumnNumber<int64_t>;
+template class ColumnNumber<double_t>;
 
-using ColumnInt32 = ColumnNumber<Int32>;
-using ColumnInt64 = ColumnNumber<Int64>;
-using ColumnFloat64 = ColumnNumber<Float64>;
+using ColumnUInt16 = ColumnNumber<uint16_t>;
+using ColumnInt32 = ColumnNumber<int32_t>;
+using ColumnInt64 = ColumnNumber<int64_t>;
+using ColumnFloat64 = ColumnNumber<double_t>;
 
 }

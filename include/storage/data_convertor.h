@@ -162,13 +162,13 @@ private:
     ColumnDataConvertorUPtr _create_column_data_convertor(const TableColumn& column) {
         switch (column.get_column_type()) {
         case COLUMN_TYPE_INTEGER:
-            return std::make_unique<NumberColumnDataConvertor<Int32>>();
+            return std::make_unique<NumberColumnDataConvertor<int32_t>>();
         case COLUMN_TYPE_DOUBLE_FLOAT:
-            return std::make_unique<NumberColumnDataConvertor<Float64>>();
+            return std::make_unique<NumberColumnDataConvertor<double_t>>();
         case COLUMN_TYPE_STRING:
             return std::make_unique<StringColumnDataConvertor>();
         case COLUMN_TYPE_TIMESTAMP:
-            return std::make_unique<NumberColumnDataConvertor<Int64>>();
+            return std::make_unique<NumberColumnDataConvertor<uint16_t>>();
         default:
             return nullptr;
         }

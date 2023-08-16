@@ -15,6 +15,8 @@
 
 #include "vec/blocks/mutable_block.h"
 
+#include "utils.h"
+
 namespace LindormContest::vectorized {
 
 
@@ -59,10 +61,10 @@ void MutableBlock::add_row(const Block* block, size_t row) {
 
 void MutableBlock::add_row(const Row& row) {
     assert(_data.size() == row.columns.size() + 2);
-    ColumnString& vin_col = reinterpret_cast<ColumnString&>(*_data[_index_by_name["vin"]]);
-    vin_col.push_string(row.vin.vin, 17);
-    ColumnInt64& timestamp_col = reinterpret_cast<ColumnInt64&>(*_data[_index_by_name["timestamp"]]);
-    timestamp_col.push_number(row.timestamp);
+    ColumnInt32& vin_col = reinterpret_cast<ColumnInt32&>(*_data[_index_by_name["vin"]]);
+    vin_col.push_number(decode_vin(row.vin));
+    ColumnUInt16& timestamp_col = reinterpret_cast<ColumnUInt16&>(*_data[_index_by_name["timestamp"]]);
+    timestamp_col.push_number(decode_timestamp(row.timestamp));
 
     for (const auto& pair : row.columns) {
         // KEY: columnFieldName, VALVE: column data.

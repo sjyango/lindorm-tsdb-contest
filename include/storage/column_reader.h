@@ -110,26 +110,6 @@ public:
         *n -= remaining;
     }
 
-    // void read_by_rowids(const rowid_t* rowids, const size_t count, vectorized::MutableColumnSPtr& dst) {
-    //     size_t remaining = count;
-    //     size_t total_read_count = 0;
-    //     size_t num_rows_to_read = 0;
-    //
-    //     while (remaining > 0) {
-    //         seek_to_ordinal(rowids[total_read_count]);
-    //         // number of rows to be read from this page
-    //         num_rows_to_read = std::min(remaining, _remaining());
-    //         _page_decoder->read_by_rowids(&rowids[total_read_count],_data_page->get_first_ordinal(),
-    //                                       &num_rows_to_read, dst);
-    //         total_read_count += num_rows_to_read;
-    //         remaining -= num_rows_to_read;
-    //     }
-    // }
-
-    ordinal_t get_current_ordinal() const {
-        return _current_ordinal;
-    }
-
 private:
     void _seek_to_pos_in_page(ordinal_t offset_in_page) {
         if (_offset_in_page == offset_in_page) {

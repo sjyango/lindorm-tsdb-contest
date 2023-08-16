@@ -37,7 +37,7 @@ public:
         case COLUMN_TYPE_STRING:
             return std::make_shared<ColumnString>(column_name);
         case COLUMN_TYPE_TIMESTAMP:
-            return std::make_shared<ColumnInt64>(column_name);
+            return std::make_shared<ColumnUInt16>(column_name);
         default:
             return nullptr;
         }

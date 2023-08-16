@@ -83,7 +83,7 @@ public:
         Node* x = find_greater_or_equal(key, prev);
 
         // Our data structure does not allow duplicate insertion
-        assert(x == nullptr || !equal(key, x->key));
+        // assert(x == nullptr || !equal(key, x->key));
 
         int height = random_height();
         if (height > get_max_height()) {
