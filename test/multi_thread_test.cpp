@@ -27,7 +27,9 @@ using namespace storage;
 using namespace vectorized;
 
 std::vector<Row> global_datasets;
+std::vector<Row> written_datasets;
 std::mutex dataset_mutex;
+std::mutex insert_mutex;
 
 std::unordered_map<std::string, Row> latest_records; // vin -> max_timestamp
 std::unordered_map<std::string, std::vector<Row>> time_range_records; // vin -> timestamps
@@ -188,9 +190,17 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
     std::vector<std::string> request_vins;
 
     for (int i = 0; i < N; ++i) {
-        size_t rand_index = generate_random_int32() % global_datasets.size();
-        lqr.vins.push_back(global_datasets[rand_index].vin);
-        request_vins.push_back(std::string(global_datasets[rand_index].vin.vin, 17));
+        if (generate_random_float64() < 0.75) {
+            size_t rand_index = generate_random_int32() % written_datasets.size();
+            lqr.vins.push_back(global_datasets[rand_index].vin);
+            request_vins.push_back(std::string(global_datasets[rand_index].vin.vin, 17));
+        } else {
+            std::string rand_vin = generate_random_string(17);
+            Vin vin;
+            std::strncpy(vin.vin, rand_vin.c_str(), 17);
+            lqr.vins.push_back(vin);
+            request_vins.push_back(rand_vin);
+        }
     }
 
     std::vector<Row> lq_ground_truths;
@@ -217,19 +227,26 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
         return lhs.timestamp < rhs.timestamp;
     });
 
-    ASSERT_EQ(lq_results.size(), lq_ground_truths.size());
+    if (lq_results.size() != lq_ground_truths.size()) {
+        ASSERT_EQ(lq_results.size(), lq_ground_truths.size());
+    }
 
     for (size_t i = 0; i < lq_results.size(); ++i) {
         ASSERT_TRUE(compare_rows(lq_results[i], lq_ground_truths[i]));
     }
 
-    INFO_LOG("[handle_latest_query] finished %lu times", id + 1)
+    INFO_LOG("[handle_latest_query] finished %lu times, results size is %zu", id + 1, lq_results.size())
 }
 
 static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
     TimeRangeQueryRequest trqr;
     trqr.tableName = TABLE_NAME;
-    trqr.vin = global_datasets[generate_random_int32() % global_datasets.size()].vin;
+    if (generate_random_float64() < 0.75) {
+        trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
+    } else {
+        std::string rand_vin = generate_random_string(17);
+        std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
+    }
     trqr.timeUpperBound = 1689093000000;
     trqr.timeLowerBound = 1689091000000;
     trqr.requestedColumns = {"col1", "col3"};
@@ -265,13 +282,15 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
         return lhs.timestamp < rhs.timestamp;
     });
 
-    ASSERT_EQ(trq_results.size(), trq_ground_truths.size());
+    if (trq_results.size() != trq_ground_truths.size()) {
+        ASSERT_EQ(trq_results.size(), trq_ground_truths.size());
+    }
 
     for (size_t i = 0; i < trq_results.size(); ++i) {
         ASSERT_TRUE(compare_rows(trq_results[i], trq_ground_truths[i]));
     }
 
-    INFO_LOG("[handle_time_range_query] finished %lu times", id + 1)
+    INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
 }
 
 static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TABLE_NAME) {
@@ -279,6 +298,7 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
     std::thread insert_data_threads[INSERT_DATA_THREADS];
 
     auto insert_data = [TABLE_NAME] (TSDBEngineImpl& db, size_t thread_id) {
+        std::lock_guard<std::mutex> l(insert_mutex);
         size_t batch_nums = global_datasets.size() / INSERT_DATA_THREADS;
         size_t start_index = thread_id * batch_nums;
         size_t end_index = std::min((thread_id + 1) * batch_nums, global_datasets.size());
@@ -300,15 +320,27 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
             db.upsert(wq);
         }
 
-        // if (generate_random_float64() < 0.75) {
-        //     if (generate_random_float64() < 0.5) {
-        //         handle_latest_query(db, TABLE_NAME, 0);
-        //         INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
-        //     } else {
-        //         handle_time_range_query(db, TABLE_NAME, 0);
-        //         INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
-        //     }
-        // }
+        written_datasets.insert(written_datasets.end(), src_rows.begin(), src_rows.end());
+
+        for (const auto& row : src_rows) {
+            std::string key = std::string(row.vin.vin, 17);
+            if (latest_records.find(key) == latest_records.end() || row.timestamp > latest_records[key].timestamp) {
+                std::strncpy(latest_records[key].vin.vin, row.vin.vin, 17);
+                latest_records[key].timestamp = row.timestamp;
+                latest_records[key].columns = row.columns;
+            }
+            time_range_records[key].push_back(row);
+        }
+
+        if (generate_random_float64() < 0.8) {
+            if (generate_random_float64() < 0.5) {
+                handle_latest_query(db, TABLE_NAME, 0);
+                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
+            } else {
+                handle_time_range_query(db, TABLE_NAME, 0);
+                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
+            }
+        }
     };
 
     for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -322,6 +354,7 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
 
 TEST(MultiThreadTest, MultiThreadDemoTest) {
     global_datasets.clear();
+    written_datasets.clear();
     latest_records.clear();
     time_range_records.clear();
 
@@ -359,8 +392,8 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     // create table
     ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
 
-    generate_index_dataset();
-    INFO_LOG("####################### [generate_index_dataset] finished #######################")
+    // generate_index_dataset();
+    // INFO_LOG("####################### [generate_index_dataset] finished #######################")
 
     // insert_data
     insert_data_into_db_engine(*demo, TABLE_NAME);
@@ -433,6 +466,7 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
 
 TEST(MultiThreadTest, MultiThreadRandomQueryDemoTest) {
     global_datasets.clear();
+    written_datasets.clear();
     latest_records.clear();
     time_range_records.clear();
 
@@ -470,8 +504,8 @@ TEST(MultiThreadTest, MultiThreadRandomQueryDemoTest) {
     // create table
     ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
 
-    generate_index_dataset();
-    INFO_LOG("####################### [generate_index_dataset] finished #######################")
+    // generate_index_dataset();
+    // INFO_LOG("####################### [generate_index_dataset] finished #######################")
 
     // insert_data
     insert_data_into_db_engine(*demo, TABLE_NAME);

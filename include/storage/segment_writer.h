@@ -51,7 +51,7 @@ private:
     TableSchemaSPtr _schema;
     size_t _num_key_columns;
     size_t _short_key_row_pos = 0;
-    size_t _num_rows_written = 0;;
+    size_t _num_rows_written = 0;
     std::unique_ptr<BlockDataConvertor> _data_convertor;
     std::vector<const KeyCoder*> _key_coders;
     std::vector<std::unique_ptr<ColumnWriter>> _column_writers;

@@ -38,7 +38,20 @@ static int32_t decode_vin(Vin vin) {
     char suffix_chars[7];
     std::memcpy(suffix_chars, vin.vin + 11, 6);
     suffix_chars[6] = '\0';
-    return std::stoi(suffix_chars);
+    int32_t res;
+    try {
+        res = std::stoi(suffix_chars);
+    } catch (const std::invalid_argument& e) {
+        INFO_LOG("decode_vin throw an invalid_argument exception, input vin is %s", vin.vin)
+        return -1;
+    } catch (const std::out_of_range& e) {
+        INFO_LOG("decode_vin throw an out_of_range exception, input vin is %s", vin.vin)
+        return -1;
+    } catch (const std::exception& e) {
+        INFO_LOG("decode_vin throw an exception, input vin is %s", vin.vin)
+        return -1;
+    }
+    return res;
 }
 
 // 107499 -> LSVNV2182E0107499

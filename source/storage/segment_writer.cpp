@@ -55,6 +55,14 @@ void SegmentWriter::append_block(const vectorized::Block* block, size_t* num_row
     if (num_rows == 0) {
         return;
     }
+
+    const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*block->get_by_position(0)._column);
+
+    // save existed vins into footer
+    for (size_t i = 0; i < num_rows; ++i) {
+        _footer._existed_vins.insert(column_vin[i]);
+    }
+
     _data_convertor->set_source_content(block, 0, num_rows);
     std::vector<size_t> short_key_pos;
 

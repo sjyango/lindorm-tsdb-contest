@@ -62,7 +62,7 @@ void MemTable::flush(size_t* num_rows_written_in_table) {
         *num_rows_written_in_table = 0;
         return;
     }
-    INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
+    // INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block->to_block();
     std::vector<size_t> row_pos_vec;

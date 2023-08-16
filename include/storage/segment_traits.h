@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include "storage/table_schema.h"
 #include "common/data_type_factory.h"
 #include "common/coding.h"
@@ -317,12 +319,19 @@ struct SegmentFooter {
 
     uint32_t _num_rows;
     CompressionType _compression_type;
+    std::unordered_set<int32_t> _existed_vins;
     io::PagePointer _short_key_index_page_pointer;
     std::vector<ColumnMetaSPtr> _column_metas;
 
     void serialize(std::string* buf) const {
         put_fixed32_le(buf, _num_rows);
         put_fixed32_le(buf, static_cast<uint32_t>(_compression_type));
+        put_fixed32_le(buf, _existed_vins.size());
+
+        for (const auto& vin : _existed_vins) {
+            put_fixed32_le(buf, vin);
+        }
+
         _short_key_index_page_pointer.serialize(buf);
 
         for (const auto& column_meta : _column_metas) {
@@ -333,7 +342,15 @@ struct SegmentFooter {
     void deserialize(const uint8_t*& data, size_t num_columns) {
         _num_rows = *reinterpret_cast<const uint32_t*>(data);
         _compression_type = static_cast<CompressionType>(*reinterpret_cast<const uint32_t*>(data + sizeof(uint32_t)));
-        data += 2 * sizeof(uint32_t);
+        uint32_t existed_vin_size = *reinterpret_cast<const uint32_t*>(data + 2 * sizeof(uint32_t));
+        data += 3 * sizeof(uint32_t);
+
+        for (uint32_t i = 0; i < existed_vin_size; ++i) {
+            _existed_vins.insert(*reinterpret_cast<const uint32_t*>(data + i * sizeof(uint32_t)));
+        }
+
+        data += existed_vin_size * sizeof(uint32_t);
+
         _short_key_index_page_pointer.deserialize(data);
 
         for (int i = 0; i < num_columns; ++i) {

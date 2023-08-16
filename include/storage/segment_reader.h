@@ -52,6 +52,10 @@ public:
     ~SegmentReader() = default;
 
     std::optional<Row> handle_latest_query(PartialSchemaSPtr schema, Vin key_vin) {
+        int32_t vin = decode_vin(key_vin);
+        if (_footer._existed_vins.find(vin) == _footer._existed_vins.end()) {
+            return std::nullopt;
+        }
         vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
@@ -62,7 +66,6 @@ public:
 
         // e.g. xxx -> xxy
         // key = vin + timestamp, e.g. xxx999 -> xxy000
-        int32_t vin = decode_vin(key_vin);
         size_t result_ordinal = _lower_bound(vin + 1, 0) - 1;
         // the position we need is `result_ordinal - 1`
         _seek_short_key_columns(result_ordinal < 1 ? 0 : result_ordinal);
@@ -86,6 +89,10 @@ public:
     }
 
     std::optional<vectorized::Block> handle_time_range_query(PartialSchemaSPtr schema, Vin query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp) {
+        int32_t vin = decode_vin(query_vin);
+        if (_footer._existed_vins.find(vin) == _footer._existed_vins.end()) {
+            return std::nullopt;
+        }
         vectorized::SMutableColumns return_columns = schema->create_block().mutate_columns();
         std::unordered_map<uint32_t, size_t> col_id_to_column_index;
         size_t column_index = 0;
@@ -93,7 +100,7 @@ public:
         for (const auto& col_id : schema->column_ids()) {
             col_id_to_column_index[col_id] = column_index++;
         }
-        int32_t vin = decode_vin(query_vin);
+
         size_t start_ordinal = _lower_bound(vin, decode_timestamp(lower_bound_timestamp));
         size_t end_ordinal = _lower_bound(vin, decode_timestamp(upper_bound_timestamp));
         assert(start_ordinal <= end_ordinal);
