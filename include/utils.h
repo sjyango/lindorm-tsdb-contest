@@ -28,17 +28,6 @@ struct RowPosition {
     uint16_t _timestamp;
 };
 
-// increase the last position char
-static std::string increase_vin(Vin vin) {
-    vin.vin[16] += 1;
-    return {vin.vin, 17};
-}
-
-static std::string decrease_vin(Vin vin) {
-    vin.vin[16] -= 1;
-    return {vin.vin, 17};
-}
-
 // LSVNV2182E0107499 -> 107499
 static int32_t decode_vin(Vin vin) {
     char suffix_chars[7];

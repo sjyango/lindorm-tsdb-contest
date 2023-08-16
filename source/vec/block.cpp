@@ -153,6 +153,44 @@ int Block::compare_at(size_t n, size_t m, size_t num_columns, const Block& rhs) 
     return 0;
 }
 
+Row Block::to_row(size_t num_row) const {
+    assert(num_row < rows());
+    Row row;
+    row.vin = encode_vin(reinterpret_cast<const ColumnInt32&>(*get_by_position(0)._column).get(num_row));
+    row.timestamp = encode_timestamp(reinterpret_cast<const ColumnUInt16&>(*get_by_position(1)._column).get(num_row));
+    std::map<std::string, ColumnValue> columns;
+
+    for (const auto& col : *this) {
+        if (col._name == "vin" || col._name == "timestamp") {
+            continue;
+        }
+        switch (col._type) {
+        case COLUMN_TYPE_INTEGER: {
+            ColumnValue value = ColumnValue(reinterpret_cast<const ColumnInt32&>(*col._column).get(num_row));
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        case COLUMN_TYPE_DOUBLE_FLOAT: {
+            ColumnValue value = ColumnValue(reinterpret_cast<const ColumnFloat64&>(*col._column).get(num_row));
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        case COLUMN_TYPE_STRING: {
+            auto str_val = reinterpret_cast<const ColumnString&>(*col._column).get(num_row);
+            ColumnValue value = ColumnValue(str_val.data(), str_val.size());
+            columns.emplace(col._name, std::move(value));
+            break;
+        }
+        default: {
+            throw std::runtime_error("unknown column type");
+        }
+        }
+    }
+
+    row.columns = std::move(columns);
+    return std::move(row);
+}
+
 // [start_row, end_row)
 std::vector<Row> Block::to_rows(size_t start_row, size_t end_row) const {
     assert(start_row >= 0 && end_row <= rows() && start_row < end_row);

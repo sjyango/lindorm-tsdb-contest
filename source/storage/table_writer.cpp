@@ -24,7 +24,7 @@ TableWriter::TableWriter(io::FileSystemSPtr fs, TableSchemaSPtr schema, std::ato
 
 TableWriter::~TableWriter() = default;
 
-void TableWriter::append(const std::vector<Row>& append_rows, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed_records) {
+void TableWriter::append(const std::vector<Row>& append_rows, std::optional<std::unordered_map<int32_t, Row>>* flushed_records) {
     if (append_rows.empty()) {
         *flushed_records = std::nullopt;
         return;
@@ -68,7 +68,7 @@ void TableWriter::append(const std::vector<Row>& append_rows, std::optional<std:
     _write(&block, flushed_records);
 }
 
-std::optional<std::unordered_map<int32_t, RowPosition>> TableWriter::close() {
+std::optional<std::unordered_map<int32_t, Row>> TableWriter::close() {
     return std::move(flush());
 }
 
@@ -79,7 +79,7 @@ bool TableWriter::_need_to_flush() {
     return _mem_table->rows() >= _MEM_TABLE_FLUSH_THRESHOLD;
 }
 
-void TableWriter::_write(const vectorized::Block* block, std::optional<std::unordered_map<int32_t, RowPosition>>* flushed_records) {
+void TableWriter::_write(const vectorized::Block* block, std::optional<std::unordered_map<int32_t, Row>>* flushed_records) {
     {
         std::lock_guard<std::mutex> l(_latch);
         if (_mem_table == nullptr) {
@@ -93,7 +93,7 @@ void TableWriter::_write(const vectorized::Block* block, std::optional<std::unor
     }
 }
 
-std::optional<std::unordered_map<int32_t, RowPosition>> TableWriter::flush() {
+std::optional<std::unordered_map<int32_t, Row>> TableWriter::flush() {
     std::lock_guard<std::mutex> l(_latch);
     if (_mem_table == nullptr || _mem_table->rows() == 0) {
         return std::nullopt;

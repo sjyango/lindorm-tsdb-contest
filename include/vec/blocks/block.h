@@ -159,7 +159,7 @@ public:
         return mem_usage;
     }
 
-    // Row to_row(size_t num_row) const;
+    Row to_row(size_t num_row) const;
 
     // [start_row, end_row)
     std::vector<Row> to_rows(size_t start_row, size_t end_row) const;

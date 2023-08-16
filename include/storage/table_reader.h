@@ -67,26 +67,6 @@ public:
             assert(_segment_readers.find(row_position._segment_id) != _segment_readers.end());
             results.emplace_back(_segment_readers[row_position._segment_id]->handle_latest_query(schema, row_position._ordinal));
         }
-
-        // for (const auto& vin : vins) {
-        //     Row result_row;
-        //     result_row.timestamp = -1;
-        //
-        //     for (auto it = _segment_readers.rbegin(); it != _segment_readers.rend(); ++it) {
-        //         auto result = it->second->handle_latest_query(schema, vin);
-        //         if (result.has_value()) {
-        //             if ((*result).timestamp > result_row.timestamp) {
-        //                 std::memcpy(result_row.vin.vin, (*result).vin.vin, 17);
-        //                 result_row.timestamp = (*result).timestamp;
-        //                 result_row.columns = std::move((*result).columns);
-        //             }
-        //         }
-        //     }
-        //
-        //     if (result_row.timestamp != -1) {
-        //         results.emplace_back(result_row);
-        //     }
-        // }
     }
 
     void handle_time_range_query(const PartialSchemaSPtr& schema, const Vin& query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp, std::vector<Row>& results) {
@@ -100,31 +80,6 @@ public:
     }
 
 private:
-    static void _deduplication(std::vector<std::vector<Row>>& table_rows, std::vector<Row>& results) {
-        std::unordered_set<Row, RowHashFunc> deduplication_rows;
-
-        for (auto it = table_rows.rbegin(); it != table_rows.rend(); ++it) {
-            std::vector<Row>& segment_rows = *it;
-
-            for (auto& row : segment_rows) {
-                if (deduplication_rows.find(row) == deduplication_rows.end()) {
-                    deduplication_rows.insert(std::move(row));
-                }
-            }
-        }
-
-        for (Row row : deduplication_rows) {
-            results.push_back(std::move(row));
-        }
-    }
-
-    struct RowHashFunc {
-        size_t operator()(const Row& row) const {
-            std::string vin_str(row.vin.vin, 17);
-            return std::hash<std::string>()(vin_str) ^ std::hash<int64_t>()(row.timestamp);
-        }
-    };
-
     io::FileSystemSPtr _fs;
     TableSchemaSPtr _table_schema;
     std::map<size_t, std::unique_ptr<SegmentReader>> _segment_readers;

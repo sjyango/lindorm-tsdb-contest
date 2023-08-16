@@ -57,7 +57,7 @@ void MemTable::insert(const vectorized::Block* input_block) {
     }
 }
 
-std::optional<std::unordered_map<int32_t, RowPosition>> MemTable::flush(size_t* num_rows_written_in_table) {
+std::optional<std::unordered_map<int32_t, Row>> MemTable::flush(size_t* num_rows_written_in_table) {
     if (_rows == 0) {
         *num_rows_written_in_table = 0;
         return std::nullopt;
@@ -76,11 +76,11 @@ std::optional<std::unordered_map<int32_t, RowPosition>> MemTable::flush(size_t* 
     vectorized::Block out_block = _output_mutable_block->to_block();
     const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column);
     const vectorized::ColumnUInt16& column_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column);
-    std::unordered_map<int32_t, RowPosition> latest_records;
+    std::unordered_map<int32_t, Row> latest_records;
     int64_t ordinal = column_vin.size() - 1;
 
     while (ordinal >= 0) {
-        latest_records[column_vin[ordinal]] = RowPosition {_segment_id, static_cast<ordinal_t>(ordinal), column_timestamp[ordinal]};
+        latest_records[column_vin[ordinal]] = out_block.to_row(ordinal);
         while (ordinal > 0 && column_vin[ordinal] == column_vin[ordinal - 1]) {
             ordinal--;
         }
