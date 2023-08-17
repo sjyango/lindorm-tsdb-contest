@@ -33,21 +33,21 @@ public:
     // output should be preallocated, and its capacity must be large enough
     // for compressed input, which can be get through max_compressed_len function.
     // Size of compressed data will be set in output's size.
-    virtual void compress(const Slice& input, std::string* output) {
+    virtual uint32_t compress(const Slice& input, std::string* output) {
         throw std::runtime_error("compress doesn't implement");
     }
 
     // Default implementation will merge input list into a big buffer and call
     // compress(Slice) to finish compression. If compression type support digesting
     // slice one by one, it should reimplement this function.
-    virtual void compress(const Slice& input, size_t uncompressed_size, std::string* output) {
+    virtual uint32_t compress(const Slice& input, size_t uncompressed_size, std::string* output) {
         throw std::runtime_error("compress doesn't implement");
     }
 
     // Decompress input data into output, output's capacity should be large enough
     // for decompressed data.
     // Size of decompressed data will be set in output's size.
-    virtual void decompress(const Slice& input, Slice* output) {
+    virtual uint8_t decompress(const Slice& input, Slice* output) {
         throw std::runtime_error("decompress doesn't implement");
     }
 

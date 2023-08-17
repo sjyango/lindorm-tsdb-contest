@@ -126,7 +126,7 @@ static void generate_dataset(size_t dataset_id) {
             columns.push_back(column);
         }
 
-        if (columns.size() != 5) {
+        if (columns.size() != 4) {
             std::cout << "Invalid number of columns." << std::endl;
             continue;
         }
@@ -134,17 +134,14 @@ static void generate_dataset(size_t dataset_id) {
         // 解析数据
         std::string randomString = columns[0];
         int64_t timestamp = std::stoll(columns[1]);
-        std::string variableString = columns[2];
-        int32_t randomInt = std::stoi(columns[3]);
-        double randomDouble = std::stod(columns[4]);
+        int32_t randomInt = std::stoi(columns[2]);
+        double randomDouble = std::stod(columns[3]);
 
         std::map<std::string, ColumnValue> columns_map;
-        ColumnValue col1_val(variableString);
-        columns_map.insert({"col1", col1_val});
         ColumnValue col2_val(randomInt);
-        columns_map.insert({"col2", col2_val});
+        columns_map.insert({"col1", col2_val});
         ColumnValue col3_val(randomDouble);
-        columns_map.insert({"col3", col3_val});
+        columns_map.insert({"col2", col3_val});
         Row row;
         row.vin = Vin(randomString);
         row.timestamp = timestamp;
@@ -237,7 +234,7 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
     trqr.timeUpperBound = std::numeric_limits<int64_t>::max();
     trqr.timeLowerBound = 0;
     // trqr.timeLowerBound = trqr.timeUpperBound / 1000;
-    trqr.requestedColumns = {"col1", "col3"};
+    trqr.requestedColumns = {"col1"};
     std::string key(trqr.vin.vin, 17);
 
     std::vector<Row> trq_ground_truths;
@@ -353,9 +350,8 @@ TEST(MultiThreadTest, DISABLED_MultiThreadDemoTest) {
     ASSERT_EQ(0, demo->connect());
     // create schema
     std::map<std::string, ColumnType> columnTypeMap;
-    columnTypeMap.insert({"col1", COLUMN_TYPE_STRING});
-    columnTypeMap.insert({"col2", COLUMN_TYPE_INTEGER});
-    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
+    columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     // create table
@@ -460,9 +456,9 @@ TEST(MultiThreadTest, MultiThreadRandomQueryDemoTest) {
     ASSERT_EQ(0, demo->connect());
     // create schema
     std::map<std::string, ColumnType> columnTypeMap;
-    columnTypeMap.insert({"col1", COLUMN_TYPE_STRING});
-    columnTypeMap.insert({"col2", COLUMN_TYPE_INTEGER});
-    columnTypeMap.insert({"col3", COLUMN_TYPE_DOUBLE_FLOAT});
+    // columnTypeMap.insert({"col1", COLUMN_TYPE_STRING});
+    columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
+    columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
     Schema schema;
     schema.columnTypeMap = std::move(columnTypeMap);
     // create table

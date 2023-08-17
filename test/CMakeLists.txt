@@ -41,6 +41,7 @@ set(EXECUTABLES
         parallel_merge_join_test
         # segment_writer_reader_test
         # table_writer_reader_test
+        gorilla_compression_test
         multi_thread_test
         )
 

@@ -82,6 +82,8 @@ else ()
     set(CMAKE_CXX_COMPILER "g++")
 endif ()
 
+set(CMAKE_CXX_STANDARD 23)
+
 include_directories(${PROJECT_SOURCE_DIR}/include)
 add_subdirectory(test)
 
