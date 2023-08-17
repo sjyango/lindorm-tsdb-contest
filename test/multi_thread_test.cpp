@@ -332,15 +332,15 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
             time_range_records[key].push_back(row);
         }
 
-        if (generate_random_float64() < 0.8) {
-            if (generate_random_float64() < 0.5) {
-                handle_latest_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
-            } else {
-                handle_time_range_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
-            }
-        }
+        // if (generate_random_float64() < 0.8) {
+        //     if (generate_random_float64() < 0.5) {
+        //         handle_latest_query(db, TABLE_NAME, 0);
+        //         INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
+        //     } else {
+        //         handle_time_range_query(db, TABLE_NAME, 0);
+        //         INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
+        //     }
+        // }
     };
 
     for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {

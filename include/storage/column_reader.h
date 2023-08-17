@@ -147,7 +147,7 @@ private:
     }
 
     ColumnMetaSPtr _meta;
-    DataPage _data_page;
+    DecodedDataPage _data_page;
     io::CompressionUtil* _compression_util = nullptr;
     uint64_t _num_rows;
     io::FileReaderSPtr _file_reader;

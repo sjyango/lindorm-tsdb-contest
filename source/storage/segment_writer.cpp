@@ -36,14 +36,20 @@ SegmentWriter::SegmentWriter(io::FileWriter* file_writer, TableSchemaSPtr schema
     }
 }
 
-SegmentWriter::~SegmentWriter() = default;
+SegmentWriter::~SegmentWriter() {
+    for (auto& column_writer : _column_writers) {
+        column_writer.reset();
+    }
+    _column_writers.clear();
+    _key_coders.clear();
+    _short_key_index_writer.reset();
+    _data_convertor.reset();
+}
 
 void SegmentWriter::_create_column_writer(const TableColumn& column) {
     ColumnMetaSPtr meta = std::make_shared<ColumnMeta>();
     meta->_column_id = column.get_uid();
     meta->_type = column.get_data_type();
-    meta->_encoding_type = EncodingType::PLAIN_ENCODING;
-    meta->_compression_type = CompressionType::NO_COMPRESSION;
     _footer._column_metas.emplace_back(meta);
     _column_writers.emplace_back(std::make_unique<ColumnWriter>(meta, _file_writer));
     _data_convertor->add_column_data_convertor(column);
@@ -113,19 +119,9 @@ void SegmentWriter::_write_short_key_index(io::PagePointer* page_pointer) {
     OwnedSlice short_key_index_body;
     ShortKeyIndexFooter short_key_index_footer;
     _short_key_index_writer->finalize(_num_rows_written, &short_key_index_body, &short_key_index_footer);
-    io::PageIO::write_page(_file_writer, &short_key_index_body, short_key_index_footer, page_pointer);
+    io::PageIO::write_page(EncodingType::UNKNOWN_ENCODING, _file_writer, 1, {short_key_index_body.slice()}, short_key_index_footer, page_pointer);
 }
 
-void SegmentWriter::close() {
-    for (auto& column_writer : _column_writers) {
-        column_writer.reset();
-    }
-    _column_writers.clear();
-    _key_coders.clear();
-    _short_key_index_writer.reset();
-    _data_convertor.reset();
-    _num_rows_written = 0;
-}
 
 void SegmentWriter::finalize() {
     for (auto& column_writer : _column_writers) {

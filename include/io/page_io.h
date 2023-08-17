@@ -26,14 +26,15 @@ namespace LindormContest::io {
 
 class PageIO {
 public:
-    static void compress_page_body(CompressionUtil* compression_util, const Slice& body,
-                                   double min_space_saving, OwnedSlice* compressed_body);
+    // static void compress_page_body(CompressionUtil* compression_util, const Slice& body,
+    //                                double min_space_saving, OwnedSlice* compressed_body);
 
-    static void write_page(io::FileWriter* writer, OwnedSlice* body,
+    static void write_page(storage::EncodingType type, io::FileWriter* writer,
+                           uint32_t num_items, const std::vector<Slice>& page_slices,
                            const storage::PageFooter& footer, PagePointer* result);
 
-    static void compress_and_write_page(CompressionUtil* compression_util, io::FileWriter* writer, OwnedSlice&& body,
-                                        double min_space_saving, const storage::PageFooter& footer, PagePointer* result);
+    // static void compress_and_write_page(CompressionUtil* compression_util, io::FileWriter* writer, OwnedSlice&& body,
+    //                                     double min_space_saving, const storage::PageFooter& footer, PagePointer* result);
 
     //     `result' holds the memory of page data,
     //     `body' points to page body,

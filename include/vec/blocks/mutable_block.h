@@ -68,8 +68,9 @@ public:
     }
 
     void reserve(size_t count) {
-        _index_by_name.reserve(count);
-        _data.reserve(count);
+        for (auto& column : _data) {
+            column->reserve(count);
+        }
     }
 
     size_t rows() const {

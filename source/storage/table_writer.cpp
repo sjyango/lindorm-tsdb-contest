@@ -31,41 +31,16 @@ void TableWriter::append(const std::vector<Row>& append_rows, std::optional<std:
     }
     std::unique_ptr<vectorized::MutableBlock> input_block =
             std::make_unique<vectorized::MutableBlock>(_schema->create_block());
+    input_block->reserve(append_rows.size());
     assert(input_block->columns() == append_rows[0].columns.size() + 2); // 2 means vin + timestamp
 
-    for (const auto& row : append_rows) {
-        input_block->add_row(row);
-        // INFO_LOG("########################################")
-        // INFO_LOG("vin: %s, timestamp: %ld", std::string(row.vin.vin, 17).c_str(), row.timestamp)
-        // for (const auto& item : row.columns) {
-        //     switch (item.second.columnType) {
-        //     case COLUMN_TYPE_STRING: {
-        //         std::pair<int32_t, const char *> lengthStrPair;
-        //         item.second.getStringValue(lengthStrPair);
-        //         INFO_LOG("name: %s, value: %s", item.first.c_str(), lengthStrPair.second)
-        //         break;
-        //     }
-        //     case COLUMN_TYPE_INTEGER: {
-        //         int32_t val;
-        //         item.second.getIntegerValue(val);
-        //         INFO_LOG("name: %s, value: %d", item.first.c_str(), val)
-        //         break;
-        //     }
-        //     case COLUMN_TYPE_DOUBLE_FLOAT: {
-        //         double val;
-        //         item.second.getDoubleFloatValue(val);
-        //         INFO_LOG("name: %s, value: %f", item.first.c_str(), val)
-        //         break;
-        //     }
-        //     default: {}
-        //     }
-        //
-        // }
-        // INFO_LOG("########################################")
+    for (size_t i = 0; i < append_rows.size(); ++i) {
+        input_block->add_row(append_rows[i]);
     }
 
     vectorized::Block block = input_block->to_block();
     _write(&block, flushed_records);
+    input_block.reset();
 }
 
 std::optional<std::unordered_map<int32_t, Row>> TableWriter::close() {
@@ -104,7 +79,6 @@ std::optional<std::unordered_map<int32_t, Row>> TableWriter::flush() {
     if (num_rows_written_in_table == 0) {
         return std::nullopt;
     }
-    _mem_table->finalize();
     _mem_table.reset();
     _file_writer->finalize();
     _file_writer->close();
@@ -132,3 +106,31 @@ void TableWriter::_init_mem_table() {
 }
 
 }
+
+// INFO_LOG("########################################")
+// INFO_LOG("vin: %s, timestamp: %ld", std::string(row.vin.vin, 17).c_str(), row.timestamp)
+// for (const auto& item : row.columns) {
+//     switch (item.second.columnType) {
+//     case COLUMN_TYPE_STRING: {
+//         std::pair<int32_t, const char *> lengthStrPair;
+//         item.second.getStringValue(lengthStrPair);
+//         INFO_LOG("name: %s, value: %s", item.first.c_str(), lengthStrPair.second)
+//         break;
+//     }
+//     case COLUMN_TYPE_INTEGER: {
+//         int32_t val;
+//         item.second.getIntegerValue(val);
+//         INFO_LOG("name: %s, value: %d", item.first.c_str(), val)
+//         break;
+//     }
+//     case COLUMN_TYPE_DOUBLE_FLOAT: {
+//         double val;
+//         item.second.getDoubleFloatValue(val);
+//         INFO_LOG("name: %s, value: %f", item.first.c_str(), val)
+//         break;
+//     }
+//     default: {}
+//     }
+//
+// }
+// INFO_LOG("########################################")

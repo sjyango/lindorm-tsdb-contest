@@ -22,11 +22,15 @@ ColumnWriter::ColumnWriter(ColumnMetaSPtr meta, io::FileWriter* file_writer)
     _ordinal_index_writer = std::make_unique<OrdinalIndexWriter>();
     switch (_meta->_type->column_type()) {
     case COLUMN_TYPE_STRING:
+        _meta->_encoding_type = EncodingType::BINARY_PLAIN_ENCODING;
+        _meta->_compression_type = CompressionType::NO_COMPRESSION;
         _page_encoder = std::make_unique<BinaryPlainPageEncoder>();
         break;
     case COLUMN_TYPE_INTEGER:
     case COLUMN_TYPE_TIMESTAMP:
     case COLUMN_TYPE_DOUBLE_FLOAT:
+        _meta->_encoding_type = EncodingType::PLAIN_ENCODING;
+        _meta->_compression_type = CompressionType::NO_COMPRESSION;
         _page_encoder = std::make_unique<PlainPageEncoder>(_meta->get_type_size());
         break;
     default:
@@ -57,9 +61,10 @@ void ColumnWriter::write_column_data() {
 
     for (auto& data_page : _data_pages) {
         io::PagePointer page_pointer;
-        io::PageIO::write_page(_file_writer, &data_page._data, data_page._footer, &page_pointer);
+        io::PageIO::write_page(_meta->_encoding_type, _file_writer,
+                               data_page._num_items, data_page._page_slices,
+                               data_page._footer, &page_pointer);
         _ordinal_index_writer->append_entry(data_page._footer._first_ordinal, page_pointer);
-        // INFO_LOG("first_ordinal [%lu], Page Pointer [%s]", data_page._footer._first_ordinal, page_pointer.to_string().c_str())
     }
 }
 
@@ -67,7 +72,6 @@ void ColumnWriter::write_column_index() {
     std::shared_ptr<OrdinalIndexMeta> ordinal_index_meta = std::make_shared<OrdinalIndexMeta>();
     _ordinal_index_writer->finish(_file_writer, ordinal_index_meta);
     _meta->_indexes.push_back(ordinal_index_meta);
-    // INFO_LOG("Page Pointer [%s]", ordinal_index_meta->_page_pointer.to_string().c_str())
 }
 
 void ColumnWriter::_append_data_in_current_page(const uint8_t* data, size_t* num_written) {
@@ -81,15 +85,16 @@ void ColumnWriter::_append_data_in_current_page(const uint8_t** data, size_t* nu
 }
 
 void ColumnWriter::_flush_current_page() {
-    OwnedSlice page_data = std::move(_page_encoder->finish());
-    _page_encoder->reset();
-    DataPageFooter page_footer(page_data.size(),
+    std::pair<uint32_t, std::vector<Slice>> page_data = std::move(_page_encoder->finish());
+    DataPageFooter page_footer(_page_encoder->size() + sizeof(uint32_t),
                                _first_ordinal, _next_ordinal - _first_ordinal);
-    DataPage page;
-    page._data = std::move(page_data);
+    EncodedDataPage page;
+    page._num_items = page_data.first;
+    page._page_slices = std::move(page_data.second);
     page._footer = std::move(page_footer);
     _data_pages.emplace_back(std::move(page));
     _first_ordinal = _next_ordinal;
+    _page_encoder->reset();
 }
 
 }

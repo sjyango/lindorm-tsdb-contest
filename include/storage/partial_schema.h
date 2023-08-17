@@ -111,7 +111,7 @@ public:
             vectorized::MutableColumnSPtr ptr = vectorized::ColumnFactory::instance().create_column(table_column.get_column_type(), table_column.get_name());
             block.insert({ptr, table_column.get_column_type(), table_column.get_name()});
         }
-        return block;
+        return std::move(block);
     }
 
     vectorized::Block create_block(std::vector<ColumnId> column_ids) const {

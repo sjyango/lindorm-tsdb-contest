@@ -67,8 +67,6 @@ public:
 
     std::optional<std::unordered_map<int32_t, Row>> flush(size_t* num_rows_written_in_table);
 
-    void finalize();
-
     size_t rows() const {
         return _rows;
     }

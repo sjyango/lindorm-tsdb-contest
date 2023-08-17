@@ -50,7 +50,7 @@ private:
     ordinal_t _first_ordinal = 0;
     ordinal_t _next_ordinal = 0;
     std::unique_ptr<PageEncoder> _page_encoder;
-    std::vector<DataPage> _data_pages;
+    std::vector<EncodedDataPage> _data_pages;
     std::unique_ptr<OrdinalIndexWriter> _ordinal_index_writer;
 };
 

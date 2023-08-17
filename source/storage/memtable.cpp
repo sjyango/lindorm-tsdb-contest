@@ -41,6 +41,7 @@ MemTable::~MemTable() {
     _input_mutable_block.reset();
     _output_mutable_block.reset();
     _segment_writer.reset();
+    INFO_LOG("MemTable reset success")
 }
 
 void MemTable::insert(const vectorized::Block* input_block) {
@@ -65,6 +66,7 @@ std::optional<std::unordered_map<int32_t, Row>> MemTable::flush(size_t* num_rows
     INFO_LOG("Memtable arena size is %zu", _arena->memory_usage())
     VecTable::Iterator it(_skip_list.get());
     vectorized::Block in_block = _input_mutable_block->to_block();
+    INFO_LOG("In block mem size is %zu", in_block.memory_usage())
     std::vector<size_t> row_pos_vec;
     row_pos_vec.reserve(in_block.rows());
 
@@ -74,6 +76,7 @@ std::optional<std::unordered_map<int32_t, Row>> MemTable::flush(size_t* num_rows
 
     _output_mutable_block->append_block(&in_block, row_pos_vec.data(), row_pos_vec.data() + row_pos_vec.size());
     vectorized::Block out_block = _output_mutable_block->to_block();
+    INFO_LOG("Out block mem size is %zu", out_block.memory_usage())
     const vectorized::ColumnInt32& column_vin = reinterpret_cast<const vectorized::ColumnInt32&>(*out_block.get_by_position(0)._column);
     const vectorized::ColumnUInt16& column_timestamp = reinterpret_cast<const vectorized::ColumnUInt16&>(*out_block.get_by_position(1)._column);
     std::unordered_map<int32_t, Row> latest_records;
@@ -87,14 +90,11 @@ std::optional<std::unordered_map<int32_t, Row>> MemTable::flush(size_t* num_rows
         ordinal--;
     }
 
-    INFO_LOG("[segment min] vin: %s, timestamp: %ld", encode_vin(column_vin[0]).vin, encode_timestamp(column_timestamp[0]))
-    INFO_LOG("[segment max] vin: %s, timestamp: %ld", encode_vin(column_vin[out_block.rows() - 1]).vin, encode_timestamp(column_timestamp[out_block.rows() - 1]))
+    // INFO_LOG("[segment min] vin: %s, timestamp: %ld", encode_vin(column_vin[0]).vin, encode_timestamp(column_timestamp[0]))
+    // INFO_LOG("[segment max] vin: %s, timestamp: %ld", encode_vin(column_vin[out_block.rows() - 1]).vin, encode_timestamp(column_timestamp[out_block.rows() - 1]))
     _segment_writer->append_block(&out_block, num_rows_written_in_table);
-    return {std::move(latest_records)};
-}
-
-void MemTable::finalize() {
     _segment_writer->finalize();
+    return {std::move(latest_records)};
 }
 
 }

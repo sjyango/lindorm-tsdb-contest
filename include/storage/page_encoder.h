@@ -46,17 +46,13 @@ public:
 
     virtual void add(const uint8_t* data, size_t* count) = 0;
 
-    virtual OwnedSlice finish() = 0;
+    virtual std::pair<uint32_t, std::vector<Slice>> finish() = 0;
 
     virtual void reset() = 0;
 
     virtual size_t count() const = 0;
 
     virtual size_t size() const = 0;
-
-    virtual void get_first_value(void* value) const = 0;
-
-    virtual void get_last_value(void* value) const = 0;
 };
 
 /**
@@ -64,9 +60,7 @@ public:
  */
 class BinaryPlainPageEncoder : public PageEncoder {
 public:
-    BinaryPlainPageEncoder() : _size(0) {
-        _buffer.reserve(BINARY_PLAIN_PAGE_SIZE + 1024);
-    }
+    BinaryPlainPageEncoder() : _size(0), _count(0) {}
 
     ~BinaryPlainPageEncoder() override = default;
 
@@ -84,10 +78,9 @@ public:
 
         while (!is_page_full() && i < *count) {
             const Slice* src = reinterpret_cast<const Slice*>(data);
-            std::string str = src->to_string();
-            _buffer.append(src->_data, src->_size);
-            _offsets.push_back(_buffer.size());
+            _page_slices.emplace_back(src->_data, src->_size);
             _size += (src->_size + sizeof(uint32_t));
+            _count++;
             i++;
             data += sizeof(Slice);
         }
@@ -95,70 +88,28 @@ public:
         *count = i;
     }
 
-    OwnedSlice finish() override {
-        for (uint32_t _offset : _offsets) {
-            put_fixed32_le(&_buffer, _offset);
-        }
-        put_fixed32_le(&_buffer, _offsets.size());
-        if (_offsets.size() > 0) {
-            _copy_value_at(0, &_first_value);
-            _copy_value_at(_offsets.size() - 1, &_last_value);
-        }
-        return _buffer;
+    std::pair<uint32_t, std::vector<Slice>> finish() override {
+        return {_count, _page_slices};
     }
 
     void reset() override {
-        _offsets.clear();
-        _buffer.clear();
-        _buffer.reserve(BINARY_PLAIN_PAGE_SIZE + 1024);
+        _count = 0;
         _size = 0;
+        _page_slices.clear();
     }
 
     size_t count() const override {
-        return _offsets.size();
+        return _count;
     }
 
     size_t size() const override {
         return _size;
     }
 
-    void get_first_value(void* value) const override {
-        if (_offsets.size() == 0) {
-            throw std::runtime_error("page is empty");
-        }
-        *reinterpret_cast<Slice*>(value) = Slice(_first_value);
-    }
-
-    void get_last_value(void* value) const override {
-        if (_offsets.size() == 0) {
-            throw std::runtime_error("page is empty");
-        }
-        *reinterpret_cast<Slice*>(value) = Slice(_last_value);
-    }
-
-    inline Slice operator[](size_t idx) const {
-        assert(idx < _offsets.size());
-        size_t value_size = idx == 0 ? _offsets[0] : _offsets[idx] - _offsets[idx - 1];
-        const char* start_offset = idx == 0 ? _buffer.data() : _buffer.data() + _offsets[idx - 1];
-        return Slice(start_offset, value_size);
-    }
-
-    inline Slice get(size_t idx) const {
-        return (*this)[idx];
-    }
-
 private:
-    void _copy_value_at(size_t idx, String* value) const {
-        size_t value_size = idx == 0 ? _offsets[0] : _offsets[idx] - _offsets[idx - 1];
-        const char* start_offset = idx == 0 ? _buffer.data() : _buffer.data() + _offsets[idx - 1];
-        value->assign(start_offset, value_size);
-    }
-
+    size_t _count;
     size_t _size;
-    String _buffer;
-    std::vector<uint32_t> _offsets;
-    String _first_value;
-    String _last_value;
+    std::vector<Slice> _page_slices;
 };
 
 /**
@@ -167,17 +118,17 @@ private:
 class PlainPageEncoder : public PageEncoder {
 public:
     PlainPageEncoder(size_t type_size)
-            : _type_size(type_size), _count(0) {
+            : _type_size(type_size), _size(0), _count(0) {
         // Reserve enough space for the page, plus a bit of slop since
         // we often overrun the page by a few values.
-        _buffer.reserve(PLAIN_PAGE_SIZE + 1024);
-        _buffer.resize(PLAIN_PAGE_HEADER_SIZE); // first item is _count
+        // _buffer.reserve(PLAIN_PAGE_SIZE + 1024);
+        // _buffer.resize(PLAIN_PAGE_HEADER_SIZE); // first item is _count
     }
 
     ~PlainPageEncoder() override = default;
 
     bool is_page_full() override {
-        return _buffer.size() >= PLAIN_PAGE_SIZE;
+        return _size >= PLAIN_PAGE_SIZE;
     }
 
     void add(const UInt8* data, size_t* count) override {
@@ -185,38 +136,28 @@ public:
             *count = 0;
             return;
         }
-
-        size_t old_size = _buffer.size();
-        size_t remaining = PLAIN_PAGE_SIZE - old_size;
-
+        size_t remaining = PLAIN_PAGE_SIZE - _size;
         if ((*count * _type_size) <= remaining) {
-            _buffer.resize(old_size + (*count) * _type_size);
-            std::memcpy(&_buffer[old_size], data, (*count) * _type_size);
+            _page_slices.emplace_back(data, (*count) * _type_size);
+            _size += (*count) * _type_size;
             _count += *count;
         } else {
             size_t write_count = remaining / _type_size + 1; // +1 means make data page overflow, and flush to disk
-            _buffer.resize(old_size + write_count * _type_size);
-            std::memcpy(&_buffer[old_size], data, write_count * _type_size);
+            _page_slices.emplace_back(data, write_count * _type_size);
+            _size += write_count * _type_size;
             _count += write_count;
             *count = write_count;
         }
     }
 
-    OwnedSlice finish() override {
-        encode_fixed32_le((UInt8*)_buffer.data(), _count); // encode header, record total counts
-        if (_count > 0) {
-            _first_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE], _type_size);
-            _last_value.assign(&_buffer[PLAIN_PAGE_HEADER_SIZE + (_count - 1) * _type_size],
-                               _type_size);
-        }
-        return _buffer;
+    std::pair<uint32_t, std::vector<Slice>> finish() override {
+        return {_count, _page_slices};
     }
 
     void reset() override {
         _count = 0;
-        _buffer.clear();
-        _buffer.reserve(PLAIN_PAGE_SIZE + 1024);
-        _buffer.resize(PLAIN_PAGE_HEADER_SIZE);
+        _size = 0;
+        _page_slices.clear();
     }
 
     size_t count() const override {
@@ -224,29 +165,14 @@ public:
     }
 
     size_t size() const override {
-        return _buffer.size();
-    }
-
-    void get_first_value(void* value) const override {
-        if (_count == 0) {
-            throw std::logic_error("page is empty");
-        }
-        std::memcpy(value, _first_value.data(), _type_size);
-    }
-
-    void get_last_value(void* value) const override {
-        if (_count == 0) {
-            throw std::logic_error("page is empty");
-        }
-        std::memcpy(value, _last_value.data(), _type_size);
+        return _size;
     }
 
 private:
     size_t _type_size;
-    String _buffer;
     size_t _count;
-    String _first_value;
-    String _last_value;
+    size_t _size;
+    std::vector<Slice> _page_slices;
 };
 
 }

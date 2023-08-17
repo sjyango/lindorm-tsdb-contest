@@ -18,49 +18,80 @@
 
 namespace LindormContest::io {
 
-void PageIO::compress_page_body(CompressionUtil* compression_util, const Slice& body, double min_space_saving, OwnedSlice* compressed_body) {
-    size_t uncompressed_size = body.size();
-    if (compression_util != nullptr) {
-        std::string buf;
-        compression_util->compress(body, uncompressed_size, &buf);
-        double space_saving = 1.0 - static_cast<double>(buf.size()) / uncompressed_size;
-        // return compressed body only when it saves more than min_space_saving
-        if (space_saving > 0 && space_saving >= min_space_saving) {
-            // shrink the buf to fit the len size to avoid taking
-            // up the memory of the size MAX_COMPRESSED_SIZE
-            *compressed_body = OwnedSlice(buf);
-        }
-    }
-    // otherwise, do not compress
-    *compressed_body = OwnedSlice();
-}
+// void PageIO::compress_page_body(CompressionUtil* compression_util, const Slice& body, double min_space_saving, OwnedSlice* compressed_body) {
+//     size_t uncompressed_size = body.size();
+//     if (compression_util != nullptr) {
+//         std::string buf;
+//         compression_util->compress(body, uncompressed_size, &buf);
+//         double space_saving = 1.0 - static_cast<double>(buf.size()) / uncompressed_size;
+//         // return compressed body only when it saves more than min_space_saving
+//         if (space_saving > 0 && space_saving >= min_space_saving) {
+//             // shrink the buf to fit the len size to avoid taking
+//             // up the memory of the size MAX_COMPRESSED_SIZE
+//             *compressed_body = OwnedSlice(buf);
+//         }
+//     }
+//     // otherwise, do not compress
+//     *compressed_body = OwnedSlice();
+// }
 
-void PageIO::write_page(FileWriter* writer, OwnedSlice* body, const storage::PageFooter& footer, PagePointer* result) {
+void PageIO::write_page(storage::EncodingType type, FileWriter* writer,
+                        uint32_t num_items, const std::vector<Slice>& page_slices,
+                        const storage::PageFooter& footer, PagePointer* result) {
+    std::vector<Slice> slices;
     std::string footer_buffer; // serialize footer content + footer size
     footer.serialize(&footer_buffer);
     put_fixed32_le(&footer_buffer, static_cast<uint32_t>(footer_buffer.size()));
 
-    std::vector<Slice> data;
-    data.emplace_back(body->slice());
-    data.emplace_back(footer_buffer);
+    if (type == storage::EncodingType::PLAIN_ENCODING) {
+        std::string num_items_str;
+        put_fixed32_le(&num_items_str, num_items);
+        slices.emplace_back(num_items_str);
+        slices.insert(slices.end(), page_slices.cbegin(), page_slices.cend());
+        slices.emplace_back(footer_buffer);
+        uint64_t offset = writer->bytes_appended();
+        writer->appendv(slices.data(), slices.size());
+        result->_offset = offset;
+        result->_size = writer->bytes_appended() - offset;
+    } else if (type == storage::EncodingType::BINARY_PLAIN_ENCODING) {
+        assert(num_items == page_slices.size());
+        std::string offsets_str;
+        uint32_t slice_offset = 0;
 
-    uint64_t offset = writer->bytes_appended();
-    writer->appendv(data.data(), data.size());
-    result->_offset = offset;
-    result->_size = writer->bytes_appended() - offset;
-}
+        for (size_t i = 0; i < page_slices.size(); ++i) {
+            slice_offset += page_slices[i]._size;
+            put_fixed32_le(&offsets_str, slice_offset);
+        }
 
-void PageIO::compress_and_write_page(CompressionUtil* compression_util, FileWriter* writer,
-                                     OwnedSlice&& body, double min_space_saving,
-                                     const storage::PageFooter& footer, PagePointer* result) {
-    assert(footer._uncompressed_size == body.size());
-    OwnedSlice compressed_body;
-    compress_page_body(compression_util, body.slice(), min_space_saving, &compressed_body);
-    if (compressed_body.size() == 0) { // uncompressed
-        return write_page(writer, &body, footer, result);
+        put_fixed32_le(&offsets_str, num_items);
+        slices.emplace_back(page_slices.front()._data, slice_offset);
+        slices.emplace_back(offsets_str);
+        slices.emplace_back(footer_buffer);
+        uint64_t offset = writer->bytes_appended();
+        writer->appendv(slices.data(), slices.size());
+        result->_offset = offset;
+        result->_size = writer->bytes_appended() - offset;
+    } else {
+        slices.insert(slices.end(), page_slices.cbegin(), page_slices.cend());
+        slices.emplace_back(footer_buffer);
+        uint64_t offset = writer->bytes_appended();
+        writer->appendv(slices.data(), slices.size());
+        result->_offset = offset;
+        result->_size = writer->bytes_appended() - offset;
     }
-    return write_page(writer, &compressed_body, footer, result);
 }
+
+// void PageIO::compress_and_write_page(CompressionUtil* compression_util, FileWriter* writer,
+//                                      OwnedSlice&& body, double min_space_saving,
+//                                      const storage::PageFooter& footer, PagePointer* result) {
+//     assert(footer._uncompressed_size == body.size());
+//     OwnedSlice compressed_body;
+//     compress_page_body(compression_util, body.slice(), min_space_saving, &compressed_body);
+//     if (compressed_body.size() == 0) { // uncompressed
+//         return write_page(writer, &body, footer, result);
+//     }
+//     return write_page(writer, &compressed_body, footer, result);
+// }
 
 void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const PagePointer& page_pointer,
                                       FileReaderSPtr file_reader, Slice* body, storage::PageFooter& footer,
@@ -70,7 +101,6 @@ void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const P
     if (page_size < 8) {
         throw std::runtime_error("Bad page: too small size");
     }
-    // std::unique_ptr<storage::DataPage> page = std::make_unique<storage::DataPage>(page_size);
     std::unique_ptr<OwnedSlice> page = std::make_unique<OwnedSlice>(page_size);
     Slice page_slice = page->slice();
     size_t bytes_read = 0;
@@ -87,9 +117,6 @@ void PageIO::read_and_decompress_page(CompressionUtil* compression_util, const P
         if (compression_util == nullptr) {
             throw std::runtime_error("Bad page: page is compressed but decoder is nullptr");
         }
-
-        // std::unique_ptr<storage::DataPage> decompressed_page =
-        //         std::make_unique<storage::DataPage>(footer._uncompressed_size + footer_size + 4);
         std::unique_ptr<OwnedSlice> decompressed_page =
                 std::make_unique<OwnedSlice>(footer._uncompressed_size + footer_size + 4);
 

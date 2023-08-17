@@ -87,9 +87,9 @@ TEST(ColumnTest, ColumnInt32Test2) {
     }
 }
 
-TEST(ColumnTest, ColumnInt64Test1) {
-    std::shared_ptr<ColumnInt64> col1 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col1"));
-    std::shared_ptr<ColumnInt64> col2 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col2"));
+TEST(ColumnTest, ColumnUInt16Test1) {
+    std::shared_ptr<ColumnUInt16> col1 = std::dynamic_pointer_cast<ColumnUInt16>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col1"));
+    std::shared_ptr<ColumnUInt16> col2 = std::dynamic_pointer_cast<ColumnUInt16>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col2"));
 
     ASSERT_EQ("col1", col1->get_name());
     ASSERT_EQ(ColumnType::COLUMN_TYPE_TIMESTAMP, col1->get_type());
@@ -128,11 +128,11 @@ TEST(ColumnTest, ColumnInt64Test1) {
     }
 }
 
-TEST(ColumnTest, ColumnInt64Test2) {
+TEST(ColumnTest, ColumnUInt16Test2) {
     const size_t N = 10000;
-    std::shared_ptr<ColumnInt64> col1 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col1"));
-    std::shared_ptr<ColumnInt64> col2 = std::dynamic_pointer_cast<ColumnInt64>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col2"));
-    std::vector<int64_t> nums;
+    std::shared_ptr<ColumnUInt16> col1 = std::dynamic_pointer_cast<ColumnUInt16>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col1"));
+    std::shared_ptr<ColumnUInt16> col2 = std::dynamic_pointer_cast<ColumnUInt16>(ColumnFactory::instance().create_column(ColumnType::COLUMN_TYPE_TIMESTAMP, "col2"));
+    std::vector<uint16_t> nums;
 
     for (int i = 0; i < N; ++i) {
         nums.emplace_back(i);

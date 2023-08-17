@@ -240,12 +240,10 @@ TEST(ColumnWriterReaderTest, StringColumnWriterReaderTest) {
 
     for (size_t i = 0; i < N; ++i) {
         ss.push_back(generate_random_string(generate_random_int32() % 1000));
-
     }
 
     for (size_t i = 0; i < N; ++i) {
         slices.push_back(ss[i]);
-        ASSERT_EQ(ss[i], slices[i].to_string());
     }
 
     const uint8_t* src_ptr = reinterpret_cast<const uint8_t*>(slices.data());

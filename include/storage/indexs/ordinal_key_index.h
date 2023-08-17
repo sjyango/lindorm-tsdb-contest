@@ -55,7 +55,7 @@ public:
         IndexPageFooter page_footer;
         _page_encoder->finish(&page_body, &page_footer);
         io::PagePointer page_pointer;
-        io::PageIO::write_page(file_writer, &page_body, page_footer, &page_pointer);
+        io::PageIO::write_page(EncodingType::UNKNOWN_ENCODING, file_writer, 1, {page_body.slice()}, page_footer, &page_pointer);
         meta->_page_pointer = page_pointer;
     }
 

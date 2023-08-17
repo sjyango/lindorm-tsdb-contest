@@ -26,7 +26,8 @@ namespace LindormContest::storage {
 
 enum class EncodingType {
     UNKNOWN_ENCODING,
-    PLAIN_ENCODING
+    PLAIN_ENCODING,
+    BINARY_PLAIN_ENCODING
 };
 
 enum class CompressionType : uint32_t {
@@ -254,16 +255,24 @@ struct ColumnMeta {
     }
 };
 
-struct DataPage {
+enum class EncodedDataPageType {
+
+};
+
+struct EncodedDataPage {
+    uint32_t _num_items;
+    std::vector<Slice> _page_slices;
+    DataPageFooter _footer;
+};
+
+struct DecodedDataPage {
 public:
-    DataPage() = default;
+    DecodedDataPage() = default;
 
-    DataPage(size_t size) : _data(size) {}
-
-    DataPage(DataPage&& page)
+    DecodedDataPage(DecodedDataPage&& page)
             : _data(std::move(page._data)), _footer(std::move(page._footer)) {}
 
-    ~DataPage() = default;
+    ~DecodedDataPage() = default;
 
     char* data() const {
         return (char*)_data.data();
@@ -294,23 +303,23 @@ public:
     DataPageFooter _footer;
 };
 
-struct ColumnData;
-
-using ColumnSPtr = std::shared_ptr<ColumnData>;
-
-struct ColumnData {
-    ColumnMeta _column_meta;
-    std::vector<DataPage> _data_pages;
-
-    ColumnData(ColumnMeta&& column_meta) : _column_meta(std::move(column_meta)) {}
-
-    ColumnData(ColumnMeta&& column_meta, std::vector<DataPage>&& data_pages)
-            : _column_meta(std::move(column_meta)), _data_pages(std::move(data_pages)) {}
-
-    size_t get_type_size() const {
-        return _column_meta.get_type_size();
-    }
-};
+// struct ColumnData;
+//
+// using ColumnSPtr = std::shared_ptr<ColumnData>;
+//
+// struct ColumnData {
+//     ColumnMeta _column_meta;
+//     std::vector<DataPage> _data_pages;
+//
+//     ColumnData(ColumnMeta&& column_meta) : _column_meta(std::move(column_meta)) {}
+//
+//     ColumnData(ColumnMeta&& column_meta, std::vector<DataPage>&& data_pages)
+//             : _column_meta(std::move(column_meta)), _data_pages(std::move(data_pages)) {}
+//
+//     size_t get_type_size() const {
+//         return _column_meta.get_type_size();
+//     }
+// };
 
 struct SegmentFooter {
     SegmentFooter() = default;

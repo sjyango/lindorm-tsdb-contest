@@ -49,7 +49,7 @@ public:
     ColumnType get_type() const override {
         if constexpr (std::is_same_v<T, Int32>) {
             return ColumnType::COLUMN_TYPE_INTEGER;
-        } else if constexpr (std::is_same_v<T, Int64>) {
+        } else if constexpr (std::is_same_v<T, UInt16>) {
             return ColumnType::COLUMN_TYPE_TIMESTAMP;
         } else if constexpr (std::is_same_v<T, Float64>) {
             return ColumnType::COLUMN_TYPE_DOUBLE_FLOAT;

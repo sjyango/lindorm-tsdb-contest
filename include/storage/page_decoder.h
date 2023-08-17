@@ -157,6 +157,9 @@ private:
     uint32_t _cur_idx;
 };
 
+/**
+ * page layout: [_num_elems, elem1, elem2, ..., elemN]
+ */
 class PlainPageDecoder : public PageDecoder {
 public:
     PlainPageDecoder(const DataType* type)

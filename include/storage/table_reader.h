@@ -70,10 +70,12 @@ public:
     }
 
     void handle_time_range_query(const PartialSchemaSPtr& schema, const Vin& query_vin, int64_t lower_bound_timestamp, int64_t upper_bound_timestamp, std::vector<Row>& results) {
-        for (auto& [segment_id, segment_reader] : _segment_readers) {
-            auto result = segment_reader->handle_time_range_query(schema, query_vin, lower_bound_timestamp, upper_bound_timestamp);
+        size_t segment_nums = _segment_readers.size();
+
+        for (size_t i = 0; i < segment_nums; i++) {
+            auto result = _segment_readers[i]->handle_time_range_query(schema, query_vin, lower_bound_timestamp, upper_bound_timestamp);
             if (result.has_value()) {
-                std::vector<Row> segment_rows = (*result).to_rows();
+                std::vector<Row> segment_rows = std::move((*result).to_rows());
                 results.insert(results.end(), segment_rows.begin(), segment_rows.end());
             }
         }
