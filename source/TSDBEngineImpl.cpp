@@ -83,15 +83,9 @@ int TSDBEngineImpl::upsert(const WriteRequest& writeRequest) {
             std::lock_guard<std::mutex> l(vin_mutex);
             std::ofstream& file_out_for_vin = _get_file_out_for_vin(vin);
             _append_row_to_file(file_out_for_vin, row, false);
-        }
-        {
-            std::unique_lock<std::shared_mutex> l(_latest_mutex);
-            if (_latest_records.find(vin) != _latest_records.end()) {
-                if (row.timestamp > _latest_records[vin].timestamp) {
-                    _latest_records[vin] = row;
-                }
-            } else {
-                _latest_records.emplace(vin, row);
+            int32_t vin_num = get_vin_num(vin);
+            if (row.timestamp > _latest_records[vin_num].timestamp) {
+                _latest_records[vin_num] = row;
             }
         }
     }
@@ -158,20 +152,18 @@ std::ofstream& TSDBEngineImpl::_get_file_out_for_vin(const Vin &vin) {
 }
 
 int TSDBEngineImpl::_get_latest_row(const Vin& vin, const std::set<std::string>& requestedColumns, Row& result) {
-//    std::mutex& vin_mutex = _get_mutex_for_vin(vin);
-//    std::lock_guard<std::mutex> l(vin_mutex);
-    {
-        std::shared_lock<std::shared_mutex> l(_latest_mutex);
-        if (_latest_records.find(vin) == _latest_records.end()) {
-            return -1;
-        }
-        Row latestRow = _latest_records[vin];
-        result.vin = vin;
-        result.timestamp = latestRow.timestamp;
+    std::mutex& vin_mutex = _get_mutex_for_vin(vin);
+    std::lock_guard<std::mutex> l(vin_mutex);
+    int32_t vin_num = get_vin_num(vin);
+    if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+        return -1;
+    }
+    Row latestRow = _latest_records[vin_num];
+    result.vin = vin;
+    result.timestamp = latestRow.timestamp;
 
-        for (const auto & requestedColumn : requestedColumns) {
-            result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
-        }
+    for (const auto & requestedColumn : requestedColumns) {
+        result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
     }
     return 0;
 }
@@ -385,11 +377,11 @@ void TSDBEngineImpl::_save_latest_records_to_file() {
         std::cerr << "Failed to open file for writing." << std::endl;
         return;
     }
-    uint32_t record_nums = _latest_records.size();
-    output_file.write((const char*) &record_nums, sizeof(uint32_t));
+//    uint32_t record_nums = _latest_records.size();
+//    output_file.write((const char*) &record_nums, sizeof(uint32_t));
 
-    for (const auto& entry : _latest_records) {
-        _append_row_to_file(output_file, entry.second, true);
+    for (int32_t i = 0; i < VIN_RANGE_LENGTH; ++i) {
+        _append_row_to_file(output_file, _latest_records[i], true);
     }
 
     output_file.flush();
@@ -406,13 +398,15 @@ void TSDBEngineImpl::_load_latest_records_from_file() {
         INFO_LOG("latest_records file doesn't exist")
         return;
     }
-    uint32_t record_nums;
-    input_file.read((char*) &record_nums, sizeof(record_nums));
+//    uint32_t record_nums;
+//    input_file.read((char*) &record_nums, sizeof(record_nums));
 
-    for (uint32_t i = 0; i < record_nums; ++i) {
+    for (uint32_t i = 0; i < VIN_RANGE_LENGTH; ++i) {
         Row row;
         _read_row_from_stream(row.vin, input_file, row, true);
-        _latest_records.emplace(row.vin, row);
+        int32_t vin_num = get_vin_num(row.vin);
+        assert(vin_num == i);
+        _latest_records[vin_num] = row;
     }
 
     input_file.close();

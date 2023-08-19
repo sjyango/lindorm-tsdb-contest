@@ -17,6 +17,8 @@
 
 namespace LindormContest {
 
+const size_t VIN_RANGE_LENGTH = 30000;
+
 class TSDBEngineImpl : public TSDBEngine {
 public:
     /**
@@ -86,14 +88,23 @@ private:
     std::unordered_map<Vin, std::ofstream*, VinHasher, VinHasher> _out_files;
     // One locker for a vin. Lock the vin's locker when reading or writing process touches the vin.
     std::unordered_map<Vin, std::mutex*, VinHasher, VinHasher> _vin_mutex;
-    std::unordered_map<Vin, Row, VinHasher, VinHasher> _latest_records;
-    std::shared_mutex _latest_mutex;
     // How many columns is defined in schema for the sole table.
     uint8_t _column_nums;
     // The column's type for each column.
     ColumnType* _column_types;
     // The column's name for each column.
     std::string* _column_names;
+    Row _latest_records[VIN_RANGE_LENGTH];
 };
+
+static int32_t get_vin_num(const Vin& vin) {
+    std::string vin_str(vin.vin + 12, 5);
+    try {
+        int32_t vin_num = std::stoi(vin_str);
+        return vin_num - 1;
+    } catch (std:: exception& e) {
+        return -1;
+    }
+}
 
 }

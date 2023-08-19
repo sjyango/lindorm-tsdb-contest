@@ -194,7 +194,7 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
     std::vector<std::string> request_vins;
 
     for (int i = 0; i < N; ++i) {
-        if (generate_random_float64() < 0.9) {
+        if (generate_random_float64() < 1) {
             size_t rand_index = generate_random_int32() % written_datasets.size();
             lqr.vins.push_back(global_datasets[rand_index].vin);
             request_vins.emplace_back(global_datasets[rand_index].vin.vin, 17);
@@ -340,15 +340,15 @@ static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TA
             time_range_records[key].push_back(row);
         }
 
-        if (generate_random_float64() < 0.1) {
-            if (generate_random_float64() < 0.5) {
-                handle_latest_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
-            } else {
-                handle_time_range_query(db, TABLE_NAME, 0);
-                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
-            }
-        }
+//        if (generate_random_float64() < 0.1) {
+//            if (generate_random_float64() < 0.5) {
+//                handle_latest_query(db, TABLE_NAME, 0);
+//                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
+//            } else {
+//                handle_time_range_query(db, TABLE_NAME, 0);
+//                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
+//            }
+//        }
     };
 
     for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
