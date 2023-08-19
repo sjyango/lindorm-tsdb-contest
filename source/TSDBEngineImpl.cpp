@@ -78,10 +78,11 @@ int TSDBEngineImpl::shutdown() {
 int TSDBEngineImpl::upsert(const WriteRequest& writeRequest) {
     for (const Row& row : writeRequest.rows) {
         const Vin& vin = row.vin;
+        const int64_t time = row.timestamp;
         auto& vin_mutex = _get_mutex_for_vin(vin);
         {
             std::unique_lock<std::shared_mutex> l(vin_mutex);
-            std::ofstream& file_out_for_vin = _get_file_out_for_vin(vin);
+            std::ofstream& file_out_for_vin = _get_file_out_for_vin_timestamp(vin,time);
             _append_row_to_file(file_out_for_vin, row, false);
             int32_t vin_num = get_vin_num(vin);
             if (row.timestamp > _latest_records[vin_num].timestamp) {
@@ -124,7 +125,7 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin(const Vin& vin) {
     return *vin_mutex;
 }
 
-std::ofstream& TSDBEngineImpl::_get_file_out_for_vin(const Vin &vin) {
+std::ofstream& TSDBEngineImpl::_get_file_out_for_vin_timestamp(const Vin &vin, const int64_t timestamp) {
     // Must be protected by vin's mutex.
     // Try getting from already opened set.
     {
@@ -136,7 +137,7 @@ std::ofstream& TSDBEngineImpl::_get_file_out_for_vin(const Vin &vin) {
         }
     }
     // The first time we open the file out stream for this vin, open a new stream and put it into opened set.
-    std::string vinFilePath = _get_vin_file_path(vin);
+    std::string vinFilePath = _get_vin_timestamp_file_path(vin,timestamp);
     auto *pFileOut = new std::ofstream();
     pFileOut->open(vinFilePath, std::ios::out | std::ios::app | std::ios::binary | std::ios::ate);
     if (!pFileOut->is_open() || !pFileOut->good()) {
@@ -171,8 +172,9 @@ void TSDBEngineImpl::_get_rows_from_time_range(const Vin& vin, int64_t lowerIncl
                                      const std::set<std::string>& requestedColumns,
                                      std::vector<Row>& results) {
     std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin(vin));
+    std::vector<std::ifstream> fins;
     std::ifstream fin;
-    int ret = _get_file_in_for_vin(vin, fin);
+    int ret = _get_file_in_for_vin(vin,lowerInclusive,upperExclusive,fins);
     if (ret != 0) {
         // No such vin written.
         return;
@@ -199,10 +201,11 @@ void TSDBEngineImpl::_get_rows_from_time_range(const Vin& vin, int64_t lowerIncl
     fin.close();
 }
 
-Path TSDBEngineImpl::_get_vin_file_path(const Vin& vin) {
+Path TSDBEngineImpl::_get_vin_timestamp_file_path(const Vin& vin,int64_t timestamp) {
     std::string vinStr(vin.vin, VIN_LENGTH);
     int32_t folderNum = (int32_t) VinHasher()(vin) % 100;
-    Path folder_str = _get_root_path() / std::to_string(folderNum);
+    int64_t after_timestamp = get_timestamp(timestamp);
+    Path folder_str = _get_root_path() / std::to_string(folderNum)/std::to_string(after_timestamp/range);
     bool dirExist = std::filesystem::is_directory(folder_str);
     if (!dirExist) {
         bool created = std::filesystem::create_directories(folder_str);
@@ -315,16 +318,27 @@ void TSDBEngineImpl::_append_row_to_file(std::ofstream& fout, const Row& row, bo
     fout.flush();
 }
 
-int TSDBEngineImpl::_get_file_in_for_vin(const Vin& vin, std::ifstream& fin) {
+int TSDBEngineImpl::_get_file_in_for_vin(const Vin& vin,int64_t lowerInclusive,int64_t upperExclusive,std::vector<std::ifstream> &fins) {
     // Must be protected by vin's mutex.
-    Path vinFilePath = _get_vin_file_path(vin);
+    //lower_bound
+    Path vinFilePath = _get_vin_timestamp_file_path(vin,lowerInclusive);
     std::ifstream vinFin;
     vinFin.open(vinFilePath, std::ios::in | std::ios::binary);
     if (!vinFin.is_open() || !vinFin.good()) {
         // std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
         return -1;
     }
-    fin = std::move(vinFin);
+    fins.push_back(std::move(vinFin));
+
+    //upper_bound
+    Path vinFilePath_2 = _get_vin_timestamp_file_path(vin,upperExclusive);
+    std::ifstream vinFin_2;
+    vinFin_2.open(vinFilePath_2, std::ios::in | std::ios::binary);
+    if (!vinFin_2.is_open() || !vinFin_2.good()) {
+        // std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
+        return -1;
+    }
+    fins.push_back(std::move(vinFin_2));
     return 0;
 }
 
