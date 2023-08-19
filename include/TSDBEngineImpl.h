@@ -47,7 +47,7 @@ private:
         return dataDirPath;
     }
 
-    std::mutex& _get_mutex_for_vin(const Vin& vin);
+    std::shared_mutex& _get_mutex_for_vin(const Vin& vin);
 
     // Must be protected by vin's mutex.
     // The gotten stream is shared by all caller, and should not be closed manually by caller.
@@ -87,7 +87,7 @@ private:
     // Append new written row to this file. Cache the output stream for each file. One file for a vin.
     std::unordered_map<Vin, std::ofstream*, VinHasher, VinHasher> _out_files;
     // One locker for a vin. Lock the vin's locker when reading or writing process touches the vin.
-    std::unordered_map<Vin, std::mutex*, VinHasher, VinHasher> _vin_mutex;
+    std::unordered_map<Vin, std::shared_mutex*, VinHasher, VinHasher> _vin_mutex;
     // How many columns is defined in schema for the sole table.
     uint8_t _column_nums;
     // The column's type for each column.

@@ -80,7 +80,7 @@ int TSDBEngineImpl::upsert(const WriteRequest& writeRequest) {
         const Vin& vin = row.vin;
         auto& vin_mutex = _get_mutex_for_vin(vin);
         {
-            std::lock_guard<std::mutex> l(vin_mutex);
+            std::unique_lock<std::shared_mutex> l(vin_mutex);
             std::ofstream& file_out_for_vin = _get_file_out_for_vin(vin);
             _append_row_to_file(file_out_for_vin, row, false);
             int32_t vin_num = get_vin_num(vin);
@@ -109,15 +109,15 @@ int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq
     return 0;
 }
 
-std::mutex& TSDBEngineImpl::_get_mutex_for_vin(const Vin& vin) {
-    std::mutex* vin_mutex;
+std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin(const Vin& vin) {
+    std::shared_mutex* vin_mutex;
     {
         std::lock_guard<std::mutex> l(_global_mutex);
         const auto it = _vin_mutex.find(vin);
         if (it != _vin_mutex.cend()) {
             vin_mutex = it->second;
         } else {
-            vin_mutex = new std::mutex();
+            vin_mutex = new std::shared_mutex();
             _vin_mutex.emplace(vin, vin_mutex);
         }
     }
@@ -152,8 +152,7 @@ std::ofstream& TSDBEngineImpl::_get_file_out_for_vin(const Vin &vin) {
 }
 
 int TSDBEngineImpl::_get_latest_row(const Vin& vin, const std::set<std::string>& requestedColumns, Row& result) {
-    std::mutex& vin_mutex = _get_mutex_for_vin(vin);
-    std::lock_guard<std::mutex> l(vin_mutex);
+    std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin(vin));
     int32_t vin_num = get_vin_num(vin);
     if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
         return -1;
@@ -171,7 +170,7 @@ int TSDBEngineImpl::_get_latest_row(const Vin& vin, const std::set<std::string>&
 void TSDBEngineImpl::_get_rows_from_time_range(const Vin& vin, int64_t lowerInclusive, int64_t upperExclusive,
                                      const std::set<std::string>& requestedColumns,
                                      std::vector<Row>& results) {
-    std::lock_guard<std::mutex> l(_get_mutex_for_vin(vin));
+    std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin(vin));
     std::ifstream fin;
     int ret = _get_file_in_for_vin(vin, fin);
     if (ret != 0) {
