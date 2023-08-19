@@ -67,6 +67,10 @@ int TSDBEngineImpl::shutdown() {
         delete pair.second;
     }
 
+    for(const auto& pair: _vin_stamp_mutex){
+        delete pair.second;
+    }
+
     _save_schema_to_file();
     _save_latest_records_to_file();
 
@@ -80,8 +84,10 @@ int TSDBEngineImpl::upsert(const WriteRequest& writeRequest) {
         const Vin& vin = row.vin;
         const int64_t time = row.timestamp;
         auto& vin_mutex = _get_mutex_for_vin(vin);
+        auto& vin_stamp_mutex = _get_mutex_for_vin_timestamp(vin,time);
         {
             std::unique_lock<std::shared_mutex> l(vin_mutex);
+            std::unique_lock<std::shared_mutex> l_(vin_stamp_mutex);
             std::ofstream& file_out_for_vin = _get_file_out_for_vin_timestamp(vin,time);
             _append_row_to_file(file_out_for_vin, row, false);
             int32_t vin_num = get_vin_num(vin);
@@ -123,6 +129,25 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin(const Vin& vin) {
         }
     }
     return *vin_mutex;
+}
+
+std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timestamp(const Vin& vin,int64_t timestamp) {
+    std::shared_mutex* vin_stamp_mutex;
+    {
+        std::lock_guard<std::mutex> l(_global_mutex);
+        int32_t  res_vin = get_vin_num(vin);
+        int64_t res_stamp = get_timestamp(timestamp);
+        std::string res = std::to_string(res_vin);
+        res.append(std::to_string(res_stamp));
+        const auto it = _vin_stamp_mutex.find(res);
+        if (it != _vin_stamp_mutex.cend()) {
+            vin_stamp_mutex = it->second;
+        } else {
+            vin_stamp_mutex = new std::shared_mutex();
+            _vin_stamp_mutex.emplace(res, vin_stamp_mutex);
+        }
+    }
+    return *vin_stamp_mutex;
 }
 
 std::ofstream& TSDBEngineImpl::_get_file_out_for_vin_timestamp(const Vin &vin, const int64_t timestamp) {
@@ -171,7 +196,9 @@ int TSDBEngineImpl::_get_latest_row(const Vin& vin, const std::set<std::string>&
 void TSDBEngineImpl::_get_rows_from_time_range(const Vin& vin, int64_t lowerInclusive, int64_t upperExclusive,
                                      const std::set<std::string>& requestedColumns,
                                      std::vector<Row>& results) {
-    std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin(vin));
+    std::shared_lock<std::shared_mutex> l_lower(_get_mutex_for_vin_timestamp(vin,lowerInclusive));
+    //这里可以做一个判断函数
+    std::shared_lock<std::shared_mutex> l_upper(_get_mutex_for_vin_timestamp(vin,upperExclusive));
     std::vector<std::ifstream> fins;
     std::ifstream fin;
     int ret = _get_file_in_for_vin(vin,lowerInclusive,upperExclusive,fins);
