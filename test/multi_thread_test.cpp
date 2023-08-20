@@ -254,8 +254,8 @@ namespace LindormContest::test {
             std::string rand_vin = generate_random_string(17);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
-        trqr.timeLowerBound = 1689090150000;
-        trqr.timeUpperBound = 1689090250000;
+        trqr.timeLowerBound = 1689090120000;
+        trqr.timeUpperBound = 1689090125000;
         trqr.requestedColumns = {"col1", "col2", "col3"};
         std::string key(trqr.vin.vin, 17);
 

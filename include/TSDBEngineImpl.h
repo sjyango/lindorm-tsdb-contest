@@ -88,7 +88,7 @@ private:
     // Protect global map, such as outFiles, vinMutex defined below.
     std::mutex _global_mutex;
     // Append new written row to this file. Cache the output stream for each file. One file for a vin.
-    std::unordered_map<Vin, std::ofstream*, VinHasher, VinHasher> _out_files;
+    std::unordered_map<std::string , std::ofstream*> _out_files;
     // One locker for a vin. Lock the vin's locker when reading or writing process touches the vin.
     std::unordered_map<Vin, std::shared_mutex*, VinHasher, VinHasher> _vin_mutex;
 
@@ -101,7 +101,7 @@ private:
     // The column's name for each column.
     std::string* _column_names;
     Row _latest_records[VIN_RANGE_LENGTH];
-    int64_t range = 100;
+    int64_t range = 25;
 };
 
 static int32_t get_vin_num(const Vin& vin) {

@@ -138,6 +138,7 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timestamp(const Vin& vin,i
         int32_t  res_vin = get_vin_num(vin);
         int64_t res_stamp = get_timestamp(timestamp);
         std::string res = std::to_string(res_vin);
+        res.append("_");
         res.append(std::to_string((res_stamp-1200)/range));
         const auto it = _vin_stamp_mutex.find(res);
         if (it != _vin_stamp_mutex.cend()) {
@@ -155,6 +156,7 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timerange(const Vin& vin,i
         std::lock_guard<std::mutex> l(_global_mutex);
         int32_t  res_vin = get_vin_num(vin);
         std::string res = std::to_string(res_vin);
+        res.append("_");
         res.append(std::to_string(timerange));
         const auto it = _vin_stamp_mutex.find(res);
         if (it != _vin_stamp_mutex.cend()) {
@@ -170,9 +172,14 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timerange(const Vin& vin,i
 std::ofstream& TSDBEngineImpl::_get_file_out_for_vin_timestamp(const Vin &vin, const int64_t timestamp) {
     // Must be protected by vin's mutex.
     // Try getting from already opened set.
+    int32_t  res_vin = get_vin_num(vin);
+    int64_t res_stamp = get_timestamp(timestamp);
+    std::string res = std::to_string(res_vin);
+    res.append("_");
+    res.append(std::to_string((res_stamp-1200)/range));
     {
         std::lock_guard<std::mutex> l(_global_mutex);
-        auto it = _out_files.find(vin);
+        auto it = _out_files.find(res);
         if (it != _out_files.cend()) {
             auto pFileOut = it->second;
             return *pFileOut;
@@ -189,7 +196,7 @@ std::ofstream& TSDBEngineImpl::_get_file_out_for_vin_timestamp(const Vin &vin, c
     }
     {
         std::lock_guard<std::mutex> l(_global_mutex);
-        _out_files.emplace(vin, pFileOut);
+        _out_files.emplace(res, pFileOut);
     }
     return *pFileOut;
 }
