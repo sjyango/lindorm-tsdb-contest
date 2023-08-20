@@ -49,13 +49,15 @@ private:
 
     std::shared_mutex& _get_mutex_for_vin(const Vin& vin);
     std::shared_mutex& _get_mutex_for_vin_timestamp(const Vin& vin,int64_t timestamp);
+    std::shared_mutex& _get_mutex_for_vin_timerange(const Vin& vin,int64_t timerange);
+
     // Must be protected by vin's mutex.
     // The gotten stream is shared by all caller, and should not be closed manually by caller.
     std::ofstream& _get_file_out_for_vin_timestamp(const Vin& vin, int64_t timestamp);
 
     // Must be protected by vin's mutex.
     // The returned ifstream is exclusive for each caller, and must be closed by caller.
-    int _get_file_in_for_vin(const Vin& vin,int64_t lowerInclusive,int64_t upperExclusive,std::vector<std::ifstream> &fins);
+    int _get_file_in_for_vin_timerange(const Vin& vin,int64_t timerange,std::ifstream& fins);
 
     int _get_latest_row(const Vin& vin, const std::set<std::string>& requestedColumns, Row& result);
 
@@ -64,6 +66,7 @@ private:
 
     // Get the file path for this vin, there should be only one file for a vin.
     Path _get_vin_timestamp_file_path(const Vin&vin,int64_t timestamp);
+    Path _get_vin_timerange_file_path(const Vin&vin,int64_t timerange);
 
     // Must be protected by vin's mutex.
     // Read the row from this fin. The offset of this fin should be set at the start position for the row.
@@ -111,7 +114,7 @@ static int32_t get_vin_num(const Vin& vin) {
     }
 }
 static int64_t get_timestamp(const int64_t timestamp){
-    return timestamp%168909/1000;
+    return timestamp%1689090000000/1000;
 }
 
 }

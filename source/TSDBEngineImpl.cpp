@@ -138,7 +138,24 @@ std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timestamp(const Vin& vin,i
         int32_t  res_vin = get_vin_num(vin);
         int64_t res_stamp = get_timestamp(timestamp);
         std::string res = std::to_string(res_vin);
-        res.append(std::to_string(res_stamp));
+        res.append(std::to_string((res_stamp-1200)/range));
+        const auto it = _vin_stamp_mutex.find(res);
+        if (it != _vin_stamp_mutex.cend()) {
+            vin_stamp_mutex = it->second;
+        } else {
+            vin_stamp_mutex = new std::shared_mutex();
+            _vin_stamp_mutex.emplace(res, vin_stamp_mutex);
+        }
+    }
+    return *vin_stamp_mutex;
+}
+std::shared_mutex& TSDBEngineImpl::_get_mutex_for_vin_timerange(const Vin& vin,int64_t timerange) {
+    std::shared_mutex* vin_stamp_mutex;
+    {
+        std::lock_guard<std::mutex> l(_global_mutex);
+        int32_t  res_vin = get_vin_num(vin);
+        std::string res = std::to_string(res_vin);
+        res.append(std::to_string(timerange));
         const auto it = _vin_stamp_mutex.find(res);
         if (it != _vin_stamp_mutex.cend()) {
             vin_stamp_mutex = it->second;
@@ -196,43 +213,70 @@ int TSDBEngineImpl::_get_latest_row(const Vin& vin, const std::set<std::string>&
 void TSDBEngineImpl::_get_rows_from_time_range(const Vin& vin, int64_t lowerInclusive, int64_t upperExclusive,
                                      const std::set<std::string>& requestedColumns,
                                      std::vector<Row>& results) {
-    std::shared_lock<std::shared_mutex> l_lower(_get_mutex_for_vin_timestamp(vin,lowerInclusive));
-    //这里可以做一个判断函数
-    std::shared_lock<std::shared_mutex> l_upper(_get_mutex_for_vin_timestamp(vin,upperExclusive));
+    //左闭右开
+    int64_t start_after = get_timestamp(lowerInclusive);
+    int64_t end_after = get_timestamp(upperExclusive-1000);
     std::vector<std::ifstream> fins;
-    std::ifstream fin;
-    int ret = _get_file_in_for_vin(vin,lowerInclusive,upperExclusive,fins);
-    if (ret != 0) {
-        // No such vin written.
-        return;
-    }
-
-    while (!fin.eof()) {
-        Row nextRow;
-        ret = _read_row_from_stream(vin, fin, nextRow, false);
+    for (int64_t t = (start_after-1200)/range ;t <= (end_after-1200)/range ; t++){
+        std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin_timerange(vin,t));
+        std::ifstream fin;
+        int ret = _get_file_in_for_vin_timerange(vin,t,fin);
         if (ret != 0) {
-            // EOF reached, no more row.
-            break;
+            // No such vin written.
+            return;
         }
-        if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
-            Row resultRow;
-            resultRow.vin = vin;
-            resultRow.timestamp = nextRow.timestamp;
-            for (const auto & requestedColumn : requestedColumns) {
-                resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+        while (!fin.eof()) {
+            Row nextRow;
+            ret = _read_row_from_stream(vin, fin, nextRow, false);
+            if (ret != 0) {
+                // EOF reached, no more row.
+                break;
             }
-            results.push_back(std::move(resultRow));
+            if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
+                Row resultRow;
+                resultRow.vin = vin;
+                resultRow.timestamp = nextRow.timestamp;
+                for (const auto &requestedColumn: requestedColumns) {
+                    resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+                }
+                results.push_back(std::move(resultRow));
+            }
         }
+        fin.close();
     }
-
-    fin.close();
+//    int ret = _get_file_in_for_vin_timestamp(vin,lowerInclusive,upperExclusive,fins);
+//    if (ret != 0) {
+//        // No such vin written.
+//        return;
+//    }
+//    //result append到一起
+//    for (std::ifstream &fin : fins) {
+//        while (!fin.eof()) {
+//            Row nextRow;
+//            ret = _read_row_from_stream(vin, fin, nextRow, false);
+//            if (ret != 0) {
+//                // EOF reached, no more row.
+//                break;
+//            }
+//            if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
+//                Row resultRow;
+//                resultRow.vin = vin;
+//                resultRow.timestamp = nextRow.timestamp;
+//                for (const auto &requestedColumn: requestedColumns) {
+//                    resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+//                }
+//                results.push_back(std::move(resultRow));
+//            }
+//        }
+//        fin.close();
+//    }
 }
 
 Path TSDBEngineImpl::_get_vin_timestamp_file_path(const Vin& vin,int64_t timestamp) {
     std::string vinStr(vin.vin, VIN_LENGTH);
     int32_t folderNum = (int32_t) VinHasher()(vin) % 100;
     int64_t after_timestamp = get_timestamp(timestamp);
-    Path folder_str = _get_root_path() / std::to_string(folderNum)/std::to_string(after_timestamp/range);
+    Path folder_str = _get_root_path() / std::to_string(folderNum)/std::to_string((after_timestamp-1200)/range);
     bool dirExist = std::filesystem::is_directory(folder_str);
     if (!dirExist) {
         bool created = std::filesystem::create_directories(folder_str);
@@ -243,6 +287,21 @@ Path TSDBEngineImpl::_get_vin_timestamp_file_path(const Vin& vin,int64_t timesta
     }
     return folder_str / vinStr;
 }
+Path  TSDBEngineImpl::_get_vin_timerange_file_path(const Vin& vin,int64_t timerange) {
+    std::string vinStr(vin.vin, VIN_LENGTH);
+    int32_t folderNum = (int32_t) VinHasher()(vin) % 100;
+    Path folder_str = _get_root_path() / std::to_string(folderNum)/std::to_string(timerange);
+    bool dirExist = std::filesystem::is_directory(folder_str);
+    if (!dirExist) {
+        bool created = std::filesystem::create_directories(folder_str);
+        if (!created && !std::filesystem::is_directory(folder_str)) {
+            std::cerr << "Cannot create directory: [" << folder_str << "]" << std::endl;
+            throw std::exception();
+        }
+    }
+    return folder_str / vinStr;
+}
+
 
 int TSDBEngineImpl::_read_row_from_stream(const Vin& vin, std::ifstream& fin, Row& row, bool vin_include) {
     // Must be protected by vin's mutex.
@@ -345,27 +404,16 @@ void TSDBEngineImpl::_append_row_to_file(std::ofstream& fout, const Row& row, bo
     fout.flush();
 }
 
-int TSDBEngineImpl::_get_file_in_for_vin(const Vin& vin,int64_t lowerInclusive,int64_t upperExclusive,std::vector<std::ifstream> &fins) {
+int TSDBEngineImpl::_get_file_in_for_vin_timerange(const Vin& vin,int64_t timerange,std::ifstream& fin) {
     // Must be protected by vin's mutex.
-    //lower_bound
-    Path vinFilePath = _get_vin_timestamp_file_path(vin,lowerInclusive);
+    Path vinFilePath = _get_vin_timerange_file_path(vin,timerange);
     std::ifstream vinFin;
     vinFin.open(vinFilePath, std::ios::in | std::ios::binary);
     if (!vinFin.is_open() || !vinFin.good()) {
         // std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
         return -1;
     }
-    fins.push_back(std::move(vinFin));
-
-    //upper_bound
-    Path vinFilePath_2 = _get_vin_timestamp_file_path(vin,upperExclusive);
-    std::ifstream vinFin_2;
-    vinFin_2.open(vinFilePath_2, std::ios::in | std::ios::binary);
-    if (!vinFin_2.is_open() || !vinFin_2.good()) {
-        // std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
-        return -1;
-    }
-    fins.push_back(std::move(vinFin_2));
+    fin = std::move(vinFin);
     return 0;
 }
 
