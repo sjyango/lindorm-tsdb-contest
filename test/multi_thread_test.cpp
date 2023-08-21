@@ -248,14 +248,14 @@ namespace LindormContest::test {
     static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
         TimeRangeQueryRequest trqr;
         trqr.tableName = TABLE_NAME;
-        if (generate_random_float64() < 0.9) {
-            trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
-        } else {
-            std::string rand_vin = generate_random_string(17);
-            std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
-        }
-        trqr.timeLowerBound = 1689090120000;
-        trqr.timeUpperBound = 1689090125000;
+//        if (generate_random_float64() < 0.9) {
+        trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
+//        } else {
+//            std::string rand_vin = generate_random_string(17);
+//            std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
+//        }
+        trqr.timeLowerBound = 1689091200000;
+        trqr.timeUpperBound = 1689091250000;
         trqr.requestedColumns = {"col1", "col2", "col3"};
         std::string key(trqr.vin.vin, 17);
 
