@@ -1,0 +1,1 @@
+g++  -std=c++17 -fPIC -g -g -rdynamic CMakeFiles/multi_thread_test.dir/multi_thread_test.cpp.o -o multi_thread_test   -L/tmp/tmp.Ru5KUPcvI2/thirdparty/gtest/lib  -Wl,-rpath,/tmp/tmp.Ru5KUPcvI2/thirdparty/gtest/lib -lgtest -lgtest_main ../libDBLib.a -lpthread -Wl,-Bstatic -lzstd -Wl,-Bdynamic 

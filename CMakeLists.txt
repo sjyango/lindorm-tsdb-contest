@@ -18,7 +18,7 @@ project(lindorm-tsdb-contest-cpp)
 
 set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g")
 
@@ -54,6 +54,18 @@ else ()
 endif ()
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
+find_path(zstd_INCLUDE_DIRS
+        NAMES zstd.h
+        HINTS /usr/local/include/)
+
+find_library(zstd_LIBRARIES
+        NAMES zstd
+        HINTS /usr/local/lib64/)
+
+include_directories(${zstd_INCLUDE_DIRS})
+
+message("${zstd_LIBRARIES}")
+message("${zstd_INCLUDE_DIRS}")
 
 add_subdirectory(test)
 
@@ -61,3 +73,5 @@ file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
 add_library(DBLib ${sources_c} ${sources_cpp})
+
+target_link_libraries(DBLib "/usr/local/lib64/libzstd.a")
