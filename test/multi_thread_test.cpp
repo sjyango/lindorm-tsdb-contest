@@ -195,12 +195,12 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
     std::vector<std::string> request_vins;
 
     for (int i = 0; i < N; ++i) {
-        if (generate_random_float64() < 1) {
+        if (generate_random_float64() < 0.1) {
             size_t rand_index = generate_random_int32() % written_datasets.size();
             lqr.vins.push_back(global_datasets[rand_index].vin);
             request_vins.emplace_back(global_datasets[rand_index].vin.vin, 17);
         } else {
-            std::string rand_vin = generate_random_string(17);
+            std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
             Vin vin;
             std::strncpy(vin.vin, rand_vin.c_str(), 17);
             lqr.vins.push_back(vin);
@@ -248,14 +248,14 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
 static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
     TimeRangeQueryRequest trqr;
     trqr.tableName = TABLE_NAME;
-    if (generate_random_float64() < 0.9) {
+    if (generate_random_float64() < 0.1) {
         trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
     } else {
-        std::string rand_vin = generate_random_string(17);
+        std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
         std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
     }
-    trqr.timeLowerBound = 1689091200000;
-    trqr.timeUpperBound = 1689091300000;
+    trqr.timeLowerBound = 1689091225000;
+    trqr.timeUpperBound = 1689091275000;
     trqr.requestedColumns = {"col1", "col2", "col3"};
     std::string key(trqr.vin.vin, 17);
 

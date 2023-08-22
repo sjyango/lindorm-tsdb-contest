@@ -71,29 +71,30 @@ namespace LindormContest {
 
     int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
         for (const Row &row: writeRequest.rows) {
-            auto &vin_mutex = _get_mutex_for_vin(row.vin);
-            auto &vin_stamp_mutex = _get_mutex_for_vin_timestamp(row.vin, row.timestamp);
+            int32_t vin_num = get_vin_num(row.vin);
+            assert(vin_num >= 0 && vin_num < 30000);
             {
-                std::unique_lock<std::shared_mutex> l(vin_mutex);
-                int32_t vin_num = get_vin_num(row.vin);
+                std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
                 if (row.timestamp > _latest_records[vin_num].timestamp) {
                     _latest_records[vin_num] = row;
                 }
             }
             {
-                std::unique_lock<std::shared_mutex> l(vin_stamp_mutex);
-                std::ofstream &file_out_for_vin = _get_file_out_for_vin_timestamp(row.vin, row.timestamp);
-                _append_row_to_file(file_out_for_vin, row, false);
+                std::unique_lock<std::shared_mutex> l(_vin_timestamp_mutexes[combine_vin_and_timestamp(row.vin, row.timestamp)]);
+                _append_row_to_file(_get_file_out_for_vin_timestamp(row.vin, row.timestamp), row, false);
             }
         }
         return 0;
     }
 
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
-        INFO_LOG("execute executeLatestQuery function")
         for (const auto &vin: pReadReq.vins) {
+            int32_t vin_num = get_vin_num(vin);
+            if (vin_num < 0 || vin_num >= 30000) {
+                continue;
+            }
             Row row;
-            int ret = _get_latest_row(vin, pReadReq.requestedColumns, row);
+            int ret = _get_latest_row(vin_num, vin, pReadReq.requestedColumns, row);
             if (ret == 0) {
                 pReadRes.push_back(std::move(row));
             }
@@ -102,22 +103,13 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
-        INFO_LOG("execute executeTimeRangeQuery function")
+        int32_t vin_num = get_vin_num(trReadReq.vin);
+        if (vin_num < 0 || vin_num >= 30000) {
+            return 0;
+        }
         _get_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                   trReadReq.requestedColumns, trReadRes);
         return 0;
-    }
-
-    std::shared_mutex &TSDBEngineImpl::_get_mutex_for_vin(const Vin &vin) {
-        return _vin_mutexes[get_vin_num(vin)];
-    }
-
-    std::shared_mutex &TSDBEngineImpl::_get_mutex_for_vin_timestamp(const Vin &vin, int64_t timestamp) {
-        return _vin_timestamp_mutexes[combine_vin_and_timestamp(vin, timestamp)];
-    }
-
-    std::shared_mutex &TSDBEngineImpl::_get_mutex_for_vin_timestamp_range(const Vin &vin, int64_t range) {
-        return _vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * range];
     }
 
     std::ofstream &TSDBEngineImpl::_get_file_out_for_vin_timestamp(const Vin &vin, const int64_t timestamp) {
@@ -135,10 +127,9 @@ namespace LindormContest {
         return *_streams[index];
     }
 
-    int TSDBEngineImpl::_get_latest_row(const Vin &vin, const std::set<std::string> &requestedColumns, Row &result) {
-        std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin(vin));
-        int32_t vin_num = get_vin_num(vin);
-        if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+    int TSDBEngineImpl::_get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result) {
+        std::shared_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
+        if (_latest_records[vin_num].timestamp == 0) {
             return -1;
         }
         Row latestRow = _latest_records[vin_num];
@@ -157,7 +148,7 @@ namespace LindormContest {
         int64_t end_after = get_timestamp_num(upperExclusive - 1000);
 
         for (int64_t t = start_after / VIN_TIME_RANGE_WIDTH; t <= end_after / VIN_TIME_RANGE_WIDTH; t++) {
-            std::shared_lock<std::shared_mutex> l(_get_mutex_for_vin_timestamp_range(vin, (uint16_t) t));
+            std::shared_lock<std::shared_mutex> l(_vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * t]);
             std::ifstream fin;
             int ret = _get_file_in_for_vin_timestamp_range(vin, (uint16_t) t, fin);
             if (ret != 0) {

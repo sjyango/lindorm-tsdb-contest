@@ -49,12 +49,6 @@ namespace LindormContest {
             return dataDirPath;
         }
 
-        std::shared_mutex &_get_mutex_for_vin(const Vin &vin);
-
-        std::shared_mutex &_get_mutex_for_vin_timestamp(const Vin &vin, int64_t timestamp);
-
-        std::shared_mutex &_get_mutex_for_vin_timestamp_range(const Vin &vin, int64_t range);
-
         // Must be protected by vin's mutex.
         // The gotten stream is shared by all caller, and should not be closed manually by caller.
         std::ofstream &_get_file_out_for_vin_timestamp(const Vin &vin, int64_t timestamp);
@@ -63,7 +57,7 @@ namespace LindormContest {
         // The returned ifstream is exclusive for each caller, and must be closed by caller.
         int _get_file_in_for_vin_timestamp_range(const Vin &vin, int64_t range, std::ifstream &fins);
 
-        int _get_latest_row(const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
+        int _get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
 
         void _get_rows_from_time_range(const Vin &vin, int64_t lowerInclusive, int64_t upperExclusive,
                                        const std::set<std::string> &requestedColumns, std::vector<Row> &results);
@@ -101,11 +95,18 @@ namespace LindormContest {
 
     // 0 ~ 29999
     static int32_t get_vin_num(const Vin &vin) {
-        std::string vin_str(vin.vin + 12, 5);
-        try {
-            int32_t vin_num = std::stoi(vin_str);
+        int32_t vin_num = 0;
+
+        for (int32_t i = 0; i < 5; ++i) {
+            if (!std::isdigit(vin.vin[12 + i])) {
+                return -1;
+            }
+            vin_num = vin_num * 10 + (vin.vin[12 + i] - '0');
+        }
+
+        if (vin_num >= 1 && vin_num <= 30000) {
             return vin_num - 1;
-        } catch (std::exception &e) {
+        } else {
             return -1;
         }
     }
@@ -116,7 +117,8 @@ namespace LindormContest {
     }
 
     static int32_t combine_vin_and_timestamp(const Vin &vin, const int64_t timestamp) {
-        int32_t vin_num = get_vin_num(vin); // 0 ~ 29999
+        int32_t vin_num = get_vin_num(vin);
+        assert(vin_num >= 0 && vin_num < 30000);  // 0 ~ 29999
         uint16_t timestamp_range_num = get_timestamp_num(timestamp) / VIN_TIME_RANGE_WIDTH; // 0 ~ VIN_TIME_RANGE_NUM
         return vin_num + VIN_RANGE_LENGTH * timestamp_range_num;
     }
