@@ -25,6 +25,7 @@ link_directories(${PROJECT_SOURCE_DIR}/thirdparty/gtest/lib)
 
 set(EXECUTABLES
         multi_thread_test
+        compression_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})

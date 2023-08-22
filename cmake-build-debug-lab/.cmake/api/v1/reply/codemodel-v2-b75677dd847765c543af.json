@@ -1,0 +1,106 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"jsonFile" : "directory-.-DEBUG-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "test",
+					"jsonFile" : "directory-test-DEBUG-451c0598f41488bb20b9.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "test",
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"name" : "DEBUG",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1
+					],
+					"name" : "lindorm-tsdb-contest-cpp",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "DBLib::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-DBLib-DEBUG-76dc74cbbe904946949f.json",
+					"name" : "DBLib",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "compression_test::@36f028580bb02cc8272a",
+					"jsonFile" : "target-compression_test-DEBUG-17dc04d8b70bfe791694.json",
+					"name" : "compression_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "multi_thread_test::@36f028580bb02cc8272a",
+					"jsonFile" : "target-multi_thread_test-DEBUG-177d278ff5424194df2f.json",
+					"name" : "multi_thread_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ut_test::@36f028580bb02cc8272a",
+					"jsonFile" : "target-ut_test-DEBUG-fb4e8dd27b4a418fd69f.json",
+					"name" : "ut_test",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab",
+		"source" : "/tmp/tmp.Ru5KUPcvI2"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 4
+	}
+}
