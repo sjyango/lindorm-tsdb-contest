@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
-#include <zstd.h>
+#include "../source/zstd/zstd.h"
 
 namespace LindormContest::io {
 

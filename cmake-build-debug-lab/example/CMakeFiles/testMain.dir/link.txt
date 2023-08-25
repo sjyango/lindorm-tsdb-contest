@@ -1,1 +1,0 @@
-g++  -std=c++17 -fPIC -g -ggdb -gdwarf-4 -gstrict-dwarf -Wall -Wno-unused-variable -g -rdynamic CMakeFiles/testMain.dir/EvaluationSample.cpp.o -o testMain  libtestLib.a 

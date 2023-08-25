@@ -1,7 +1,0 @@
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/CMakeFiles/DBLib.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/CMakeFiles/edit_cache.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/CMakeFiles/rebuild_cache.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/test/CMakeFiles/multi_thread_test.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/test/CMakeFiles/ut_test.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/test/CMakeFiles/edit_cache.dir
-/tmp/tmp.Ru5KUPcvI2/cmake-build-debug-lab/test/CMakeFiles/rebuild_cache.dir
