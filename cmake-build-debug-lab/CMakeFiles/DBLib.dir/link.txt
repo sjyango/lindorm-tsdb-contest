@@ -1,2 +1,0 @@
-/usr/bin/ar qc libDBLib.a CMakeFiles/DBLib.dir/source/TSDBEngineImpl.cpp.o CMakeFiles/DBLib.dir/source/compression/float_compressor.cpp.o CMakeFiles/DBLib.dir/source/compression/string_compressor.cpp.o CMakeFiles/DBLib.dir/source/struct/ColumnValue.cpp.o CMakeFiles/DBLib.dir/source/struct/Row.cpp.o CMakeFiles/DBLib.dir/source/struct/Schema.cpp.o CMakeFiles/DBLib.dir/source/struct/Vin.cpp.o
-/usr/bin/ranlib libDBLib.a
