@@ -80,8 +80,8 @@ namespace LindormContest {
         ThreadPool &operator=(ThreadPool &&) = delete;
 
         void init() {
-            for (int i = 0; i < _threads.size(); ++i) {
-                _threads[i] = std::thread(ThreadWorker(this, i));
+            for (auto & _thread : _threads) {
+                _thread = std::thread(ThreadWorker(this));
             }
         }
 
@@ -112,8 +112,7 @@ namespace LindormContest {
     private:
         class ThreadWorker {
         public:
-            ThreadWorker(ThreadPool *pool, const int id)
-                    : _thread_pool(pool), _worker_id(id) {}
+            explicit ThreadWorker(ThreadPool *pool) : _thread_pool(pool) {}
 
             void operator()() {
                 std::function<void()> func;
@@ -134,7 +133,6 @@ namespace LindormContest {
             }
 
         private:
-            int _worker_id;
             ThreadPool *_thread_pool;
         };
 

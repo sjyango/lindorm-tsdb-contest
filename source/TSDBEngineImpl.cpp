@@ -77,7 +77,7 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
-        for (const Row &row: writeRequest.rows) {
+        for (const Row &row : writeRequest.rows) {
             int32_t vin_num = get_vin_num(row.vin);
             {
                 std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
@@ -108,7 +108,7 @@ namespace LindormContest {
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
         int32_t vin_num = get_vin_num(trReadReq.vin);
         if (vin_num < 0 || vin_num >= 30000) {
-            INFO_LOG("executeTimeRangeQuery vin_num is out")
+            // INFO_LOG("executeTimeRangeQuery vin_num is out")
             return 0;
         }
         _get_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
@@ -134,7 +134,7 @@ namespace LindormContest {
     int TSDBEngineImpl::_get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns,
                                         Row &result) {
         if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
-            INFO_LOG("executeLatestQuery vin_num is out")
+            // INFO_LOG("executeLatestQuery vin_num is out")
             return -1;
         }
         {
@@ -174,25 +174,30 @@ namespace LindormContest {
                     std::cout << "No such vin written." << std::endl;
                     return;
                 }
-                while (!fin.eof()) {
-                    Row nextRow;
-                    ret = _read_row_from_stream(vin, fin, nextRow, false);
-                    if (ret != 0) {
-                        // EOF reached, no more row.
-                        break;
-                    }
-                    if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
-                        Row resultRow;
-                        resultRow.vin = vin;
-                        resultRow.timestamp = nextRow.timestamp;
-                        for (const auto &requestedColumn: requestedColumns) {
-                            resultRow.columns.insert(
-                                    std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+
+                if (_is_converted) {
+                    _convert_columns_to_rows(fin, vin, lowerInclusive, upperExclusive, requestedColumns, results);
+                } else {
+                    while (!fin.eof()) {
+                        Row nextRow;
+                        ret = _read_row_from_stream(vin, fin, nextRow, false);
+                        if (ret != 0) {
+                            // EOF reached, no more row.
+                            break;
                         }
-                        results.push_back(std::move(resultRow));
+                        if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
+                            Row resultRow;
+                            resultRow.vin = vin;
+                            resultRow.timestamp = nextRow.timestamp;
+                            for (const auto &requestedColumn: requestedColumns) {
+                                resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+                            }
+                            results.push_back(std::move(resultRow));
+                        }
                     }
+                    fin.close();
                 }
-                fin.close();
+
             } catch (std::exception &e) {
                 INFO_LOG("execute range query is error")
                 std::cout << "start_after" << start_after << std::endl;
@@ -443,6 +448,7 @@ namespace LindormContest {
 
                 fin.close();
                 _convert_rows_to_columns(rows, entry.path());
+                // INFO_LOG("Path %s converts success", entry.path().string().c_str())
             }
         }
     }

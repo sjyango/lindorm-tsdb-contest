@@ -16,10 +16,11 @@
 #include <random>
 #include <thread>
 #include <unordered_map>
-
-#include <gtest/gtest.h>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+
+#include <gtest/gtest.h>
 
 #include "Root.h"
 #include "TSDBEngineImpl.h"
@@ -256,8 +257,8 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
         std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
         std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
     }
-    trqr.timeLowerBound = 1689091200000;
-    trqr.timeUpperBound = 1689091220000;
+    trqr.timeLowerBound = 1689091225000;
+    trqr.timeUpperBound = 1689091275000;
     trqr.requestedColumns = {"col1", "col2", "col3"};
     std::string key(trqr.vin.vin, 17);
 
@@ -406,8 +407,12 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     // INFO_LOG("####################### [generate_index_dataset] finished #######################")
 
     // insert_data
+    auto start_time = std::chrono::high_resolution_clock::now();
     insert_data_into_db_engine(*demo, TABLE_NAME);
-    INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+    auto end_time = std::chrono::high_resolution_clock::now();
+
+    INFO_LOG("####################### [insert_data_into_db_engine] finished, cost time: %lds #######################",
+             std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count())
 
     const size_t N = 100;
 
@@ -564,27 +569,30 @@ TEST(MultiThreadTest, DISABLED_MultiThreadRandomQueryDemoTest) {
     // shutdown
     ASSERT_EQ(0, demo->shutdown());
 }
-    void read() {
-        std::shared_lock<std::shared_mutex> lock(mtx); // 创建一个读锁保护对象，自动加读锁
-        std::cout << "count = " << count << std::endl; // 读取共享资源
-    } // 读锁保护对象被销毁时，自动解读锁
 
-    void write() {
-        std::unique_lock<std::shared_mutex> lock(mtx); // 创建一个写锁保护对象，自动加写锁
-        ++count; // 修改共享资源
-    } // 写锁保护对象被销毁时，自动解写锁
-TEST(MultiThreadTest, demotest){
-        std::thread t1(read);
-        std::thread t3(write);
-        std::thread t4(write);
-        std::thread t5(write);
-        std::thread t2(read);
-        t1.join();
-        t2.join();
-        t3.join();
-        t4.join();
-        t5.join();
-}
+//    void read() {
+//        std::shared_lock<std::shared_mutex> lock(mtx); // 创建一个读锁保护对象，自动加读锁
+//        std::cout << "count = " << count << std::endl; // 读取共享资源
+//    } // 读锁保护对象被销毁时，自动解读锁
+//
+//    void write() {
+//        std::unique_lock<std::shared_mutex> lock(mtx); // 创建一个写锁保护对象，自动加写锁
+//        ++count; // 修改共享资源
+//    } // 写锁保护对象被销毁时，自动解写锁
+//
+//TEST(MultiThreadTest, demotest){
+//        std::thread t1(read);
+//        std::thread t3(write);
+//        std::thread t4(write);
+//        std::thread t5(write);
+//        std::thread t2(read);
+//        t1.join();
+//        t2.join();
+//        t3.join();
+//        t4.join();
+//        t5.join();
+//}
+
 TEST(MultiThreadTest, DISABLED_MultiThreadInsertTest) {
     const size_t READ_FILE_THREADS = 10;
     std::thread read_file_threads[READ_FILE_THREADS];

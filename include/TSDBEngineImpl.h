@@ -10,16 +10,20 @@
 #include "TSDBEngine.hpp"
 #include "Hasher.hpp"
 #include "Root.h"
+#include "common/thread_pool.h"
 
 #include <mutex>
 #include <unordered_map>
 #include <shared_mutex>
+#include <thread>
 
 namespace LindormContest {
 
     const int32_t VIN_RANGE_LENGTH = 30000;
-    const int32_t VIN_TIME_RANGE_NUM = 8;
+    const int32_t VIN_TIME_RANGE_NUM = 10;
     const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
+
+    const uint32_t THREAD_POOL_THREAD_NUM = std::thread::hardware_concurrency();
 
     class TSDBEngineImpl : public TSDBEngine {
     public:
