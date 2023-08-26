@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <exception>
 
 namespace LindormContest {
 
@@ -74,13 +75,13 @@ namespace LindormContest {
             int32_t vin_num = get_vin_num(row.vin);
             assert(vin_num >= 0 && vin_num < 30000);
             {
-                std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
+                std::unique_lock<std::shared_timed_mutex> l(_vin_mutexes[vin_num]);
                 if (row.timestamp > _latest_records[vin_num].timestamp) {
                     _latest_records[vin_num] = row;
                 }
             }
             {
-                std::unique_lock<std::shared_mutex> l(_vin_timestamp_mutexes[combine_vin_and_timestamp(row.vin, row.timestamp)]);
+                std::unique_lock<std::shared_timed_mutex> l(_vin_timestamp_mutexes[combine_vin_and_timestamp(row.vin, row.timestamp)]);
                 _append_row_to_file(_get_file_out_for_vin_timestamp(row.vin, row.timestamp), row, false);
             }
         }
@@ -90,9 +91,6 @@ namespace LindormContest {
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         for (const auto &vin: pReadReq.vins) {
             int32_t vin_num = get_vin_num(vin);
-            if (vin_num < 0 || vin_num >= 30000) {
-                continue;
-            }
             Row row;
             int ret = _get_latest_row(vin_num, vin, pReadReq.requestedColumns, row);
             if (ret == 0) {
@@ -105,6 +103,7 @@ namespace LindormContest {
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
         int32_t vin_num = get_vin_num(trReadReq.vin);
         if (vin_num < 0 || vin_num >= 30000) {
+            INFO_LOG("executeTimeRangeQuery vin_num is out")
             return 0;
         }
         _get_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
@@ -128,16 +127,25 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::_get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result) {
-        std::shared_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
-        if (_latest_records[vin_num].timestamp == 0) {
+        if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+            INFO_LOG("executeLatestQuery vin_num is out")
             return -1;
         }
-        Row latestRow = _latest_records[vin_num];
-        result.vin = vin;
-        result.timestamp = latestRow.timestamp;
-
-        for (const auto &requestedColumn: requestedColumns) {
-            result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
+        {
+            try {
+                std::shared_lock<std::shared_timed_mutex> l(_vin_mutexes[vin_num]);
+                Row latestRow = _latest_records[vin_num];
+                result.vin = vin;
+                result.timestamp = latestRow.timestamp;
+                for (const auto &requestedColumn: requestedColumns) {
+                    result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
+                }
+            }
+            catch(std::exception &e){
+                INFO_LOG("executeLatestQuery vin_num is error")
+                std::cout<<"vin_num"<<vin_num<<std::endl;
+                std::cout<<"vin"<<vin.vin<<std::endl;
+            }
         }
         return 0;
     }
@@ -146,40 +154,58 @@ namespace LindormContest {
                                                    const std::set<std::string> &requestedColumns, std::vector<Row> &results) {
         int64_t start_after = get_timestamp_num(lowerInclusive);
         int64_t end_after = get_timestamp_num(upperExclusive - 1000);
-
-        for (int64_t t = start_after / VIN_TIME_RANGE_WIDTH; t <= end_after / VIN_TIME_RANGE_WIDTH; t++) {
-            std::shared_lock<std::shared_mutex> l(_vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * t]);
-            std::ifstream fin;
-            int ret = _get_file_in_for_vin_timestamp_range(vin, (uint16_t) t, fin);
-            if (ret != 0) {
-                // No such vin written.
-                return;
-            }
-            while (!fin.eof()) {
-                Row nextRow;
-                ret = _read_row_from_stream(vin, fin, nextRow, false);
+        if((start_after<0)||(start_after>=3600)){
+            return;
+        }
+        if((end_after<0)||(end_after>=3600)){
+            return;
+        }
+        for (int64_t t = start_after / VIN_TIME_RANGE_WIDTH; t <= end_after / VIN_TIME_RANGE_WIDTH; t++)
+        {
+            try {
+                std::shared_lock<std::shared_timed_mutex> l(
+                        _vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * t]);
+                std::ifstream fin;
+                int ret = _get_file_in_for_vin_timestamp_range(vin, t, fin);
                 if (ret != 0) {
-                    // EOF reached, no more row.
-                    break;
+                    // No such vin written.
+                    std::cout << "No such vin written." << std::endl;
+                    return;
                 }
-                if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
-                    Row resultRow;
-                    resultRow.vin = vin;
-                    resultRow.timestamp = nextRow.timestamp;
-                    for (const auto &requestedColumn: requestedColumns) {
-                        resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+                while (!fin.eof()) {
+                    Row nextRow;
+                    ret = _read_row_from_stream(vin, fin, nextRow, false);
+                    if (ret != 0) {
+                        // EOF reached, no more row.
+                        break;
                     }
-                    results.push_back(std::move(resultRow));
+                    if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
+                        Row resultRow;
+                        resultRow.vin = vin;
+                        resultRow.timestamp = nextRow.timestamp;
+                        for (const auto &requestedColumn: requestedColumns) {
+                            resultRow.columns.insert(
+                                    std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+                        }
+                        results.push_back(std::move(resultRow));
+                    }
                 }
+                fin.close();
+            }catch (std::exception &e){
+                INFO_LOG("execute range query is error")
+                std::cout<<"start_after"<<start_after<<std::endl;
+                std::cout<<"end_after"<<end_after<<std::endl;
+                std::cout<<"vin"<<vin.vin<<std::endl;
             }
-            fin.close();
         }
     }
 
     Path TSDBEngineImpl::_get_vin_timestamp_file_path(const Vin &vin, int64_t timestamp) {
         std::string vin_str(vin.vin, VIN_LENGTH);
         int64_t timestamp_num = get_timestamp_num(timestamp);
+        //int32_t folderNum = (int32_t)VinHasher()(vin) % 100;
         Path folder_str = _get_root_path() / std::to_string(get_vin_num(vin) % 200) / std::to_string(timestamp_num / VIN_TIME_RANGE_WIDTH);
+        //Path folder_str = _get_root_path() / std::to_string(folderNum) / std::to_string(timestamp_num / VIN_TIME_RANGE_WIDTH);
         bool dirExist = std::filesystem::is_directory(folder_str);
         if (!dirExist) {
             bool created = std::filesystem::create_directories(folder_str);
@@ -193,7 +219,9 @@ namespace LindormContest {
 
     Path TSDBEngineImpl::_get_vin_timestamp_range_file_path(const Vin &vin, int64_t range) {
         std::string vin_str(vin.vin, VIN_LENGTH);
+        //int32_t folderNum = (int32_t)VinHasher()(vin) % 100;
         Path folder_str = _get_root_path() / std::to_string(get_vin_num(vin) % 200) / std::to_string(range);
+        //Path folder_str = _get_root_path() / std::to_string(folderNum) / std::to_string(range);
         bool dirExist = std::filesystem::is_directory(folder_str);
         if (!dirExist) {
             bool created = std::filesystem::create_directories(folder_str);
@@ -215,13 +243,11 @@ namespace LindormContest {
         if (vin_include) {
             fin.read((char *) vin.vin, VIN_LENGTH);
         }
-
         int64_t timestamp;
         fin.read((char *) &timestamp, sizeof(int64_t));
         if (fin.fail() || fin.eof()) {
             return -1;
         }
-
         row.vin = vin;
         row.timestamp = timestamp;
 
@@ -303,7 +329,6 @@ namespace LindormContest {
             int32_t rawSize = cVal.getRawDataSize();
             fout.write(cVal.columnData, rawSize);
         }
-
         fout.flush();
     }
 
@@ -312,7 +337,7 @@ namespace LindormContest {
         std::ifstream vinFin;
         vinFin.open(vinFilePath, std::ios::in | std::ios::binary);
         if (!vinFin.is_open() || !vinFin.good()) {
-            // std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
+            std::cout << "Cannot get vin file input-stream for vin: [" << vin << "]. No such file" << std::endl;
             return -1;
         }
         fin = std::move(vinFin);
@@ -394,7 +419,6 @@ namespace LindormContest {
             assert(vin_num == i);
             _latest_records[vin_num] = row;
         }
-
         input_file.close();
     }
 

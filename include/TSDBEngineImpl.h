@@ -18,7 +18,7 @@
 namespace LindormContest {
 
     const int32_t VIN_RANGE_LENGTH = 30000;
-    const int32_t VIN_TIME_RANGE_NUM = 20;
+    const int32_t VIN_TIME_RANGE_NUM = 8;
     const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
 
     class TSDBEngineImpl : public TSDBEngine {
@@ -89,21 +89,19 @@ namespace LindormContest {
         std::string *_column_names;
         Row _latest_records[VIN_RANGE_LENGTH];
         std::unique_ptr<std::ofstream> _streams[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
-        std::shared_mutex _vin_mutexes[VIN_RANGE_LENGTH];
-        std::shared_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
+        std::shared_timed_mutex _vin_mutexes[VIN_RANGE_LENGTH];
+        std::shared_timed_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
     };
 
     // 0 ~ 29999
     static int32_t get_vin_num(const Vin &vin) {
         int32_t vin_num = 0;
-
         for (int32_t i = 0; i < 5; ++i) {
             if (!std::isdigit(vin.vin[12 + i])) {
                 return -1;
             }
             vin_num = vin_num * 10 + (vin.vin[12 + i] - '0');
         }
-
         if (vin_num >= 1 && vin_num <= 30000) {
             return vin_num - 1;
         } else {
