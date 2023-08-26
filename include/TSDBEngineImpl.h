@@ -84,13 +84,21 @@ namespace LindormContest {
 
         void _load_latest_records_from_file();
 
+        void _visit_files_recursive(const Path& directory);
+
+        void _convert_rows_to_columns(const std::vector<Row>& rows, const Path& file_path);
+
+        void _convert_columns_to_rows(std::ifstream &fin, const Vin& vin, int64_t lowerInclusive, int64_t upperExclusive,
+                                      const std::set<std::string> &requestedColumns, std::vector<Row> &results);
+
+        bool _is_converted;
         uint8_t _column_nums;
         ColumnType *_column_types;
         std::string *_column_names;
         Row _latest_records[VIN_RANGE_LENGTH];
         std::unique_ptr<std::ofstream> _streams[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
-        std::shared_timed_mutex _vin_mutexes[VIN_RANGE_LENGTH];
-        std::shared_timed_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
+        std::shared_mutex _vin_mutexes[VIN_RANGE_LENGTH];
+        std::shared_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
     };
 
     // 0 ~ 29999
@@ -110,14 +118,18 @@ namespace LindormContest {
     }
 
     // 0 ~ 3599
-    static uint16_t get_timestamp_num(const int64_t timestamp) {
-        return (timestamp % 1689090000000 / 1000) - 1200;
+    static uint16_t decode_timestamp(const int64_t timestamp) {
+        return (timestamp / 1000) % 10000 - 1200;
+    }
+
+    static int64_t encode_timestamp(const uint16_t timestamp_num) {
+        return 1689090000000 + (timestamp_num + 1200) * 1000;
     }
 
     static int32_t combine_vin_and_timestamp(const Vin &vin, const int64_t timestamp) {
         int32_t vin_num = get_vin_num(vin);
         assert(vin_num >= 0 && vin_num < 30000);  // 0 ~ 29999
-        uint16_t timestamp_range_num = get_timestamp_num(timestamp) / VIN_TIME_RANGE_WIDTH; // 0 ~ VIN_TIME_RANGE_NUM
+        uint16_t timestamp_range_num = decode_timestamp(timestamp) / VIN_TIME_RANGE_WIDTH; // 0 ~ VIN_TIME_RANGE_NUM
         return vin_num + VIN_RANGE_LENGTH * timestamp_range_num;
     }
 

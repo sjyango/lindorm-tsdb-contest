@@ -18,13 +18,13 @@ project(lindorm-tsdb-contest-cpp)
 
 set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -fPIC -g")
 
-set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -O0 -fsanitize=address -DADDRESS_SANITIZER")
+set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=address -DADDRESS_SANITIZER")
 
-set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -O0 -fsanitize=leak -DLEAK_SANITIZER")
+set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=leak -DLEAK_SANITIZER")
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
     set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
