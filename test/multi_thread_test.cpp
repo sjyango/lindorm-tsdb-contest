@@ -198,7 +198,7 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
     std::vector<std::string> request_vins;
 
     for (int i = 0; i < N; ++i) {
-        if (generate_random_float64() < 0.1) {
+        if (generate_random_float64() < 1) {
             size_t rand_index = generate_random_int32() % written_datasets.size();
             lqr.vins.push_back(global_datasets[rand_index].vin);
             request_vins.emplace_back(global_datasets[rand_index].vin.vin, 17);
@@ -245,20 +245,20 @@ static void handle_latest_query(TSDBEngineImpl& db, const std::string& TABLE_NAM
         }
     }
 
-    INFO_LOG("[handle_latest_query] finished %lu times, results size is %zu", id + 1, lq_results.size())
+    // INFO_LOG("[handle_latest_query] finished %lu times, results size is %zu", id + 1, lq_results.size())
 }
 
 static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE_NAME, size_t id) {
     TimeRangeQueryRequest trqr;
     trqr.tableName = TABLE_NAME;
-    if (generate_random_float64() < 0.1) {
+    if (generate_random_float64() < 1) {
         trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
     } else {
         std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
         std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
     }
-    trqr.timeLowerBound = 1689091225000;
-    trqr.timeUpperBound = 1689091275000;
+    trqr.timeLowerBound = 1689091200000;
+    trqr.timeUpperBound = 1689091300000;
     trqr.requestedColumns = {"col1", "col2", "col3"};
     std::string key(trqr.vin.vin, 17);
 
@@ -302,7 +302,7 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
         }
     }
 
-    INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
+    // INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
 }
 
 static void insert_data_into_db_engine(TSDBEngineImpl& db, const std::string& TABLE_NAME) {
@@ -414,7 +414,7 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     INFO_LOG("####################### [insert_data_into_db_engine] finished, cost time: %lds #######################",
              std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count())
 
-    const size_t N = 100;
+    const size_t N = 200;
 
     // handle latest query
     const size_t LATEST_QUERY_THREADS = N;
@@ -454,6 +454,7 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
     ASSERT_EQ(0, demo->connect());
     INFO_LOG("####################### [demo->connect()] finished #######################")
 
+    auto latest_start_time = std::chrono::high_resolution_clock::now();
 
     for (size_t i = 0; i < LATEST_QUERY_THREADS; ++i) {
         latest_query_threads[i] = std::thread(handle_latest_query, std::ref(*demo), TABLE_NAME, i + 1);
@@ -463,7 +464,12 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
         thread.join();
     }
 
-    INFO_LOG("####################### finished after reset [handle_latest_query] #######################")
+    auto latest_end_time = std::chrono::high_resolution_clock::now();
+
+    INFO_LOG("####################### finished after reset [handle_latest_query], cost time: %ldms #######################",
+             std::chrono::duration_cast<std::chrono::milliseconds>(latest_end_time - latest_start_time).count())
+
+    auto range_start_time = std::chrono::high_resolution_clock::now();
 
     for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
         time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
@@ -473,7 +479,10 @@ TEST(MultiThreadTest, MultiThreadDemoTest) {
         thread.join();
     }
 
-    INFO_LOG("####################### finished after reset [handle_time_range_query] #######################")
+    auto range_end_time = std::chrono::high_resolution_clock::now();
+
+    INFO_LOG("####################### finished after reset [handle_time_range_query], cost time: %ldms #######################",
+             std::chrono::duration_cast<std::chrono::milliseconds>(range_end_time - range_start_time).count())
 
     // shutdown
     ASSERT_EQ(0, demo->shutdown());

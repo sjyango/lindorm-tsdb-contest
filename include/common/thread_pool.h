@@ -88,9 +88,9 @@ namespace LindormContest {
         void shutdown() {
             _shutdown = true;
             _thread_pool_cv.notify_all();
-            for (auto & _thread : _threads) {
-                if (_thread.joinable()) {
-                    _thread.join();
+            for (auto & thread : _threads) {
+                if (thread.joinable()) {
+                    thread.join();
                 }
             }
         }

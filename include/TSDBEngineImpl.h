@@ -11,11 +11,13 @@
 #include "Hasher.hpp"
 #include "Root.h"
 #include "common/thread_pool.h"
+#include "common/spinlock.h"
 
 #include <mutex>
 #include <unordered_map>
 #include <shared_mutex>
 #include <thread>
+#include <atomic>
 
 namespace LindormContest {
 
@@ -23,7 +25,7 @@ namespace LindormContest {
     const int32_t VIN_TIME_RANGE_NUM = 10;
     const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
 
-    const uint32_t THREAD_POOL_THREAD_NUM = std::thread::hardware_concurrency();
+    const uint32_t THREAD_POOL_THREAD_NUM = std::thread::hardware_concurrency() * 2;
 
     class TSDBEngineImpl : public TSDBEngine {
     public:
@@ -61,9 +63,14 @@ namespace LindormContest {
         // The returned ifstream is exclusive for each caller, and must be closed by caller.
         int _get_file_in_for_vin_timestamp_range(const Vin &vin, int64_t range, std::ifstream &fins);
 
-        int _get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
+        void _get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
 
-        void _get_rows_from_time_range(const Vin &vin, int64_t lowerInclusive, int64_t upperExclusive,
+        void _get_converted_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
+
+        void _get_rows_from_time_range(const Vin &vin, int64_t lower_inclusive, int64_t upper_inclusive,
+                                       const std::set<std::string> &requestedColumns, std::vector<Row> &results);
+
+        void _get_converted_rows_from_time_range(const Vin &vin, int64_t lower_inclusive, int64_t upper_inclusive,
                                        const std::set<std::string> &requestedColumns, std::vector<Row> &results);
 
         // Get the file path for this vin, there should be only one file for a vin.
@@ -92,17 +99,20 @@ namespace LindormContest {
 
         void _convert_rows_to_columns(const std::vector<Row>& rows, const Path& file_path);
 
-        void _convert_columns_to_rows(std::ifstream &fin, const Vin& vin, int64_t lowerInclusive, int64_t upperExclusive,
+        void _convert_columns_to_rows(std::ifstream &fin, const Vin& vin, int64_t lower_inclusive, int64_t upper_inclusive,
                                       const std::set<std::string> &requestedColumns, std::vector<Row> &results);
 
         bool _is_converted;
         uint8_t _column_nums;
         ColumnType *_column_types;
         std::string *_column_names;
+        // std::unique_ptr<ThreadPool> _thread_pool;
         Row _latest_records[VIN_RANGE_LENGTH];
+        SpinLock _latest_locks[VIN_RANGE_LENGTH];
+        SpinLock _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
         std::unique_ptr<std::ofstream> _streams[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
-        std::shared_mutex _vin_mutexes[VIN_RANGE_LENGTH];
-        std::shared_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
+        // std::shared_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
+        // std::shared_mutex _vin_mutexes[VIN_RANGE_LENGTH];
     };
 
     // 0 ~ 29999

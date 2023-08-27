@@ -39,6 +39,8 @@ namespace LindormContest {
     TSDBEngineImpl::~TSDBEngineImpl() = default;
 
     int TSDBEngineImpl::connect() {
+        // _thread_pool = std::make_unique<ThreadPool>(THREAD_POOL_THREAD_NUM);
+        // _thread_pool->init();
         _load_schema_from_file();
         _load_latest_records_from_file();
         return 0;
@@ -71,22 +73,25 @@ namespace LindormContest {
             _visit_files_recursive(_get_root_path());
         }
 
+        // _thread_pool->shutdown();
+
         delete[]_column_types;
         delete[]_column_names;
         return 0;
     }
 
     int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
-        for (const Row &row : writeRequest.rows) {
+        for (const Row &row: writeRequest.rows) {
             int32_t vin_num = get_vin_num(row.vin);
             {
-                std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
+                // std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
+                std::lock_guard<SpinLock> l(_latest_locks[vin_num]);
                 if (row.timestamp > _latest_records[vin_num].timestamp) {
                     _latest_records[vin_num] = row;
                 }
             }
             {
-                std::unique_lock<std::shared_mutex> l(_vin_timestamp_mutexes[combine_vin_and_timestamp(row.vin, row.timestamp)]);
+                std::lock_guard<SpinLock> l(_vin_timestamp_mutexes[combine_vin_and_timestamp(row.vin, row.timestamp)]);
                 _append_row_to_file(_get_file_out_for_vin_timestamp(row.vin, row.timestamp), row, false);
             }
         }
@@ -96,11 +101,16 @@ namespace LindormContest {
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         for (const auto &vin: pReadReq.vins) {
             int32_t vin_num = get_vin_num(vin);
-            Row row;
-            int ret = _get_latest_row(vin_num, vin, pReadReq.requestedColumns, row);
-            if (ret == 0) {
-                pReadRes.push_back(std::move(row));
+            if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+                continue;
             }
+            Row result_row;
+            if (_is_converted) {
+                _get_converted_latest_row(vin_num, vin, pReadReq.requestedColumns, result_row);
+            } else {
+                _get_latest_row(vin_num, vin, pReadReq.requestedColumns, result_row);
+            }
+            pReadRes.push_back(std::move(result_row));
         }
         return 0;
     }
@@ -108,11 +118,16 @@ namespace LindormContest {
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
         int32_t vin_num = get_vin_num(trReadReq.vin);
         if (vin_num < 0 || vin_num >= 30000) {
-            // INFO_LOG("executeTimeRangeQuery vin_num is out")
             return 0;
         }
-        _get_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
-                                  trReadReq.requestedColumns, trReadRes);
+        if (_is_converted) {
+            _get_converted_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound,
+                                                trReadReq.timeUpperBound - 1000,
+                                                trReadReq.requestedColumns, trReadRes);
+        } else {
+            _get_rows_from_time_range(trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound - 1000,
+                                      trReadReq.requestedColumns, trReadRes);
+        }
         return 0;
     }
 
@@ -131,86 +146,102 @@ namespace LindormContest {
         return *_streams[index];
     }
 
-    int TSDBEngineImpl::_get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns,
-                                        Row &result) {
-        if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
-            // INFO_LOG("executeLatestQuery vin_num is out")
-            return -1;
-        }
+    void TSDBEngineImpl::_get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns,
+                                         Row &result) {
+        Row latest_row;
         {
-            try {
-                std::shared_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
-                Row latestRow = _latest_records[vin_num];
-                result.vin = vin;
-                result.timestamp = latestRow.timestamp;
-                for (const auto &requestedColumn: requestedColumns) {
-                    result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
-                }
-            } catch (std::exception &e) {
-                INFO_LOG("executeLatestQuery vin_num is error")
-                std::cout << "vin_num" << vin_num << std::endl;
-                std::cout << "vin" << vin.vin << std::endl;
-            }
+            // std::shared_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
+            std::lock_guard<SpinLock> l(_latest_locks[vin_num]);
+            latest_row = _latest_records[vin_num];
         }
-        return 0;
+        result.vin = vin;
+        result.timestamp = latest_row.timestamp;
+
+        for (const auto &requestedColumn: requestedColumns) {
+            result.columns.emplace(requestedColumn, latest_row.columns.at(requestedColumn));
+        }
     }
 
-    void TSDBEngineImpl::_get_rows_from_time_range(const Vin &vin, int64_t lowerInclusive, int64_t upperExclusive,
+    void TSDBEngineImpl::_get_converted_latest_row(int32_t vin_num, const Vin &vin,
+                                                   const std::set<std::string> &requestedColumns,
+                                                   Row &result) {
+        result.vin = vin;
+        result.timestamp = _latest_records[vin_num].timestamp;
+
+        for (const auto &requestedColumn: requestedColumns) {
+            result.columns.emplace(requestedColumn, _latest_records[vin_num].columns.at(requestedColumn));
+        }
+    }
+
+    void TSDBEngineImpl::_get_rows_from_time_range(const Vin &vin, int64_t lower_inclusive, int64_t upper_inclusive,
                                                    const std::set<std::string> &requestedColumns,
                                                    std::vector<Row> &results) {
-        int64_t start_after = decode_timestamp(lowerInclusive);
-        int64_t end_after = decode_timestamp(upperExclusive - 1000);
+        int64_t start_after = decode_timestamp(lower_inclusive);
+        int64_t end_after = decode_timestamp(upper_inclusive);
         if (start_after < 0 || start_after >= 3600 || end_after < 0 || end_after >= 3600) {
+            // timestamp -> [0, 3599]
             return;
         }
 
         for (int64_t t = start_after / VIN_TIME_RANGE_WIDTH; t <= end_after / VIN_TIME_RANGE_WIDTH; t++) {
-            try {
-                std::shared_lock<std::shared_mutex> l(_vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * t]);
-                std::ifstream fin;
-                int ret = _get_file_in_for_vin_timestamp_range(vin, t, fin);
-                if (ret != 0) {
-                    // No such vin written.
-                    std::cout << "No such vin written." << std::endl;
-                    return;
-                }
-
-                if (_is_converted) {
-                    _convert_columns_to_rows(fin, vin, lowerInclusive, upperExclusive, requestedColumns, results);
-                } else {
-                    while (!fin.eof()) {
-                        Row nextRow;
-                        ret = _read_row_from_stream(vin, fin, nextRow, false);
-                        if (ret != 0) {
-                            // EOF reached, no more row.
-                            break;
-                        }
-                        if (nextRow.timestamp >= lowerInclusive && nextRow.timestamp < upperExclusive) {
-                            Row resultRow;
-                            resultRow.vin = vin;
-                            resultRow.timestamp = nextRow.timestamp;
-                            for (const auto &requestedColumn: requestedColumns) {
-                                resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
-                            }
-                            results.push_back(std::move(resultRow));
-                        }
-                    }
-                    fin.close();
-                }
-
-            } catch (std::exception &e) {
-                INFO_LOG("execute range query is error")
-                std::cout << "start_after" << start_after << std::endl;
-                std::cout << "end_after" << end_after << std::endl;
-                std::cout << "vin" << vin.vin << std::endl;
+            std::lock_guard<SpinLock> l(_vin_timestamp_mutexes[get_vin_num(vin) + VIN_RANGE_LENGTH * t]);
+            std::ifstream fin;
+            int ret = _get_file_in_for_vin_timestamp_range(vin, t, fin);
+            if (ret != 0) {
+                // No such vin written.
+                std::cout << "No such vin written." << std::endl;
+                return;
             }
+
+            while (!fin.eof()) {
+                Row nextRow;
+                ret = _read_row_from_stream(vin, fin, nextRow, false);
+                if (ret != 0) {
+                    // EOF reached, no more row.
+                    break;
+                }
+                if (nextRow.timestamp >= lower_inclusive && nextRow.timestamp <= upper_inclusive) {
+                    Row resultRow;
+                    resultRow.vin = vin;
+                    resultRow.timestamp = nextRow.timestamp;
+                    for (const auto &requestedColumn: requestedColumns) {
+                        resultRow.columns.insert(std::make_pair(requestedColumn, nextRow.columns.at(requestedColumn)));
+                    }
+                    results.push_back(std::move(resultRow));
+                }
+            }
+            fin.close();
+        }
+    }
+
+    void TSDBEngineImpl::_get_converted_rows_from_time_range(const Vin &vin, int64_t lower_inclusive,
+                                                             int64_t upper_inclusive,
+                                                             const std::set<std::string> &requestedColumns,
+                                                             std::vector<Row> &results) {
+        int64_t start_after = decode_timestamp(lower_inclusive);
+        int64_t end_after = decode_timestamp(upper_inclusive);
+        if (start_after < 0 || start_after >= 3600 || end_after < 0 || end_after >= 3600) {
+            // timestamp -> [0, 3599]
+            return;
+        }
+
+        for (int64_t t = start_after / VIN_TIME_RANGE_WIDTH; t <= end_after / VIN_TIME_RANGE_WIDTH; t++) {
+            std::ifstream fin;
+            int ret = _get_file_in_for_vin_timestamp_range(vin, t, fin);
+            if (ret != 0) {
+                // No such vin written.
+                std::cout << "No such vin written." << std::endl;
+                return;
+            }
+            _convert_columns_to_rows(fin, vin, lower_inclusive, upper_inclusive, requestedColumns, results);
         }
     }
 
     Path TSDBEngineImpl::_get_vin_timestamp_file_path(const Vin &vin, int64_t timestamp) {
         std::string vin_str(vin.vin, VIN_LENGTH);
         int64_t timestamp_num = decode_timestamp(timestamp);
-        Path folder_str = _get_root_path() / std::to_string(get_vin_num(vin) % 200) / std::to_string(timestamp_num / VIN_TIME_RANGE_WIDTH);
+        Path folder_str = _get_root_path() / std::to_string(get_vin_num(vin) % 200) /
+                          std::to_string(timestamp_num / VIN_TIME_RANGE_WIDTH);
         bool dirExist = std::filesystem::is_directory(folder_str);
         if (!dirExist) {
             bool created = std::filesystem::create_directories(folder_str);
@@ -245,6 +276,7 @@ namespace LindormContest {
         if (vin_include) {
             fin.read((char *) vin.vin, VIN_LENGTH);
         }
+
         int64_t timestamp;
         fin.read((char *) &timestamp, sizeof(int64_t));
         if (fin.fail() || fin.eof()) {
@@ -438,17 +470,25 @@ namespace LindormContest {
                 std::vector<Row> rows;
 
                 while (!fin.eof()) {
-                    Row nextRow;
-                    if (_read_row_from_stream(nextRow.vin, fin, nextRow, false) != 0) {
+                    Row next_row;
+                    if (_read_row_from_stream(next_row.vin, fin, next_row, false) != 0) {
                         // EOF reached, no more row.
                         break;
                     }
-                    rows.emplace_back(nextRow);
+                    rows.emplace_back(std::move(next_row));
                 }
 
                 fin.close();
+
+                std::sort(rows.begin(), rows.end(), [](const Row &lhs, const Row &rhs) {
+                    return lhs.timestamp < rhs.timestamp;
+                });
+
                 _convert_rows_to_columns(rows, entry.path());
-                // INFO_LOG("Path %s converts success", entry.path().string().c_str())
+
+//                _thread_pool->submit([this](const std::vector<Row>& rows, const Path& path) {
+//                    _convert_rows_to_columns(rows, path);
+//                }, rows, entry.path());
             }
         }
     }
@@ -459,6 +499,7 @@ namespace LindormContest {
         assert(fout.is_open() && fout.good());
         std::vector<uint16_t> timestamps;
         std::unordered_map<std::string, std::string> columns;
+        std::string recompress_data;
 
         for (uint8_t i = 0; i < _column_nums; ++i) {
             std::string column_values;
@@ -473,8 +514,10 @@ namespace LindormContest {
         }
 
         auto timestamp_size = static_cast<int32_t>(timestamps.size() * sizeof(uint16_t));
-        fout.write((const char *) &timestamp_size, sizeof(int32_t));
-        fout.write((const char *) timestamps.data(), timestamp_size);
+        recompress_data.append((const char *) &timestamp_size, sizeof(int32_t));
+        recompress_data.append((const char *) timestamps.data(), timestamp_size);
+        // fout.write((const char *) &timestamp_size, sizeof(int32_t));
+        // fout.write((const char *) timestamps.data(), timestamp_size);
 
         for (uint8_t i = 0; i < _column_nums; ++i) {
             std::string &column_values = columns[_column_names[i]];
@@ -505,35 +548,68 @@ namespace LindormContest {
                 }
             }
 
-            fout.write((const char *) &uncompress_size, sizeof(uint32_t));
-            fout.write((const char *) &compress_size, sizeof(uint32_t));
-            fout.write(compress_data, compress_size);
+            recompress_data.append((const char *) &uncompress_size, sizeof(uint32_t));
+            recompress_data.append((const char *) &compress_size, sizeof(uint32_t));
+            recompress_data.append(compress_data, compress_size);
+            // fout.write((const char *) &uncompress_size, sizeof(uint32_t));
+            // fout.write((const char *) &compress_size, sizeof(uint32_t));
+            // fout.write(compress_data, compress_size);
             delete[]compress_data;
         }
 
+        uint32_t recompress_size = recompress_data.size();
+        char *compress_data = new char[recompress_size * 2];
+        uint32_t compress_size = LindormContest::compression::compressString(recompress_data.c_str(), recompress_size,
+                                                                             compress_data);
+        fout.write(compress_data, compress_size);
+        fout.write((char *) &recompress_size, sizeof(uint32_t));
         fout.flush();
         fout.close();
+        delete[]compress_data;
     }
 
-    void TSDBEngineImpl::_convert_columns_to_rows(std::ifstream &fin, const Vin &vin, int64_t lowerInclusive,
-                                                  int64_t upperExclusive,
+    void TSDBEngineImpl::_convert_columns_to_rows(std::ifstream &fin, const Vin &vin, int64_t lower_inclusive,
+                                                  int64_t upper_inclusive,
                                                   const std::set<std::string> &requestedColumns,
                                                   std::vector<Row> &results) {
-        int32_t timestamp_size;
-        fin.read((char *) &timestamp_size, sizeof(int32_t));
+        fin.seekg(0, std::ios::end);
+        uint32_t recompress_size = static_cast<uint32_t>(fin.tellg()) - sizeof(uint32_t);
+        uint32_t derecompress_size;
+        fin.seekg(recompress_size, std::ios::beg);
+        fin.read((char *) &derecompress_size, sizeof(uint32_t));
+        fin.seekg(0, std::ios::beg);
+        char *recompress_data = new char[recompress_size];
+        fin.read(recompress_data, recompress_size);
+        char *derecompress_data = new char[derecompress_size];
+        fin.close();
+
+        LindormContest::compression::decompressString(recompress_data, recompress_size, derecompress_data,
+                                                      derecompress_size);
+        delete[]recompress_data;
+
+        char *p = derecompress_data;
+        int32_t timestamp_size = *reinterpret_cast<int32_t *>(p);
+        p += sizeof(int32_t);
+        // fin.read((char *) &timestamp_size, sizeof(int32_t));
         std::vector<uint16_t> timestamps;
         timestamps.resize(timestamp_size / sizeof(uint16_t));
-        fin.read((char *) timestamps.data(), timestamp_size);
+        std::memcpy(timestamps.data(), p, timestamp_size);
+        p += timestamp_size;
+        // fin.read((char *) timestamps.data(), timestamp_size);
         std::unordered_map<std::string, std::vector<ColumnValue>> columns;
 
         for (uint8_t i = 0; i < _column_nums; ++i) {
-            uint32_t uncompress_size;
-            uint32_t compress_size;
-            fin.read((char *) &uncompress_size, sizeof(uint32_t));
-            fin.read((char *) &compress_size, sizeof(uint32_t));
+            uint32_t uncompress_size = *reinterpret_cast<uint32_t *>(p);
+            p += sizeof(uint32_t);
+            uint32_t compress_size = *reinterpret_cast<uint32_t *>(p);
+            p += sizeof(uint32_t);
+            // fin.read((char *) &uncompress_size, sizeof(uint32_t));
+            // fin.read((char *) &compress_size, sizeof(uint32_t));
             char *compress_data = new char[compress_size];
             char *recover_data = new char[uncompress_size * 2];
-            fin.read(compress_data, compress_size);
+            std::memcpy(compress_data, p, compress_size);
+            p += compress_size;
+            // fin.read(compress_data, compress_size);
             std::vector<ColumnValue> uncompress_data;
 
             switch (_column_types[i]) {
@@ -581,27 +657,28 @@ namespace LindormContest {
             delete[]recover_data;
         }
 
-        fin.close();
+        assert(p == derecompress_data + derecompress_size);
+        delete[]derecompress_data;
+        // fin.close();
 
-        for (int i = 0; i < timestamps.size(); ++i) {
+        auto lower_index =
+                std::min(decode_timestamp(lower_inclusive), timestamps[timestamps.size() - 1]) - timestamps[0];
+        auto upper_index =
+                std::min(decode_timestamp(upper_inclusive), timestamps[timestamps.size() - 1]) - timestamps[0];
+
+        for (int i = lower_index; i <= upper_index; ++i) {
             int64_t timestamp = encode_timestamp(timestamps[i]);
-            if (timestamp < lowerInclusive || timestamp >= upperExclusive) {
-                continue;
-            }
-            Row row;
-            row.vin = vin;
-            row.timestamp = timestamp;
+            assert(timestamp >= lower_inclusive && timestamp <= upper_inclusive);
+            Row result_row;
+            result_row.vin = vin;
+            result_row.timestamp = timestamp;
             std::map<std::string, ColumnValue> sub_columns;
 
-            for (uint8_t j = 0; j < _column_nums; ++j) {
-                if (requestedColumns.find(_column_names[j]) == requestedColumns.end()) {
-                    continue;
-                }
-                sub_columns.emplace(_column_names[j], columns[_column_names[j]][i]);
+            for (const auto &requestedColumn: requestedColumns) {
+                result_row.columns.emplace(requestedColumn, columns[requestedColumn][i]);
             }
 
-            row.columns = std::move(sub_columns);
-            results.emplace_back(std::move(row));
+            results.emplace_back(std::move(result_row));
         }
     }
 }
