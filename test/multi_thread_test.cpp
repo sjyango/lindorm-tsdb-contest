@@ -257,8 +257,8 @@ static void handle_time_range_query(TSDBEngineImpl& db, const std::string& TABLE
         std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
         std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
     }
-    trqr.timeLowerBound = 1689091200000;
-    trqr.timeUpperBound = 1689091300000;
+    trqr.timeLowerBound = 1689091225000;
+    trqr.timeUpperBound = 1689091275000;
     trqr.requestedColumns = {"col1", "col2", "col3"};
     std::string key(trqr.vin.vin, 17);
 
