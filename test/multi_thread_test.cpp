@@ -564,33 +564,11 @@ TEST(MultiThreadTest, DISABLED_MultiThreadRandomQueryDemoTest) {
     // shutdown
     ASSERT_EQ(0, demo->shutdown());
 }
-    void read() {
-        std::shared_lock<std::shared_mutex> lock(mtx); // 创建一个读锁保护对象，自动加读锁
-        std::cout << "count = " << count << std::endl; // 读取共享资源
-    } // 读锁保护对象被销毁时，自动解读锁
 
-    void write() {
-        std::unique_lock<std::shared_mutex> lock(mtx); // 创建一个写锁保护对象，自动加写锁
-        ++count; // 修改共享资源
-    } // 写锁保护对象被销毁时，自动解写锁
-TEST(MultiThreadTest, demotest){
-        std::thread t1(read);
-        std::thread t3(write);
-        std::thread t4(write);
-        std::thread t5(write);
-        std::thread t2(read);
-        t1.join();
-        t2.join();
-        t3.join();
-        t4.join();
-        t5.join();
-}
 TEST(MultiThreadTest, DISABLED_MultiThreadInsertTest) {
     const size_t READ_FILE_THREADS = 10;
     std::thread read_file_threads[READ_FILE_THREADS];
-
     // prepare global datasets
-
     for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
         read_file_threads[i] = std::thread(generate_dataset, i);
     }
