@@ -5,6 +5,7 @@
 // the interface semantics correctly.
 //
 
+#include<omp.h>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -42,7 +43,7 @@ namespace LindormContest {
         _load_schema_from_file();
         _load_latest_records_from_file();
         INFO_LOG("_is_converted = %s", _is_converted ? "true" : "false")
-        return 0;
+        // return 0;
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
@@ -78,7 +79,10 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::upsert(const WriteRequest &writeRequest) {
-        for (const Row &row : writeRequest.rows) {
+        omp_set_num_threads(4);
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < writeRequest.rows.size(); ++i) {
+            const Row& row = writeRequest.rows[i];
             int32_t vin_num = get_vin_num(row.vin);
             {
                 std::unique_lock<std::shared_mutex> l(_vin_mutexes[vin_num]);
