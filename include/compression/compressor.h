@@ -26,12 +26,12 @@ namespace LindormContest::compression {
     }
 
     static uint32_t compressString(const char *source, uint32_t source_size, char *dest) {
-        static CompressionCodecZSTD compressionCodecZstd(3);
+        static CompressionCodecZSTD compressionCodecZstd(11);
         return compressionCodecZstd.compress(source, source_size, dest);
     }
 
     static void decompressString(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
-        static CompressionCodecZSTD compressionCodecZstd(3);
+        static CompressionCodecZSTD compressionCodecZstd(11);
         compressionCodecZstd.decompress(source, source_size, dest, uncompressed_size);
     }
 

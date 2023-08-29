@@ -65,12 +65,7 @@ namespace LindormContest {
 
         int _get_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
 
-        void _get_converted_latest_row(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, Row &result);
-
         void _get_rows_from_time_range(const Vin &vin, int64_t lower_inclusive, int64_t upper_exclusive,
-                                       const std::set<std::string> &requestedColumns, std::vector<Row> &results);
-
-        void _get_converted_rows_from_time_range(const Vin &vin, int64_t lower_inclusive, int64_t upper_inclusive,
                                        const std::set<std::string> &requestedColumns, std::vector<Row> &results);
 
         // Get the file path for this vin, there should be only one file for a vin.
@@ -95,12 +90,17 @@ namespace LindormContest {
 
         void _load_latest_records_from_file();
 
-        void _visit_files_recursive(const Path& directory);
+        void _visit_files_recursive(const Path& directory, std::vector<Path>& file_paths);
 
-        void _convert_rows_to_columns(const std::vector<Row>& rows, const Path& file_path);
+        void _convert_file(const Path& path, size_t* mem_usage);
 
-        void _convert_columns_to_rows(std::ifstream &fin, const Vin& vin, int64_t lower_inclusive, int64_t upper_exclusive,
+        void _convert_rows_to_columns(const std::vector<Row>& rows, const Path& file_path, size_t* mem_usage);
+
+        void _convert_columns_to_rows(std::ifstream &fin, const Vin& vin, uint16_t range, int64_t lower_inclusive, int64_t upper_exclusive,
                                       const std::set<std::string> &requestedColumns, std::vector<Row> &results);
+
+        void _decompress_column_data(char* start, uint8_t column_index, std::vector<uint32_t>& column_compressed_offsets,
+                                     std::vector<ColumnValue>& uncompress_data);
 
         bool _is_converted;
         uint8_t _column_nums;
