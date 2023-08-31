@@ -24,47 +24,94 @@
 #include <vector>
 
 #include "Root.h"
+#include <mutex>
 
 namespace LindormContest {
+//    template<typename T>
+//    class ConcurrentQueue {
+//    public:
+//        ConcurrentQueue() = default;
+//
+//        ConcurrentQueue(ConcurrentQueue &&other) noexcept = default;
+//
+//        ~ConcurrentQueue() = default;
+//
+//        bool empty() {
+//            std::lock_guard<std::mutex> lock(_mutex);
+//            return _queue.empty();
+//        }
+//
+//        int size() {
+//            std::lock_guard<std::mutex> lock(_mutex);
+//            return _queue.size();
+//        }
+//
+//        void enqueue(T &t) {
+//            std::lock_guard<std::mutex> lock(_mutex);
+//            _queue.emplace(t);
+//        }
+//
+//        bool dequeue(T &t) {
+//            std::lock_guard<std::mutex> lock(_mutex);
+//            if (_queue.empty()) {
+//                return false;
+//            }
+//            t = std::move(_queue.front());
+//            _queue.pop();
+//            return true;
+//        }
+//
+//    private:
+//        std::queue<T> _queue;
+//        std::mutex _mutex;
+//    };
+ template<typename T>
+    struct Node
+    {
+        Node(){};
+        Node(const T &value) : data(value) { }
+        ~Node() = default;
+        T data;
+        Node *next = nullptr;
+    };
     template<typename T>
-    class ConcurrentQueue {
+    class WithTwoLockQueue
+    {
+        std::mutex H_lock;
+        std::mutex T_lock;
+        Node<T> *head = nullptr;
+        Node<T> *tail = nullptr;
+        //int size{0};
     public:
-        ConcurrentQueue() = default;
-
-        ConcurrentQueue(ConcurrentQueue &&other) noexcept = default;
-
-        ~ConcurrentQueue() = default;
-
-        bool empty() {
-            std::lock_guard<std::mutex> lock(_mutex);
-            return _queue.empty();
+        WithTwoLockQueue()
+        {
+            auto *node = new Node<T>();
+            node->next = nullptr;
+            head = tail = node;
         }
-
-        int size() {
-            std::lock_guard<std::mutex> lock(_mutex);
-            return _queue.size();
-        }
-
-        void enqueue(T &t) {
-            std::lock_guard<std::mutex> lock(_mutex);
-            _queue.emplace(t);
-        }
-
-        bool dequeue(T &t) {
-            std::lock_guard<std::mutex> lock(_mutex);
-            if (_queue.empty()) {
-                return false;
+        void push(const T &value)
+        {
+            auto *node = new Node<T>(value);
+            node->next = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(T_lock);
+                tail->next = node;
+                tail = node;
+                //size++;
             }
-            t = std::move(_queue.front());
-            _queue.pop();
+        }
+        bool pop(T &value){
+            std::lock_guard<std::mutex> lock(H_lock);
+            Node<T>* temp = head;
+            Node<T>* new_head = temp->next;
+            if(new_head== nullptr) {return false;}
+            value = new_head->data;
+            head = new_head;
+            free(temp);//free可以不用锁
+            //size--;
             return true;
         }
-
-    private:
-        std::queue<T> _queue;
-        std::mutex _mutex;
     };
-
     class ThreadPool {
     public:
         explicit ThreadPool(const int thread_nums)
@@ -103,7 +150,7 @@ namespace LindormContest {
                 (*task_ptr)();
             };
 
-            _queue.enqueue(wrapper_func);
+            _queue.push(wrapper_func);
             _thread_pool_cv.notify_one();
             return task_ptr->get_future();
         }
@@ -118,10 +165,13 @@ namespace LindormContest {
                 while (!_thread_pool->_shutdown) {
                     {
                         std::unique_lock<std::mutex> lock(_thread_pool->_thread_pool_mutex);
-                        if (_thread_pool->_queue.empty()) {
+                        dequeued = _thread_pool->_queue.pop(std::ref(func));
+//                        if (_thread_pool->_queue.empty()) {
+//                            _thread_pool->_thread_pool_cv.wait(lock);
+//                        }
+                        if(!dequeued){
                             _thread_pool->_thread_pool_cv.wait(lock);
                         }
-                        dequeued = _thread_pool->_queue.dequeue(func);
                     }
                     if (dequeued) {
                         func();
@@ -133,7 +183,7 @@ namespace LindormContest {
             ThreadPool *_thread_pool;
         };
         bool _shutdown;
-        ConcurrentQueue<std::function<void()>> _queue;
+        WithTwoLockQueue<std::function<void()>> _queue;
         std::vector<std::thread> _threads;
         std::mutex _thread_pool_mutex;
         std::condition_variable _thread_pool_cv;

@@ -19,9 +19,9 @@
 namespace LindormContest {
 
     const int32_t VIN_RANGE_LENGTH = 30000;
-    const int32_t VIN_TIME_RANGE_NUM = 8;
-    const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
-    const int32_t THREAD_NUM = 300;
+    const int32_t VIN_TIME_RANGE_NUM = 2;
+    const int32_t VIN_TIME_RANGE_WIDTH = 50 / VIN_TIME_RANGE_NUM;
+    const int32_t THREAD_NUM = 32;
     class spinlock_mutex
     {
         std::atomic_flag flag;
