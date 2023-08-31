@@ -133,7 +133,7 @@ namespace LindormContest {
 
         void shutdown() {
             _shutdown = true;
-            _thread_pool_cv.notify_all();
+            //_thread_pool_cv.notify_all();
             for (auto & _thread : _threads) {
                 if (_thread.joinable()) {
                     _thread.join();
@@ -145,13 +145,11 @@ namespace LindormContest {
         auto submit(F &&f, Args &&...args) -> std::future<decltype(f(args...))> {
             auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
             auto task_ptr = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
-
             std::function<void()> wrapper_func = [task_ptr]() {
                 (*task_ptr)();
             };
-
             _queue.push(wrapper_func);
-            _thread_pool_cv.notify_one();
+            //_thread_pool_cv.notify_one();
             return task_ptr->get_future();
         }
 
@@ -163,16 +161,16 @@ namespace LindormContest {
                 std::function<void()> func;
                 bool dequeued;
                 while (!_thread_pool->_shutdown) {
-                    {
-                        std::unique_lock<std::mutex> lock(_thread_pool->_thread_pool_mutex);
-                        dequeued = _thread_pool->_queue.pop(std::ref(func));
+//                    {
+//                        std::unique_lock<std::mutex> lock(_thread_pool->_thread_pool_mutex);
+                          dequeued = _thread_pool->_queue.pop(std::ref(func));
 //                        if (_thread_pool->_queue.empty()) {
 //                            _thread_pool->_thread_pool_cv.wait(lock);
 //                        }
-                        if(!dequeued){
-                            _thread_pool->_thread_pool_cv.wait(lock);
-                        }
-                    }
+//                        if(!dequeued){
+//                            _thread_pool->_thread_pool_cv.wait(lock);
+//                        }
+//                    }
                     if (dequeued) {
                         func();
                     }

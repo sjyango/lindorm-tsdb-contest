@@ -38,10 +38,13 @@ namespace LindormContest {
     TSDBEngineImpl::~TSDBEngineImpl() = default;
 
     int TSDBEngineImpl::connect() {
-
-        _thread_pool = new ThreadPool(THREAD_NUM);
-        _thread_pool->init();
-
+        Path schema_path = _get_root_path() / "schema";
+        std::ifstream f(schema_path.string().c_str());
+        _is_schema_exist = f.good();
+        if(_is_schema_exist) {
+            _thread_pool = new ThreadPool(THREAD_NUM);
+            _thread_pool->init();
+        }
         _load_schema_from_file();
         _load_latest_records_from_file();
         return 0;
@@ -94,10 +97,7 @@ namespace LindormContest {
         return 0;
     }
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
-        Path schema_path = _get_root_path() / "schema";
-        std::ifstream f(schema_path.string().c_str());
-        bool _is_exist = f.good();
-        if(_is_exist) {
+        if(_is_schema_exist) {
             std::vector<std::future<int>> futures;
             for (const auto &vin: pReadReq.vins) {
                 int32_t vin_num = get_vin_num(vin);
