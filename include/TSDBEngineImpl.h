@@ -19,9 +19,9 @@
 namespace LindormContest {
 
     const int32_t VIN_RANGE_LENGTH = 30000;
-    const int32_t VIN_TIME_RANGE_NUM = 8;
-    const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
-    const int32_t THREAD_NUM = 16;
+    const int32_t VIN_TIME_RANGE_NUM = 2;
+    const int32_t VIN_TIME_RANGE_WIDTH = 50 / VIN_TIME_RANGE_NUM;
+    const int32_t THREAD_NUM = 1;
     class spinlock_mutex
     {
         std::atomic_flag flag;
@@ -77,7 +77,7 @@ namespace LindormContest {
         void _get_rows_from_time_range(const Vin &vin, int64_t lowerInclusive, int64_t upperExclusive,
                                        const std::set<std::string> &requestedColumns, std::vector<Row> &results);
 
-        int _get_latest_row_no_lock(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, std::vector<Row> &pReadRes);
+        int _get_latest_row_no_lock(const std::vector<Vin> &vins, const std::set<std::string> &requestedColumns, std::vector<Row> &pReadRes);
 
 
         // Get the file path for this vin, there should be only one file for a vin.

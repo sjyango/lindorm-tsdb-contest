@@ -99,30 +99,34 @@ namespace LindormContest {
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         if(_is_schema_exist) {
             std::vector<std::future<int>> futures;
-//            int nSubVecSize = 10;// 每个小vector的容量
-//            for(size_t i = 0; i < vecBig.size(); i += nSubVecSize)
-//            {
-//                std::vector<int> vecSmall;
-//                auto last = std::min(vecBig.size(),  i + nSubVecSize);
-//                vecSmall.insert(vecSmall.begin(), vecBig.begin() + i, vecBig.begin() + last);
-//            }
+            int nSubVecSize = 10;// 每个小vector的容量
+            std::vector<std::vector<Vin>> my_vins;
+            std::vector<std::vector<Row>> RowResult;
 
-            for (const auto &vin: pReadReq.vins) {
-                int32_t vin_num = get_vin_num(vin);
-                if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
-                    INFO_LOG("executeLatestQuery vin_num is out")
-                    continue;
-                }
+            for(size_t i = 0; i < pReadReq.vins.size(); i += nSubVecSize)
+            {
+                std::vector<Vin> vecSmall;
+                std::vector<Row> rowtemp;
+                auto last = std::min(pReadReq.vins.size(),  i + nSubVecSize);
+                vecSmall.insert(vecSmall.begin(), pReadReq.vins.begin() + i, pReadReq.vins.begin() + last);
+                my_vins.push_back(std::move(vecSmall));
+                RowResult.push_back(std::move(rowtemp));
+            }
+            int index = 0;
+            for (const auto &vins: my_vins) {
                 Row row;
                 auto future = _thread_pool->submit(
-                        [&](int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns,
-                            std::vector<Row> &pReadRes) {
-                            return _get_latest_row_no_lock(vin_num, vin, pReadReq.requestedColumns, pReadRes);
-                        }, vin_num, std::ref(vin), std::ref(pReadReq.requestedColumns), std::ref(pReadRes));
+                        [&](const std::vector<Vin> &vins, const std::set<std::string> &requestedColumns,std::vector<Row> &Res) {
+                            return _get_latest_row_no_lock(vins, pReadReq.requestedColumns, RowResult[index]);
+                        }, std::ref(vins), std::ref(pReadReq.requestedColumns), std::ref(RowResult[index]));
                 futures.emplace_back(std::move(future));
+                index++;
             }
+            int i = 0;
             for (auto &future: futures) {
                 future.get();
+                pReadRes.insert(pReadRes.end(),RowResult[i].begin(),RowResult[i].end());
+                i++;
             }
         }
         else{
@@ -180,18 +184,30 @@ namespace LindormContest {
         }
         return 0;
     }
-    int  TSDBEngineImpl::_get_latest_row_no_lock(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, std::vector<Row> &pReadRes){
-        Row latestRow;
-        Row result;
-        latestRow = _latest_records[vin_num];
-        result.vin = vin;
-        result.timestamp = latestRow.timestamp;
-        for (const auto &requestedColumn: requestedColumns) {
-            result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
+    int  TSDBEngineImpl::_get_latest_row_no_lock(const std::vector<Vin> &vins, const std::set<std::string> &requestedColumns, std::vector<Row> &pReadRes){
+        //                int32_t vin_num = get_vin_num(vin);
+//                if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+//                    INFO_LOG("executeLatestQuery vin_num is out")
+//                    continue;
+//                }
+        for(const auto &vin:vins) {
+            int32_t vin_num = get_vin_num(vin);
+            if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+                INFO_LOG("executeLatestQuery vin_num is out")
+                continue;
+            }
+            Row latestRow;
+            Row result;
+            latestRow = _latest_records[vin_num];
+            result.vin = vin;
+            result.timestamp = latestRow.timestamp;
+            for (const auto &requestedColumn: requestedColumns) {
+                result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
+            }
+            //_spinlatch.lock();
+            pReadRes.emplace_back(std::move(result));
+            //_spinlatch.unlock();
         }
-        _spinlatch.lock();
-        pReadRes.emplace_back(std::move(result));
-        _spinlatch.unlock();
         return 0;
     }
 
