@@ -99,13 +99,6 @@ namespace LindormContest {
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         if(_is_schema_exist) {
             std::vector<std::future<int>> futures;
-//            int nSubVecSize = 10;// 每个小vector的容量
-//            for(size_t i = 0; i < vecBig.size(); i += nSubVecSize)
-//            {
-//                std::vector<int> vecSmall;
-//                auto last = std::min(vecBig.size(),  i + nSubVecSize);
-//                vecSmall.insert(vecSmall.begin(), vecBig.begin() + i, vecBig.begin() + last);
-//            }
 
             for (const auto &vin: pReadReq.vins) {
                 int32_t vin_num = get_vin_num(vin);
