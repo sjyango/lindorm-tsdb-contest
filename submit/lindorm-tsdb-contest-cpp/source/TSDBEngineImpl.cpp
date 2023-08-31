@@ -101,12 +101,16 @@ namespace LindormContest {
             std::vector<std::future<int>> futures;
             for (const auto &vin: pReadReq.vins) {
                 int32_t vin_num = get_vin_num(vin);
+                if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
+                    INFO_LOG("executeLatestQuery vin_num is out")
+                    continue;
+                }
                 Row row;
                 auto future = _thread_pool->submit(
                         [&](int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns,
-                            Row &result) {
+                            std::vector<Row> &pReadRes) {
                             return _get_latest_row_no_lock(vin_num, vin, pReadReq.requestedColumns, pReadRes);
-                        }, vin_num, std::ref(vin), std::ref(pReadReq.requestedColumns), std::ref(row));
+                        }, vin_num, std::ref(vin), std::ref(pReadReq.requestedColumns), std::ref(pReadRes));
                 futures.emplace_back(std::move(future));
             }
             for (auto &future: futures) {
@@ -169,10 +173,6 @@ namespace LindormContest {
         return 0;
     }
     int  TSDBEngineImpl::_get_latest_row_no_lock(int32_t vin_num, const Vin &vin, const std::set<std::string> &requestedColumns, std::vector<Row> &pReadRes){
-        if (vin_num == -1 || _latest_records[vin_num].timestamp == 0) {
-            INFO_LOG("executeLatestQuery vin_num is out")
-            return -1;
-        }
         Row latestRow;
         Row result;
 
@@ -183,10 +183,10 @@ namespace LindormContest {
         for (const auto &requestedColumn: requestedColumns) {
             result.columns.emplace(requestedColumn, latestRow.columns.at(requestedColumn));
         }
-        {
-            std::lock_guard<std::mutex> l(_thread_pool_mutex);
-            pReadRes.emplace_back(std::move(result));
-        }
+        _spinlatch.lock();
+        pReadRes.emplace_back(std::move(result));
+        _spinlatch.unlock();
+
         return 0;
     }
 

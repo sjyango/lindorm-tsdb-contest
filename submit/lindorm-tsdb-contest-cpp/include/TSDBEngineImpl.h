@@ -21,7 +21,21 @@ namespace LindormContest {
     const int32_t VIN_RANGE_LENGTH = 30000;
     const int32_t VIN_TIME_RANGE_NUM = 8;
     const int32_t VIN_TIME_RANGE_WIDTH = 3600 / VIN_TIME_RANGE_NUM;
-    const int32_t THREAD_NUM = 100;
+    const int32_t THREAD_NUM = 300;
+    class spinlock_mutex
+    {
+        std::atomic_flag flag;
+    public:
+        spinlock_mutex():flag(ATOMIC_FLAG_INIT) {}
+        void lock()
+        {
+            while(flag.test_and_set(std::memory_order_acquire));
+        }
+        void unlock()
+        {
+            flag.clear(std::memory_order_release);
+        }
+    };
     class TSDBEngineImpl : public TSDBEngine {
     public:
         /**
@@ -97,7 +111,7 @@ namespace LindormContest {
         std::shared_mutex _vin_mutexes[VIN_RANGE_LENGTH];
         std::shared_mutex _vin_timestamp_mutexes[VIN_RANGE_LENGTH * VIN_TIME_RANGE_NUM];
         ThreadPool *_thread_pool;
-        std::mutex _thread_pool_mutex;
+        spinlock_mutex _spinlatch;
     };
 
     // 0 ~ 29999

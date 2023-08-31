@@ -36,22 +36,22 @@ namespace LindormContest {
         ~ConcurrentQueue() = default;
 
         bool empty() {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<std::mutex> lock(_mutex);
             return _queue.empty();
         }
 
         int size() {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<std::mutex> lock(_mutex);
             return _queue.size();
         }
 
         void enqueue(T &t) {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<std::mutex> lock(_mutex);
             _queue.emplace(t);
         }
 
         bool dequeue(T &t) {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<std::mutex> lock(_mutex);
             if (_queue.empty()) {
                 return false;
             }
