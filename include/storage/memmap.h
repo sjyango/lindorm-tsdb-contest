@@ -26,7 +26,7 @@
 
 namespace LindormContest::storage {
 
-    const size_t MEMMAP_FLUSH_SIZE = 100000;
+    const size_t MEMMAP_FLUSH_SIZE = 10000;
     const size_t MEMMAP_SHARD_NUM = 16;
 
     struct InternalKey {
@@ -34,6 +34,10 @@ namespace LindormContest::storage {
         std::string _column_name;
 
         InternalKey(const Vin& vin, const std::string& column_name) : _vin(vin), _column_name(column_name) {}
+
+        InternalKey(const InternalKey& other) = default;
+
+        InternalKey& operator=(const InternalKey& other) = default;
 
         ~InternalKey() = default;
 
@@ -72,9 +76,14 @@ namespace LindormContest::storage {
         std::vector<int64_t> _tss;
         std::vector<ColumnValue> _column_values;
 
-        void push_back(int64_t ts, ColumnValue&& column_value) {
+        void push_back(int64_t ts, const ColumnValue& column_value) {
             _tss.emplace_back(ts);
-            _column_values.emplace_back(std::move(column_value));
+            _column_values.emplace_back(column_value);
+        }
+
+        size_t size() const {
+            assert(_tss.size() == _column_values.size());
+            return _tss.size();
         }
     };
 
@@ -84,24 +93,38 @@ namespace LindormContest::storage {
 
         ~MemMap();
 
-        void append(Row &row);
+        void set_shard_idx(uint8_t shard_idx);
+
+        void set_root_path(const Path& root_path);
+
+        void set_schema(SchemaSPtr schema);
+
+        void append(const Row &row);
 
         void flush();
+
+        void reset();
+
+        const std::map<InternalKey, InternalValue>& get_mem_map() const;
 
     private:
         bool _need_flush() const;
 
-        std::map<InternalKey, InternalValue> _mem_map;
+        Path _root_path;
+        SchemaSPtr _schema;
+        uint8_t _shard_idx;
+        size_t _flush_count;
         size_t _size;
+        std::map<InternalKey, InternalValue> _mem_map;
     };
 
     class ShardMemMap {
     public:
-        ShardMemMap() = default;
+        ShardMemMap(const Path& root_path, SchemaSPtr schema);
 
-        ~ShardMemMap() = default;
+        ~ShardMemMap();
 
-        void append(std::vector<Row> &rows);
+        void append(const std::vector<Row> &rows);
 
     private:
         std::mutex _mutexes[MEMMAP_SHARD_NUM];

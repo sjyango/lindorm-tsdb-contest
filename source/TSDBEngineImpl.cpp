@@ -33,6 +33,7 @@ namespace LindormContest {
             _column_names[col_id] = it.first;
             _column_types[col_id++] = it.second;
         }
+        _schema = std::make_shared<Schema>(schema);
         return 0;
     }
 
@@ -41,6 +42,7 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
+        _shard_mem_map.append(writeRequest.rows);
         return 0;
     }
 

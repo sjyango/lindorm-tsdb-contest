@@ -9,6 +9,7 @@
 #define LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H
 
 #include "TSDBEngine.hpp"
+#include "storage/memmap.h"
 
 namespace LindormContest {
     const int32_t SCHEMA_COLUMN_NUMS = 60;
@@ -51,7 +52,8 @@ private:
 
     ColumnType _column_types[SCHEMA_COLUMN_NUMS]{};
     std::string _column_names[SCHEMA_COLUMN_NUMS]{};
-
+    SchemaSPtr _schema;
+    storage::ShardMemMap _shard_mem_map;
 }; // End class TSDBEngineImpl.
 
 }

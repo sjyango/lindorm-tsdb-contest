@@ -34,9 +34,12 @@
 #include <filesystem>
 #include <cassert>
 
+#include "struct/Schema.h"
+
 namespace LindormContest {
 
 using Path = std::filesystem::path;
+using SchemaSPtr = std::shared_ptr<Schema>;
 
 #define ERR_LOG(str, ...) {                                  \
     fprintf(stderr, "%s:%d. [ERROR]: ", __FILE__, __LINE__); \

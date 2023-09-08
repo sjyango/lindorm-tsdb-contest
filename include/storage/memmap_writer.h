@@ -18,7 +18,7 @@ A TSM file is composed for three sections: blocks, indexes and footer.
 
 ┌─────────────────────────────────────┬─────────────┬──────────────┐
 │                Blocks               │   Indexes   │    Footer    │
-│                N bytes              │   N bytes   │    4 bytes   │
+│                N bytes              │   N bytes   │    8 bytes   │
 └─────────────────────────────────────┴─────────────┴──────────────┘
 
 Blocks are sequences of pairs of CRC32 and data.  The block data is opaque to the
@@ -74,6 +74,8 @@ The last section is the footer that stores the offset of the start of the index.
 
 #pragma once
 
+#include <ranges>
+
 #include "Root.h"
 #include "common/coding.h"
 #include "storage/memmap.h"
@@ -82,12 +84,20 @@ The last section is the footer that stores the offset of the start of the index.
 namespace LindormContest::storage {
 
     const uint8_t INDEX_ENTRY_SIZE = 28; // 8 + 8 + 8 + 4
+    const size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
 
     struct IndexEntry {
         int64_t _min_time; // inclusive
         int64_t _max_time; // exclusive
         uint64_t _offset;
         uint32_t _size;
+
+        IndexEntry() = default;
+
+        IndexEntry(int64_t min_time, int64_t max_time, uint64_t offset, uint32_t size)
+        : _min_time(min_time), _max_time(max_time), _offset(offset), _size(size) {}
+
+        ~IndexEntry() = default;
 
         void encode_to(std::string* buf) const {
             put_fixed(buf, _min_time);
@@ -113,6 +123,10 @@ namespace LindormContest::storage {
         ColumnType _type;
         InternalKey _key;
 
+        IndexBlockMeta(const InternalKey& key, ColumnType type) : _key(key), _type(type), _count(0) {}
+
+        ~IndexBlockMeta() = default;
+
         void encode_to(std::string* buf) const {
             put_fixed(buf, _count);
             put_fixed(buf, (uint8_t) _type);
@@ -129,6 +143,20 @@ namespace LindormContest::storage {
     struct IndexBlock {
         IndexBlockMeta _index_meta;
         std::vector<IndexEntry> _index_entries;
+
+        IndexBlock(const InternalKey& key, ColumnType type) : _index_meta(key, type) {}
+
+        ~IndexBlock() = default;
+
+        void add_entry(const IndexEntry& entry) {
+            _index_entries.emplace_back(entry);
+            _index_meta._count++;
+        }
+
+        void add_entry(int64_t min_time, int64_t max_time, uint64_t offset, uint32_t size) {
+            _index_entries.emplace_back(min_time, max_time, offset, size);
+            _index_meta._count++;
+        }
 
         void encode_to(std::string* buf) const {
             _index_meta.encode_to(buf);
@@ -152,6 +180,8 @@ namespace LindormContest::storage {
         ColumnType _type;
         std::vector<int64_t> _tss;
         std::vector<ColumnValue> _column_values;
+
+        DataBlock(ColumnType type, uint32_t count) : _type(type), _count(count) {}
 
         void encode_to(std::string* buf) const {
             put_fixed(buf, _count);
@@ -259,9 +289,25 @@ namespace LindormContest::storage {
 
     class MemMapWriter {
     public:
+        MemMapWriter(const Path& tsm_file_path, SchemaSPtr schema, const MemMap& mem_map)
+        : _tsm_file_path(tsm_file_path), _schema(schema), _mem_map(mem_map), _index_offset(0) {}
+
+        void write();
+
+        void write_internal_key(const InternalKey& key, const InternalValue& value);
+
+        void write_block(const InternalKey& key, const InternalValue& value,
+                         ColumnType type, size_t start, size_t end, IndexBlock& index_block);
+
+        void flush();
 
     private:
-
+        const Path& _tsm_file_path;
+        size_t _index_offset;
+        const MemMap& _mem_map;
+        SchemaSPtr _schema;
+        std::string _buf;
+        std::vector<std::unique_ptr<IndexBlock>> _index_blocks;
     };
 
 }
