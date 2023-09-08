@@ -41,6 +41,9 @@ namespace LindormContest {
 using Path = std::filesystem::path;
 using SchemaSPtr = std::shared_ptr<Schema>;
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+
 #define ERR_LOG(str, ...) {                                  \
     fprintf(stderr, "%s:%d. [ERROR]: ", __FILE__, __LINE__); \
     fprintf(stderr, str, ##__VA_ARGS__);                     \

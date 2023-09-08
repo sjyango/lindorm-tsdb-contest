@@ -24,7 +24,7 @@
 #include "struct/ColumnValue.h"
 #include "common/coding.h"
 
-namespace LindormContest::storage {
+namespace LindormContest {
 
     const size_t MEMMAP_FLUSH_SIZE = 10000;
     const size_t MEMMAP_SHARD_NUM = 16;
@@ -87,6 +87,7 @@ namespace LindormContest::storage {
         }
     };
 
+    // multi thread safe
     class MemMap {
     public:
         MemMap();
@@ -110,6 +111,7 @@ namespace LindormContest::storage {
     private:
         bool _need_flush() const;
 
+        std::mutex _mutex;
         Path _root_path;
         SchemaSPtr _schema;
         uint8_t _shard_idx;
@@ -120,14 +122,17 @@ namespace LindormContest::storage {
 
     class ShardMemMap {
     public:
-        ShardMemMap(const Path& root_path, SchemaSPtr schema);
+        ShardMemMap();
 
         ~ShardMemMap();
 
-        void append(const std::vector<Row> &rows);
+        void set_root_path(const Path& root_path);
+
+        void set_schema(SchemaSPtr schema);
+
+        void append(const Row &row);
 
     private:
-        std::mutex _mutexes[MEMMAP_SHARD_NUM];
         MemMap _mem_maps[MEMMAP_SHARD_NUM];
     };
 

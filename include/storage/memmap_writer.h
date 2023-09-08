@@ -81,7 +81,7 @@ The last section is the footer that stores the offset of the start of the index.
 #include "storage/memmap.h"
 #include "compression/compressor.h"
 
-namespace LindormContest::storage {
+namespace LindormContest {
 
     const uint8_t INDEX_ENTRY_SIZE = 28; // 8 + 8 + 8 + 4
     const size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB

@@ -17,7 +17,7 @@
 
 #include <fstream>
 
-namespace LindormContest::storage {
+namespace LindormContest {
 
     void MemMapWriter::write() {
         // data blocks

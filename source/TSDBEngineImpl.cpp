@@ -17,6 +17,7 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
+        _shard_mem_map.set_root_path(_get_root_path());
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -27,13 +28,8 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
-        assert(SCHEMA_COLUMN_NUMS == schema.columnTypeMap.size());
-        int col_id = 0;
-        for (const auto &it: schema.columnTypeMap) {
-            _column_names[col_id] = it.first;
-            _column_types[col_id++] = it.second;
-        }
         _schema = std::make_shared<Schema>(schema);
+        _shard_mem_map.set_schema(_schema);
         return 0;
     }
 
@@ -42,11 +38,17 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
-        _shard_mem_map.append(writeRequest.rows);
+        for (const auto &row: writeRequest.rows) {
+            _latest_manager.add_latest(row);
+            _shard_mem_map.append(row);
+        }
         return 0;
     }
 
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
+        for (const auto &vin: pReadReq.vins) {
+            pReadRes.emplace_back(_latest_manager.get_latest(vin, pReadReq.requestedColumns));
+        }
         return 0;
     }
 
@@ -68,10 +70,13 @@ namespace LindormContest {
         std::ofstream schema_out;
         Path schema_path = _get_root_path() / "schema.txt";
         schema_out.open(schema_path, std::ios::out);
-        for (int i = 0; i < SCHEMA_COLUMN_NUMS; ++i) {
-            schema_out << _column_names[i] << " ";
-            schema_out << (int32_t) _column_types[i] << " ";
+        schema_out << (uint8_t) _schema->columnTypeMap.size() << " ";
+
+        for (const auto & [column_name, column_type]: _schema->columnTypeMap) {
+            schema_out << column_name << " ";
+            schema_out << (uint8_t) column_type << " ";
         }
+
         schema_out.close();
     }
 
@@ -85,11 +90,22 @@ namespace LindormContest {
             return;
         }
 
-        for (int i = 0; i < SCHEMA_COLUMN_NUMS; ++i) {
-            schema_fin >> _column_names[i];
-            int32_t columnTypeInt;
-            schema_fin >> columnTypeInt;
-            _column_types[i] = (ColumnType) columnTypeInt;
+        std::map<std::string, ColumnType> column_type_map;
+        uint8_t column_nums;
+        schema_fin >> column_nums;
+        if (column_nums <= 0) {
+            schema_fin.close();
+            throw std::runtime_error("unexpected columns' num");
         }
+
+        for (int i = 0; i < column_nums; ++i) {
+            std::string column_name;
+            uint8_t column_type_int;
+            schema_fin >> column_name;
+            schema_fin >> column_type_int;
+            column_type_map.emplace(column_name, (ColumnType) column_type_int);
+        }
+
+        _schema = std::make_shared<Schema>(std::move(column_type_map));
     }
 }

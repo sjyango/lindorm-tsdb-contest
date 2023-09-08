@@ -16,7 +16,7 @@
 #include "storage/memmap.h"
 #include "storage/memmap_writer.h"
 
-namespace LindormContest::storage {
+namespace LindormContest {
 
     inline size_t hash_index(const std::string& vin_str) {
         return std::hash<std::string>()(vin_str) % MEMMAP_SHARD_NUM;
@@ -39,7 +39,8 @@ namespace LindormContest::storage {
     }
 
     void MemMap::append(const Row &row) {
-        if (_need_flush()) {
+        std::lock_guard<std::mutex> l(_mutex);
+        if (unlikely(_need_flush())) {
             flush();
         }
 
@@ -75,22 +76,25 @@ namespace LindormContest::storage {
         return _mem_map;
     }
 
-    ShardMemMap::ShardMemMap(const Path& root_path, SchemaSPtr schema) {
-        for (uint8_t idx = 0; idx < MEMMAP_SHARD_NUM; ++idx) {
-            _mem_maps[idx].set_shard_idx(idx);
-            _mem_maps[idx].set_root_path(root_path);
-            _mem_maps[idx].set_schema(schema);
-        }
-    }
+    ShardMemMap::ShardMemMap() = default;
 
     ShardMemMap::~ShardMemMap() = default;
 
-    void ShardMemMap::append(const std::vector<Row> &rows) {
-        for (const auto& row : rows) {
-            size_t shard_idx = hash_index(std::string(row.vin.vin + 12, 5));
-            std::lock_guard<std::mutex> l(_mutexes[shard_idx]);
-            _mem_maps[shard_idx].append(row);
+    void ShardMemMap::set_root_path(const Path &root_path) {
+        for (auto &mem_map: _mem_maps) {
+            mem_map.set_root_path(root_path);
         }
+    }
+
+    void ShardMemMap::set_schema(SchemaSPtr schema) {
+        for (auto &mem_map: _mem_maps) {
+            mem_map.set_schema(schema);
+        }
+    }
+
+    void ShardMemMap::append(const Row &row) {
+        size_t shard_idx = hash_index(std::string(row.vin.vin + 12, 5));
+        _mem_maps[shard_idx].append(row);
     }
 
 }
