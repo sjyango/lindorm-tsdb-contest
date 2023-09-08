@@ -77,6 +77,7 @@ The last section is the footer that stores the offset of the start of the index.
 #include <ranges>
 
 #include "Root.h"
+#include "struct/Schema.h"
 #include "common/coding.h"
 #include "storage/memmap.h"
 #include "compression/compressor.h"
@@ -121,22 +122,26 @@ namespace LindormContest {
     struct IndexBlockMeta {
         uint32_t _count;
         ColumnType _type;
-        InternalKey _key;
+        std::string _column_name;
 
-        IndexBlockMeta(const InternalKey& key, ColumnType type) : _key(key), _type(type), _count(0) {}
+        IndexBlockMeta(const std::string& column_name, ColumnType type)
+        : _column_name(column_name), _type(type), _count(0) {}
 
         ~IndexBlockMeta() = default;
 
         void encode_to(std::string* buf) const {
             put_fixed(buf, _count);
             put_fixed(buf, (uint8_t) _type);
-            _key.encode_to(buf);
+            put_fixed(buf, (uint8_t) _column_name.size());
+            buf->append(_column_name);
         }
 
         void decode_from(const uint8_t*& buf) {
             _count = decode_fixed<uint32_t>(buf);
             _type = (ColumnType) decode_fixed<uint8_t>(buf);
-            _key.decode_from(buf);
+            uint8_t column_name_size = decode_fixed<uint8_t>(buf);
+            _column_name.assign(reinterpret_cast<const char*>(buf), column_name_size);
+            buf += column_name_size;
         }
     };
 
@@ -144,7 +149,7 @@ namespace LindormContest {
         IndexBlockMeta _index_meta;
         std::vector<IndexEntry> _index_entries;
 
-        IndexBlock(const InternalKey& key, ColumnType type) : _index_meta(key, type) {}
+        IndexBlock(const std::string& column_name, ColumnType type) : _index_meta(column_name, type) {}
 
         ~IndexBlock() = default;
 
@@ -294,10 +299,10 @@ namespace LindormContest {
 
         void write();
 
-        void write_internal_key(const InternalKey& key, const InternalValue& value);
+        void write_internal_key(const std::string& column_name, const InternalValue& value);
 
-        void write_block(const InternalKey& key, const InternalValue& value,
-                         ColumnType type, size_t start, size_t end, IndexBlock& index_block);
+        void write_block(const InternalValue& value, ColumnType type,
+                         size_t start, size_t end, IndexBlock& index_block);
 
         void flush();
 

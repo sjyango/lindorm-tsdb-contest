@@ -8,6 +8,7 @@
 #ifndef LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H
 #define LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H
 
+#include "Root.h"
 #include "TSDBEngine.hpp"
 #include "latest_manager.h"
 #include "storage/memmap.h"
@@ -43,14 +44,18 @@ namespace LindormContest {
                                    std::vector<Row> &downsampleRes) override;
 
     private:
-        Path _get_root_path() { return dataDirPath; }
+        Path _get_root_path() const { return dataDirPath; }
+
+        Path _get_schema_path() const { return _get_root_path() / "schema.txt"; }
+
+        Path _get_latest_records_path() const { return _get_root_path() / "latest_records.dat"; }
 
         void _save_schema_to_file();
 
         void _load_schema_from_file();
 
         SchemaSPtr _schema;
-        ShardLatestManager _latest_manager;
+        LatestManager _latest_manager;
         ShardMemMap _shard_mem_map;
     }; // End class TSDBEngineImpl.
 

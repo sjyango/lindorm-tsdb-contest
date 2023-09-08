@@ -16,61 +16,20 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <mutex>
 
 #include "Root.h"
 #include "struct/Vin.h"
 #include "struct/Row.h"
 #include "struct/ColumnValue.h"
+#include "struct/Schema.h"
 #include "common/coding.h"
+#include "common/spinlock.h"
 
 namespace LindormContest {
 
-    const size_t MEMMAP_FLUSH_SIZE = 10000;
-    const size_t MEMMAP_SHARD_NUM = 16;
-
-    struct InternalKey {
-        Vin _vin;
-        std::string _column_name;
-
-        InternalKey(const Vin& vin, const std::string& column_name) : _vin(vin), _column_name(column_name) {}
-
-        InternalKey(const InternalKey& other) = default;
-
-        InternalKey& operator=(const InternalKey& other) = default;
-
-        ~InternalKey() = default;
-
-        void encode_to(std::string* buf) const {
-            buf->append(_vin.vin, VIN_LENGTH);
-            put_fixed(buf, (uint8_t) _column_name.size());
-            buf->append(_column_name);
-        }
-
-        void decode_from(const uint8_t*& buf) {
-            std::memcpy(_vin.vin, buf, VIN_LENGTH);
-            buf += VIN_LENGTH;
-            uint8_t column_name_size = decode_fixed<uint8_t>(buf);
-            _column_name.assign(reinterpret_cast<const char*>(buf), column_name_size);
-            buf += column_name_size;
-        }
-
-        bool operator==(const InternalKey &rhs) const {
-            return std::memcmp(_vin.vin, rhs._vin.vin, VIN_LENGTH) == 0 && _column_name == rhs._column_name;
-        }
-
-        bool operator!=(const InternalKey &rhs) const {
-            return !(rhs == *this);
-        }
-
-        bool operator<(const InternalKey &rhs) const {
-            int vin_res = std::strncmp(_vin.vin, rhs._vin.vin, VIN_LENGTH);
-            if (vin_res != 0) {
-                return vin_res < 0;
-            }
-            return _column_name < rhs._column_name;
-        }
-    };
+    const size_t MEMMAP_FLUSH_SIZE = 512;
 
     struct InternalValue {
         std::vector<int64_t> _tss;
@@ -87,18 +46,13 @@ namespace LindormContest {
         }
     };
 
-    // multi thread safe
+    // a mem map for a vin
+    // mem map is multi thread safe
     class MemMap {
     public:
-        MemMap();
+        MemMap(Path root_path, SchemaSPtr schema, std::string vin_str);
 
         ~MemMap();
-
-        void set_shard_idx(uint8_t shard_idx);
-
-        void set_root_path(const Path& root_path);
-
-        void set_schema(SchemaSPtr schema);
 
         void append(const Row &row);
 
@@ -106,7 +60,7 @@ namespace LindormContest {
 
         void reset();
 
-        const std::map<InternalKey, InternalValue>& get_mem_map() const;
+        const std::map<std::string, InternalValue>& get_mem_map() const;
 
     private:
         bool _need_flush() const;
@@ -114,10 +68,10 @@ namespace LindormContest {
         std::mutex _mutex;
         Path _root_path;
         SchemaSPtr _schema;
-        uint8_t _shard_idx;
+        std::string _vin_str;
         size_t _flush_count;
         size_t _size;
-        std::map<InternalKey, InternalValue> _mem_map;
+        std::map<std::string, InternalValue> _mem_map;
     };
 
     class ShardMemMap {
@@ -133,7 +87,10 @@ namespace LindormContest {
         void append(const Row &row);
 
     private:
-        MemMap _mem_maps[MEMMAP_SHARD_NUM];
+        Path _root_path;
+        SchemaSPtr _schema;
+        SpinLock _mutex;
+        std::unordered_map<std::string, std::unique_ptr<MemMap>> _mem_maps;
     };
 
 }

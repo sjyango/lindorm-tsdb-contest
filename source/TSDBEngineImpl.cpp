@@ -24,6 +24,7 @@ namespace LindormContest {
 
     int TSDBEngineImpl::connect() {
         _load_schema_from_file();
+        _latest_manager.load_latest_records_from_file(_get_latest_records_path(), _schema);
         return 0;
     }
 
@@ -34,6 +35,8 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::shutdown() {
+        _save_schema_to_file();
+        _latest_manager.save_latest_records_to_file(_get_latest_records_path(), _schema);
         return 0;
     }
 
@@ -68,8 +71,7 @@ namespace LindormContest {
 
     void TSDBEngineImpl::_save_schema_to_file() {
         std::ofstream schema_out;
-        Path schema_path = _get_root_path() / "schema.txt";
-        schema_out.open(schema_path, std::ios::out);
+        schema_out.open(_get_schema_path(), std::ios::out);
         schema_out << (uint8_t) _schema->columnTypeMap.size() << " ";
 
         for (const auto & [column_name, column_type]: _schema->columnTypeMap) {
@@ -82,8 +84,7 @@ namespace LindormContest {
 
     void TSDBEngineImpl::_load_schema_from_file() {
         std::ifstream schema_fin;
-        Path schema_path = _get_root_path() / "schema.txt";
-        schema_fin.open(schema_path, std::ios::in);
+        schema_fin.open(_get_schema_path(), std::ios::in);
         if (!schema_fin.is_open() || !schema_fin.good()) {
             schema_fin.close();
             INFO_LOG("schema.txt doesn't exist!")

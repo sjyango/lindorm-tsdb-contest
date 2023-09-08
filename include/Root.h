@@ -33,13 +33,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <cassert>
-
-#include "struct/Schema.h"
+#include <memory>
 
 namespace LindormContest {
 
 using Path = std::filesystem::path;
-using SchemaSPtr = std::shared_ptr<Schema>;
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)

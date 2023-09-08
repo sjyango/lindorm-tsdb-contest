@@ -21,8 +21,8 @@ namespace LindormContest {
 
     void MemMapWriter::write() {
         // data blocks
-        for (const auto & [key, value] : _mem_map.get_mem_map()) {
-            write_internal_key(key, value);
+        for (const auto & [column_name, value] : _mem_map.get_mem_map()) {
+            write_internal_key(column_name, value);
         }
         _index_offset = _buf.size();
         // index blocks
@@ -47,13 +47,13 @@ namespace LindormContest {
 
     // write a <InternalKey, InternalValue> pair in _mem_map
     // a <InternalKey, InternalValue> pair has an index block
-    void MemMapWriter::write_internal_key(const InternalKey& key, const InternalValue& value) {
-        ColumnType type = _schema->columnTypeMap[key._column_name];
-        std::unique_ptr<IndexBlock> index_block = std::make_unique<IndexBlock>(key, type);
+    void MemMapWriter::write_internal_key(const std::string& column_name, const InternalValue& value) {
+        ColumnType type = _schema->columnTypeMap[column_name];
+        std::unique_ptr<IndexBlock> index_block = std::make_unique<IndexBlock>(column_name, type);
 
         for (size_t start = 0; start < value.size(); start += DATA_BLOCK_ITEM_NUMS) {
             size_t end = std::min(start + DATA_BLOCK_ITEM_NUMS, value.size());
-            write_block(key, value, type, start, end, *index_block);
+            write_block(value, type, start, end, *index_block);
         }
 
         _index_blocks.emplace_back(std::move(index_block));
@@ -61,8 +61,8 @@ namespace LindormContest {
 
     // build a block per DATA_BLOCK_ITEM_NUMS items
     // add an index entry into index block
-    void MemMapWriter::write_block(const InternalKey &key, const InternalValue &value,
-                                   ColumnType type, size_t start, size_t end, IndexBlock& index_block) {
+    void MemMapWriter::write_block(const InternalValue &value, ColumnType type,
+                                   size_t start, size_t end, IndexBlock& index_block) {
         std::unique_ptr<DataBlock> data_block = std::make_unique<DataBlock>(type, end - start);
         data_block->_tss.assign(value._tss.begin() + start, value._tss.begin() + end);
         data_block->_column_values.assign(value._column_values.begin() + start, value._column_values.begin() + end);
