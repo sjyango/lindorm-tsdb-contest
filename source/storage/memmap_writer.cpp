@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#include "storage/memmap_writer.h"
+#include "storage/tsm_writer.h"
 
 #include <fstream>
 

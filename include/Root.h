@@ -39,6 +39,8 @@ namespace LindormContest {
 
 using Path = std::filesystem::path;
 
+static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 

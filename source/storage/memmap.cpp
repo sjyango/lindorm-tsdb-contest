@@ -14,7 +14,7 @@
  */
 
 #include "storage/memmap.h"
-#include "storage/memmap_writer.h"
+#include "storage/tsm_writer.h"
 
 namespace LindormContest {
 
