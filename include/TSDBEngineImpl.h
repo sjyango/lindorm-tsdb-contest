@@ -56,7 +56,7 @@ namespace LindormContest {
 
         SchemaSPtr _schema;
         LatestManager _latest_manager;
-        ShardMemMap _shard_mem_map;
+        // ShardMemMap _shard_mem_map;
     }; // End class TSDBEngineImpl.
 
 }

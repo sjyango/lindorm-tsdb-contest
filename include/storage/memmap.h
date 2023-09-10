@@ -26,71 +26,76 @@
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/spinlock.h"
+#include "storage/tsm_file.h"
 
 namespace LindormContest {
 
     const size_t MEMMAP_FLUSH_SIZE = 512;
 
     struct InternalValue {
-        std::vector<int64_t> _tss;
-        std::vector<ColumnValue> _column_values;
+        std::vector<std::pair<int64_t, ColumnValue>> _values;
 
-        void push_back(int64_t ts, const ColumnValue& column_value) {
-            _tss.emplace_back(ts);
-            _column_values.emplace_back(column_value);
+        InternalValue() = default;
+
+        InternalValue(const InternalValue& other) = default;
+
+        InternalValue& operator=(const InternalValue& other) = default;
+
+        InternalValue(InternalValue&& other) : _values(std::move(other._values)) {}
+
+        ~InternalValue() = default;
+
+        void emplace_back(int64_t ts, const ColumnValue& column_value) {
+            _values.emplace_back(ts, column_value);
+        }
+
+        void sort() {
+            std::sort(_values.begin(), _values.end(), [](const auto& lhs, const auto& rhs) {
+                return lhs.first < rhs.first;
+            });
         }
 
         size_t size() const {
-            assert(_tss.size() == _column_values.size());
-            return _tss.size();
+            return _values.size();
         }
     };
 
     // a mem map for a vin
-    // mem map is multi thread safe
+    // mem map is NOT multi thread safe
     class MemMap {
     public:
-        MemMap(Path root_path, SchemaSPtr schema, std::string vin_str);
+        MemMap();
 
         ~MemMap();
 
         void append(const Row &row);
 
-        void flush();
+        bool need_flush() const;
 
-        void reset();
-
-        const std::map<std::string, InternalValue>& get_mem_map() const;
+        void flush_to_tsm_file(SchemaSPtr schema, TsmFile& tsm_file);
 
     private:
-        bool _need_flush() const;
-
-        std::mutex _mutex;
-        Path _root_path;
-        SchemaSPtr _schema;
-        std::string _vin_str;
-        size_t _flush_count;
-        size_t _size;
+        size_t _size = 0;
         std::map<std::string, InternalValue> _mem_map;
     };
 
-    class ShardMemMap {
-    public:
-        ShardMemMap();
-
-        ~ShardMemMap();
-
-        void set_root_path(const Path& root_path);
-
-        void set_schema(SchemaSPtr schema);
-
-        void append(const Row &row);
-
-    private:
-        Path _root_path;
-        SchemaSPtr _schema;
-        SpinLock _mutex;
-        std::unordered_map<std::string, std::unique_ptr<MemMap>> _mem_maps;
-    };
+    // class ShardMemMap {
+    // public:
+    //     ShardMemMap();
+    //
+    //     ~ShardMemMap();
+    //
+    //     void set_root_path(const Path& root_path);
+    //
+    //     void set_schema(SchemaSPtr schema);
+    //
+    //     void append(const Row &row);
+    //
+    // private:
+    //     Path _root_path;
+    //     SchemaSPtr _schema;
+    //     SpinLock _mutex;
+    //     std::unordered_map<std::string, std::unique_ptr<MemMap>> _mem_maps;
+    // };
 
 }

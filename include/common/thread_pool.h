@@ -27,12 +27,12 @@
 
 namespace LindormContest {
 
-    template<typename T>
+    class ThreadPool;
+    using ThreadPoolSPtr = std::shared_ptr<ThreadPool>;
+
     class ConcurrentQueue {
     public:
         ConcurrentQueue() = default;
-
-        ConcurrentQueue(ConcurrentQueue &&other) noexcept = default;
 
         ~ConcurrentQueue() = default;
 
@@ -46,23 +46,23 @@ namespace LindormContest {
             return _queue.size();
         }
 
-        void enqueue(T &t) {
+        void enqueue(std::function<void()>&& task) {
             std::unique_lock<std::mutex> lock(_mutex);
-            _queue.emplace(t);
+            _queue.push_back(std::move(task));
         }
 
-        bool dequeue(T &t) {
+        bool dequeue(std::function<void()>& task) {
             std::unique_lock<std::mutex> lock(_mutex);
             if (_queue.empty()) {
                 return false;
             }
-            t = std::move(_queue.front());
-            _queue.pop();
+            task = std::move(_queue.front());
+            _queue.pop_front();
             return true;
         }
 
     private:
-        std::queue<T> _queue;
+        std::deque<std::function<void()>> _queue;
         std::mutex _mutex;
     };
 
@@ -96,18 +96,28 @@ namespace LindormContest {
         }
 
         template<typename F, typename... Args>
-        auto submit(F &&f, Args &&...args) -> std::future<decltype(f(args...))> {
+        void submit(F &&f, Args &&...args) {
             auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
             auto task_ptr = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
-
             std::function<void()> wrapper_func = [task_ptr]() {
                 (*task_ptr)();
             };
-
-            _queue.enqueue(wrapper_func);
+            _queue.enqueue(std::move(wrapper_func));
             _thread_pool_cv.notify_one();
-            return task_ptr->get_future();
         }
+
+        // template<typename F, typename... Args>
+        // auto submit(F &&f, Args &&...args) -> std::future<decltype(f(args...))> {
+        //     auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
+        //     auto task_ptr = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
+        //     std::function<void()> wrapper_func = [task_ptr]() {
+        //         (*task_ptr)();
+        //     };
+        //
+        //     _queue.enqueue(std::move(wrapper_func));
+        //     _thread_pool_cv.notify_one();
+        //     return task_ptr->get_future();
+        // }
 
     private:
         class ThreadWorker {
@@ -137,7 +147,7 @@ namespace LindormContest {
         };
 
         bool _shutdown;
-        ConcurrentQueue<std::function<void()>> _queue;
+        ConcurrentQueue _queue;
         std::vector<std::thread> _threads;
         std::mutex _thread_pool_mutex;
         std::condition_variable _thread_pool_cv;

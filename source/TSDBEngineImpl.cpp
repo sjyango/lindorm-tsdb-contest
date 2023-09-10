@@ -17,7 +17,7 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
-        _shard_mem_map.set_root_path(_get_root_path());
+        // _shard_mem_map.set_root_path(_get_root_path());
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -30,7 +30,7 @@ namespace LindormContest {
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
         _schema = std::make_shared<Schema>(schema);
-        _shard_mem_map.set_schema(_schema);
+        // _shard_mem_map.set_schema(_schema);
         return 0;
     }
 
@@ -43,7 +43,7 @@ namespace LindormContest {
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
             _latest_manager.add_latest(row);
-            _shard_mem_map.append(row);
+            // _shard_mem_map.append(row);
         }
         return 0;
     }

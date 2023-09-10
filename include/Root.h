@@ -56,4 +56,13 @@ static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
     fprintf(stdout, "\n");                                   \
 }
 
+#define RECORD_TIME_COST(code)                                                              \
+    do {                                                                                    \
+        auto start = std::chrono::high_resolution_clock::now();                             \
+        code                                                                                \
+        auto end = std::chrono::high_resolution_clock::now();                               \
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start); \
+        INFO_LOG("time cost: %ld ms", duration.count())                                                                       \
+    } while (false)
+
 }
