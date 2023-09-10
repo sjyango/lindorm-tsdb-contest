@@ -47,8 +47,6 @@ namespace LindormContest {
         ThreadPoolSPtr _flush_pool;
         Path _flush_dir_path;
         SchemaSPtr _schema;
-        std::string _vin_str;
-        std::string _buf;
         std::unique_ptr<MemMap> _mem_map;
         uint16_t _flush_nums;
     };

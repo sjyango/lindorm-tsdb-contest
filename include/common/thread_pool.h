@@ -69,7 +69,11 @@ namespace LindormContest {
     class ThreadPool {
     public:
         explicit ThreadPool(const int thread_nums)
-                : _threads(std::vector<std::thread>(thread_nums)), _shutdown(false) {}
+                : _threads(std::vector<std::thread>(thread_nums)), _shutdown(false) {
+            for (auto & _thread : _threads) {
+                _thread = std::thread(ThreadWorker(this));
+            }
+        }
 
         ThreadPool(const ThreadPool &) = delete;
 
@@ -79,9 +83,9 @@ namespace LindormContest {
 
         ThreadPool &operator=(ThreadPool &&) = delete;
 
-        void init() {
-            for (auto & _thread : _threads) {
-                _thread = std::thread(ThreadWorker(this));
+        ~ThreadPool() {
+            if (!_shutdown) {
+                shutdown();
             }
         }
 

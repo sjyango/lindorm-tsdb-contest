@@ -27,22 +27,17 @@
 namespace LindormContest::io {
 
     static void mmap_write_string_to_file(const Path& file_path, const std::string& buf) {
-        int fd = open(file_path.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+        int fd = open(file_path.c_str(), O_RDWR | O_CREAT);
         if (fd == -1) {
-            perror("open file failed");
-            return;
+            throw std::runtime_error("open file failed");
         }
         size_t buf_size = buf.size();
         if (ftruncate(fd, buf_size) == -1) {
-            perror("set file size failed");
-            close(fd);
-            return;
+            throw std::runtime_error("set file size failed");
         }
         void* file_memory = mmap(nullptr, buf_size, PROT_WRITE, MAP_SHARED, fd, 0);
         if (file_memory == MAP_FAILED) {
-            perror("unable to map file to memory");
-            close(fd);
-            return;
+            throw std::runtime_error("unable to map file to memory");
         }
         std::memcpy(file_memory, buf.c_str(), buf_size);
         munmap(file_memory, buf_size);
@@ -52,15 +47,12 @@ namespace LindormContest::io {
     static void mmap_read_string_from_file(const Path& file_path, std::string& buf) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd == -1) {
-            perror("open file failed");
-            return;
+            throw std::runtime_error("open file failed");
         }
         off_t file_size = lseek(fd, 0, SEEK_END);
         void* file_memory = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
         if (file_memory == MAP_FAILED) {
-            perror("unable to map file to memory");
-            close(fd);
-            return;
+            throw std::runtime_error("unable to map file to memory");
         }
         const char* file_content = static_cast<const char*>(file_memory);
         buf.assign(file_content, file_size);
@@ -71,20 +63,15 @@ namespace LindormContest::io {
     static void mmap_read_string_from_file(const Path& file_path, uint32_t offset, uint32_t size, std::string& buf) {
         int fd = open(file_path.c_str(), O_RDONLY);
         if (fd == -1) {
-            perror("open file failed");
-            return;
+            throw std::runtime_error("open file failed");
         }
         off_t file_size = lseek(fd, 0, SEEK_END);
         if (offset >= file_size || size == 0 || offset + size > file_size) {
-            throw std::runtime_error("invalid offset or size");
-            close(fd);
-            return;
+            throw std::runtime_error("unable to map file to memory");
         }
         void* file_memory = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, offset);
         if (file_memory == MAP_FAILED) {
-            perror("unable to map file to memory");
-            close(fd);
-            return;
+            throw std::runtime_error("unable to map file to memory");
         }
         const char* file_content = static_cast<const char*>(file_memory);
         buf.assign(file_content, size);

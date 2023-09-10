@@ -75,7 +75,7 @@ namespace LindormContest {
         // encode tsm file
         encode_to(&buf);
         // flush into tsm file
-        io::mmap_read_string_from_file(tsm_file_path, buf);
+        io::mmap_write_string_to_file(tsm_file_path, buf);
     }
 
     void TsmFile::read_from_file(const Path &tsm_file_path) {

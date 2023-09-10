@@ -21,8 +21,7 @@ namespace LindormContest {
 
     TsmWriter::TsmWriter(ThreadPoolSPtr flush_pool, const Path &flush_dir_path,
                          std::string vin_str, SchemaSPtr schema)
-            : _flush_pool(flush_pool), _flush_dir_path(flush_dir_path),
-              _vin_str(std::move(vin_str)), _schema(schema), _flush_nums(0) {
+            : _flush_pool(flush_pool), _flush_dir_path(flush_dir_path), _schema(schema), _flush_nums(0) {
         _mem_map = std::make_unique<MemMap>();
     }
 

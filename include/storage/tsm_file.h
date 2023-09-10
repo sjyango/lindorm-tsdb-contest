@@ -38,24 +38,22 @@ namespace LindormContest {
         uint32_t _offset;
         uint32_t _size;
 
-        void encode_to(std::string* buf) const {
+        void encode_to(std::string *buf, ColumnType type) const {
             put_fixed(buf, _min_time_index);
             put_fixed(buf, _max_time_index);
-            if (std::holds_alternative<int64_t>(_sum)) {
+            if (type == COLUMN_TYPE_INTEGER) {
                 int64_t int_value = std::get<int64_t>(_sum);
                 put_fixed(buf, int_value);
-            } else if (std::holds_alternative<double_t>(_sum)) {
+            } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 double_t double_value = std::get<double_t>(_sum);
                 put_fixed(buf, double_value);
-            } else {
-                throw std::runtime_error("invalid variant type");
             }
             put_fixed(buf, _count);
             put_fixed(buf, _offset);
             put_fixed(buf, _size);
         }
 
-        void decode_from(const uint8_t*& buf, ColumnType type) {
+        void decode_from(const uint8_t *&buf, ColumnType type) {
             _min_time_index = decode_fixed<uint16_t>(buf);
             _max_time_index = decode_fixed<uint16_t>(buf);
             if (type == COLUMN_TYPE_INTEGER) {
@@ -64,8 +62,6 @@ namespace LindormContest {
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 double_t double_value = decode_fixed<double_t>(buf);
                 _sum.emplace<double_t>(double_value);
-            } else {
-                throw std::runtime_error("invalid variant type");
             }
             _count = decode_fixed<uint16_t>(buf);
             _offset = decode_fixed<uint32_t>(buf);
@@ -81,26 +77,26 @@ namespace LindormContest {
 
         IndexBlockMeta() = default;
 
-        IndexBlockMeta(const std::string& column_name, ColumnType type)
+        IndexBlockMeta(const std::string &column_name, ColumnType type)
                 : _column_name(column_name), _type(type), _count(0) {}
 
-        IndexBlockMeta(IndexBlockMeta&& other) noexcept
+        IndexBlockMeta(IndexBlockMeta &&other) noexcept
                 : _column_name(std::move(other._column_name)), _type(other._type), _count(other._count) {}
 
         ~IndexBlockMeta() = default;
 
-        void encode_to(std::string* buf) const {
+        void encode_to(std::string *buf) const {
             put_fixed(buf, _count);
             put_fixed(buf, (uint8_t) _type);
             put_fixed(buf, (uint8_t) _column_name.size());
             buf->append(_column_name);
         }
 
-        void decode_from(const uint8_t*& buf) {
+        void decode_from(const uint8_t *&buf) {
             _count = decode_fixed<uint16_t>(buf);
             _type = (ColumnType) decode_fixed<uint8_t>(buf);
             uint8_t column_name_size = decode_fixed<uint8_t>(buf);
-            _column_name.assign(reinterpret_cast<const char*>(buf), column_name_size);
+            _column_name.assign(reinterpret_cast<const char *>(buf), column_name_size);
             buf += column_name_size;
         }
     };
@@ -112,26 +108,26 @@ namespace LindormContest {
 
         IndexBlock() = default;
 
-        IndexBlock(const std::string& column_name, ColumnType type) : _index_meta(column_name, type) {}
+        IndexBlock(const std::string &column_name, ColumnType type) : _index_meta(column_name, type) {}
 
-        IndexBlock(IndexBlock&& other) noexcept
+        IndexBlock(IndexBlock &&other) noexcept
                 : _index_meta(std::move(other._index_meta)), _index_entries(std::move(other._index_entries)) {}
 
         ~IndexBlock() = default;
 
-        void add_entry(const IndexEntry& entry) {
+        void add_entry(const IndexEntry &entry) {
             _index_entries.emplace_back(entry);
             _index_meta._count++;
         }
 
-        void encode_to(std::string* buf) const {
+        void encode_to(std::string *buf) const {
             _index_meta.encode_to(buf);
             for (const auto &entry: _index_entries) {
-                entry.encode_to(buf);
+                entry.encode_to(buf, _index_meta._type);
             }
         }
 
-        void decode_from(const uint8_t*& buf) {
+        void decode_from(const uint8_t *&buf) {
             _index_meta.decode_from(buf);
             for (uint16_t i = 0; i < _index_meta._count; ++i) {
                 IndexEntry index_entry;
@@ -147,21 +143,21 @@ namespace LindormContest {
 
         DataBlock() = default;
 
-        DataBlock(const std::vector<ColumnValue>::iterator& start,
-                  const std::vector<ColumnValue>::iterator& end)
+        DataBlock(const std::vector<ColumnValue>::iterator &start,
+                  const std::vector<ColumnValue>::iterator &end)
                 : _column_values(start, end) {}
 
-        DataBlock(DataBlock&& other) : _column_values(std::move(other._column_values)) {}
+        DataBlock(DataBlock &&other) : _column_values(std::move(other._column_values)) {}
 
         ~DataBlock() = default;
 
-        void encode_to(std::string* buf) const {
+        void encode_to(std::string *buf) const {
             for (const auto &val: _column_values) {
                 buf->append(val.columnData, val.getRawDataSize());
             }
         }
 
-        void decode_from(const uint8_t*& buf, ColumnType type, uint16_t count) {
+        void decode_from(const uint8_t *&buf, ColumnType type, uint16_t count) {
             switch (type) {
                 case COLUMN_TYPE_INTEGER: {
                     for (uint16_t i = 0; i < count; ++i) {
@@ -180,7 +176,7 @@ namespace LindormContest {
                 case COLUMN_TYPE_STRING: {
                     for (uint16_t i = 0; i < count; ++i) {
                         int32_t str_length = decode_fixed<int32_t>(buf);
-                        _column_values.emplace_back((const char*) buf, str_length);
+                        _column_values.emplace_back((const char *) buf, str_length);
                         buf += str_length;
                     }
                     break;
@@ -201,13 +197,13 @@ namespace LindormContest {
 
         ~Footer() = default;
 
-        void encode_to(std::string* buf) const {
-            buf->append((const char*) _tss.data(), _tss.size() * sizeof(int64_t));
+        void encode_to(std::string *buf) const {
+            buf->append((const char *) _tss.data(), _tss.size() * sizeof(int64_t));
             put_fixed(buf, _index_offset);
             put_fixed(buf, _footer_offset);
         }
 
-        void decode_from(const uint8_t*& buf, size_t ts_count) {
+        void decode_from(const uint8_t *&buf, size_t ts_count) {
             _tss.resize(ts_count);
             std::memcpy(_tss.data(), buf, ts_count * sizeof(int64_t));
             buf += ts_count * sizeof(int64_t);
@@ -224,14 +220,18 @@ namespace LindormContest {
 
         TsmFile() = default;
 
+        TsmFile(TsmFile &&other) : _data_blocks(std::move(other._data_blocks)),
+                                   _index_blocks(std::move(other._index_blocks)),
+                                   _footer(other._footer) {}
+
         ~TsmFile() = default;
 
-        void encode_to(std::string* buf);
+        void encode_to(std::string *buf);
 
-        void decode_from(const uint8_t* buf, uint32_t file_size);
+        void decode_from(const uint8_t *buf, uint32_t file_size);
 
-        void write_to_file(const Path& tsm_file_path);
+        void write_to_file(const Path &tsm_file_path);
 
-        void read_from_file(const Path& tsm_file_path);
+        void read_from_file(const Path &tsm_file_path);
     };
 }
