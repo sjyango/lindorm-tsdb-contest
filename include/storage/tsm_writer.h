@@ -21,6 +21,7 @@
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
+#include "common/spinlock.h"
 #include "storage/memmap.h"
 #include "storage/tsm_file.h"
 #include "compression/compressor.h"
@@ -29,12 +30,11 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(ThreadPoolSPtr flush_pool, const Path& flush_dir_path,
-                  std::string vin_str, SchemaSPtr schema);
+        TsmWriter(ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema);
 
         ~TsmWriter();
 
-        void append(const Row &row);
+        void append(const Row& row);
 
         void flush_mem_map_async();
 
@@ -50,6 +50,31 @@ namespace LindormContest {
         std::unique_ptr<MemMap> _mem_map;
         uint16_t _flush_nums;
     };
+
+    class TsmWriterManager;
+
+    using TsmWriterManagerUPtr = std::unique_ptr<TsmWriterManager>;
+
+    class TsmWriterManager {
+    public:
+        TsmWriterManager(ThreadPoolSPtr flush_pool, const Path& root_path);
+
+        ~TsmWriterManager();
+
+        void set_schema(SchemaSPtr schema);
+
+        void append(const Row& row);
+
+        void flush_all_async();
+
+    private:
+        SpinLock _lock;
+        SchemaSPtr _schema;
+        ThreadPoolSPtr _flush_pool;
+        Path _root_path;
+        std::unordered_map<std::string, std::unique_ptr<TsmWriter>> _tsm_writers;
+    };
+
 }
 
 

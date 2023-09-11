@@ -19,15 +19,14 @@
 
 namespace LindormContest {
 
-    TsmWriter::TsmWriter(ThreadPoolSPtr flush_pool, const Path &flush_dir_path,
-                         std::string vin_str, SchemaSPtr schema)
-            : _flush_pool(flush_pool), _flush_dir_path(flush_dir_path), _schema(schema), _flush_nums(0) {
+    TsmWriter::TsmWriter(ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema)
+            : _flush_pool(flush_pool), _flush_dir_path(std::move(flush_dir_path)), _schema(schema), _flush_nums(0) {
         _mem_map = std::make_unique<MemMap>();
     }
 
     TsmWriter::~TsmWriter() = default;
 
-    void TsmWriter::append(const Row &row) {
+    void TsmWriter::append(const Row& row) {
         std::lock_guard<std::mutex> l(_mutex);
         _mem_map->append(row);
         if (unlikely(_mem_map->need_flush())) {
@@ -47,6 +46,9 @@ namespace LindormContest {
 
     void TsmWriter::flush_mem_map_async() {
         assert(_mem_map != nullptr);
+        if (unlikely(_mem_map->empty())) {
+            return;
+        }
         std::string tsm_file_name = std::to_string(_flush_nums) + "-0.tsm";
         Path tsm_file_path = _flush_dir_path / tsm_file_name;
         _flush_pool->submit(flush_mem_map, _mem_map.release(), _schema, tsm_file_path);
@@ -55,5 +57,33 @@ namespace LindormContest {
     void TsmWriter::reset_mem_map() {
         _mem_map = std::make_unique<MemMap>();
         _flush_nums++;
+    }
+
+    TsmWriterManager::TsmWriterManager(ThreadPoolSPtr flush_pool, const Path &root_path)
+    : _flush_pool(flush_pool), _root_path(root_path) {}
+
+    TsmWriterManager::~TsmWriterManager() = default;
+
+    void TsmWriterManager::set_schema(SchemaSPtr schema) {
+        _schema = schema;
+    }
+
+    void TsmWriterManager::append(const LindormContest::Row &row) {
+        std::string vin_str(row.vin.vin, VIN_LENGTH);
+        {
+            std::lock_guard<SpinLock> l(_lock);
+            if (unlikely(_tsm_writers.find(vin_str) == _tsm_writers.end())) {
+                Path flush_dir_path = _root_path / vin_str;
+                std::filesystem::create_directories(flush_dir_path);
+                _tsm_writers.emplace(vin_str, std::make_unique<TsmWriter>(_flush_pool, std::move(flush_dir_path), _schema));
+            }
+        }
+        _tsm_writers[vin_str]->append(row);
+    }
+
+    void TsmWriterManager::flush_all_async() {
+        for (auto &tsm_writer: _tsm_writers) {
+            tsm_writer.second->flush_mem_map_async();
+        }
     }
 }

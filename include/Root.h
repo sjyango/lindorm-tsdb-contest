@@ -37,9 +37,11 @@
 
 namespace LindormContest {
 
-using Path = std::filesystem::path;
+    using Path = std::filesystem::path;
 
-static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
+    static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
+    static constexpr size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
+    static constexpr size_t MEMMAP_FLUSH_SIZE = 360;
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -56,13 +58,13 @@ static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
     fprintf(stdout, "\n");                                   \
 }
 
-#define RECORD_TIME_COST(code)                                                              \
-    do {                                                                                    \
-        auto start = std::chrono::high_resolution_clock::now();                             \
-        code                                                                                \
-        auto end = std::chrono::high_resolution_clock::now();                               \
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start); \
-        INFO_LOG("time cost: %ld ms", duration.count())                                                                       \
+#define RECORD_TIME_COST(name, code)                                                                             \
+    do {                                                                                                         \
+        auto start_##name = std::chrono::high_resolution_clock::now();                                           \
+        code                                                                                                     \
+        auto end_##name = std::chrono::high_resolution_clock::now();                                             \
+        auto duration_##name = std::chrono::duration_cast<std::chrono::milliseconds>(end_##name - start_##name); \
+        INFO_LOG("time cost for %s: %ld ms", #name, duration_##name.count())                                     \
     } while (false)
 
 }

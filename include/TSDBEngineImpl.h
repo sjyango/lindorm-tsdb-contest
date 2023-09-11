@@ -12,6 +12,7 @@
 #include "TSDBEngine.hpp"
 #include "latest_manager.h"
 #include "storage/memmap.h"
+#include "storage/tsm_writer.h"
 
 namespace LindormContest {
     class TSDBEngineImpl : public TSDBEngine {
@@ -55,8 +56,9 @@ namespace LindormContest {
         void _load_schema_from_file();
 
         SchemaSPtr _schema;
-        LatestManager _latest_manager;
-        // ShardMemMap _shard_mem_map;
+        ThreadPoolSPtr _thread_pool;
+        LatestManagerUPtr _latest_manager;
+        TsmWriterManagerUPtr _writer_manager;
     }; // End class TSDBEngineImpl.
 
 }

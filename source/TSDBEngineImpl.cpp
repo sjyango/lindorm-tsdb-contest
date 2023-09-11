@@ -7,6 +7,7 @@
 
 #include "TSDBEngineImpl.h"
 #include <fstream>
+#include <optional>
 
 namespace LindormContest {
 
@@ -17,40 +18,51 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
-        // _shard_mem_map.set_root_path(_get_root_path());
+        _latest_manager = std::make_unique<LatestManager>();
+        _thread_pool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
+        _writer_manager = std::make_unique<TsmWriterManager>(_thread_pool, _get_root_path());
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
 
     int TSDBEngineImpl::connect() {
         _load_schema_from_file();
-        _latest_manager.load_latest_records_from_file(_get_latest_records_path(), _schema);
+        if (_schema == nullptr) {
+            return 0;
+        }
+        _latest_manager->load_latest_records_from_file(_get_latest_records_path(), _schema);
+        _writer_manager->set_schema(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
         _schema = std::make_shared<Schema>(schema);
-        // _shard_mem_map.set_schema(_schema);
+        _writer_manager->set_schema(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _latest_manager.save_latest_records_to_file(_get_latest_records_path(), _schema);
+        _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
+        _writer_manager->flush_all_async();
+        _thread_pool->shutdown();
         return 0;
     }
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
-            _latest_manager.add_latest(row);
-            // _shard_mem_map.append(row);
+            _latest_manager->add_latest(row);
+            _writer_manager->append(row);
         }
         return 0;
     }
 
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         for (const auto &vin: pReadReq.vins) {
-            pReadRes.emplace_back(_latest_manager.get_latest(vin, pReadReq.requestedColumns));
+            std::optional<Row> result = _latest_manager->get_latest(vin, pReadReq.requestedColumns);
+            if (result.has_value()) {
+                pReadRes.emplace_back(std::move(*result));
+            }
         }
         return 0;
     }
@@ -72,7 +84,6 @@ namespace LindormContest {
     void TSDBEngineImpl::_save_schema_to_file() {
         std::ofstream schema_out;
         schema_out.open(_get_schema_path(), std::ios::out);
-        schema_out << (uint8_t) _schema->columnTypeMap.size() << " ";
 
         for (const auto & [column_name, column_type]: _schema->columnTypeMap) {
             schema_out << column_name << " ";
@@ -87,19 +98,11 @@ namespace LindormContest {
         schema_fin.open(_get_schema_path(), std::ios::in);
         if (!schema_fin.is_open() || !schema_fin.good()) {
             schema_fin.close();
-            INFO_LOG("schema.txt doesn't exist!")
             return;
         }
-
         std::map<std::string, ColumnType> column_type_map;
-        uint8_t column_nums;
-        schema_fin >> column_nums;
-        if (column_nums <= 0) {
-            schema_fin.close();
-            throw std::runtime_error("unexpected columns' num");
-        }
 
-        for (int i = 0; i < column_nums; ++i) {
+        for (int i = 0; i < SCHEMA_COLUMN_NUMS; ++i) {
             std::string column_name;
             uint8_t column_type_int;
             schema_fin >> column_name;

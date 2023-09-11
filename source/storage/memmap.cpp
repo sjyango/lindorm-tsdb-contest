@@ -19,46 +19,56 @@ namespace LindormContest {
 
     /// #################### MemMap #####################
 
-    MemMap::MemMap() = default;
+    MemMap::MemMap() {
+        _cache.reserve(MEMMAP_FLUSH_SIZE);
+    }
 
     MemMap::~MemMap() = default;
 
     void MemMap::append(const Row &row) {
-        for (auto& column : row.columns) {
-            if (_mem_map.find(column.first) == _mem_map.end()) {
-                _mem_map[column.first] = {};
-            }
-            _mem_map[column.first].emplace_back(row.timestamp, column.second);
-        }
+        _cache.emplace_back(row);
+    }
 
-        _size++;
+    bool MemMap::empty() const {
+        return _cache.empty();
     }
 
     bool MemMap::need_flush() const {
-        return _size >= MEMMAP_FLUSH_SIZE;
+        return _cache.size() >= MEMMAP_FLUSH_SIZE;
+    }
+
+    void MemMap::convert(InternalValue& internal_value) {
+        std::sort(_cache.begin(), _cache.end(), [](const Row& lhs, const Row& rhs) {
+            return lhs.timestamp < rhs.timestamp;
+        });
+
+        for (const auto &row: _cache) {
+            internal_value._tss.emplace_back(row.timestamp);
+
+            for (auto& column : row.columns) {
+                if (internal_value._values.find(column.first) == internal_value._values.end()) {
+                    internal_value._values[column.first] = {};
+                }
+                internal_value._values[column.first].emplace_back(column.second);
+            }
+        }
     }
 
     // flush this mem map into tsm file, but params `offset & size & index offset & footer offset` are empty
     void MemMap::flush_to_tsm_file(SchemaSPtr schema, TsmFile& tsm_file) {
+        InternalValue internal_value;
+        convert(internal_value);
         // encode ts
-        for (const auto &item: (*_mem_map.cbegin()).second._values) {
-            tsm_file._footer._tss.emplace_back(item.first);
-        }
+        tsm_file._footer._tss = std::move(internal_value._tss);
         // encode data blocks and index blocks
-        for (const auto &[column_name, column_value]: _mem_map) {
+        for (auto& [column_name, column_value]: internal_value._values) {
             const size_t value_size = column_value.size();
             ColumnType type = schema->columnTypeMap[column_name];
             IndexBlock index_block(column_name, type);
-            std::vector<ColumnValue> column_values;
-            column_values.reserve(value_size);
-
-            for (auto item: column_value._values) {
-                column_values.emplace_back(std::move(item.second));
-            }
 
             for (size_t start = 0; start < value_size; start += DATA_BLOCK_ITEM_NUMS) {
                 size_t end = std::min(start + DATA_BLOCK_ITEM_NUMS, value_size);
-                DataBlock data_block(column_values.begin() + start, column_values.begin() + end);
+                DataBlock data_block(column_value.begin() + start, column_value.begin() + end);
                 IndexEntry index_entry;
                 index_entry._min_time_index = start;
                 index_entry._max_time_index = end;

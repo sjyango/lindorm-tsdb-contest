@@ -19,6 +19,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <fstream>
+#include <optional>
 
 #include "Root.h"
 #include "struct/Vin.h"
@@ -28,6 +29,10 @@
 #include "common/spinlock.h"
 
 namespace LindormContest {
+
+    struct LatestManager;
+
+    using LatestManagerUPtr = std::unique_ptr<LatestManager>;
 
     // multi thread safe
     struct LatestManager {
@@ -41,7 +46,7 @@ namespace LindormContest {
         void add_latest(const Row& row) {
             std::string vin_str(row.vin.vin, VIN_LENGTH);
             std::unique_lock<std::shared_mutex> l(_mutex);
-            if (_latest_records.find(vin_str) == _latest_records.end()) {
+            if (unlikely(_latest_records.find(vin_str) == _latest_records.end())) {
                 _latest_records.emplace(vin_str, row);
             }
             if (row.timestamp > _latest_records[vin_str].timestamp) {
@@ -49,11 +54,14 @@ namespace LindormContest {
             }
         }
 
-        Row get_latest(const Vin& vin, const std::set<std::string>& requested_columns) {
+        std::optional<Row> get_latest(const Vin& vin, const std::set<std::string>& requested_columns) {
             std::string vin_str(vin.vin, VIN_LENGTH);
             Row latest_row;
             {
                 std::shared_lock<std::shared_mutex> l(_mutex);
+                if (_latest_records.find(vin_str) == _latest_records.end()) {
+                    return std::nullopt;
+                }
                 latest_row = _latest_records[vin_str];
             }
             Row result;
@@ -62,7 +70,7 @@ namespace LindormContest {
             for (const auto& requested_column : requested_columns) {
                 result.columns.emplace(requested_column, latest_row.columns.at(requested_column));
             }
-            return result;
+            return {std::move(result)};
         }
 
         void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) {

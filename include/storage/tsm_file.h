@@ -26,8 +26,6 @@
 
 namespace LindormContest {
 
-    const size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
-
     // one index entry corresponds to one data block
     // an index block has a batch of index entry
     struct IndexEntry {

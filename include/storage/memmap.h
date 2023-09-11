@@ -30,10 +30,9 @@
 
 namespace LindormContest {
 
-    const size_t MEMMAP_FLUSH_SIZE = 512;
-
     struct InternalValue {
-        std::vector<std::pair<int64_t, ColumnValue>> _values;
+        std::vector<int64_t> _tss;
+        std::map<std::string, std::vector<ColumnValue>> _values;
 
         InternalValue() = default;
 
@@ -41,23 +40,9 @@ namespace LindormContest {
 
         InternalValue& operator=(const InternalValue& other) = default;
 
-        InternalValue(InternalValue&& other) : _values(std::move(other._values)) {}
+        InternalValue(InternalValue&& other) : _tss(std::move(other._tss)), _values(std::move(other._values)) {}
 
         ~InternalValue() = default;
-
-        void emplace_back(int64_t ts, const ColumnValue& column_value) {
-            _values.emplace_back(ts, column_value);
-        }
-
-        void sort() {
-            std::sort(_values.begin(), _values.end(), [](const auto& lhs, const auto& rhs) {
-                return lhs.first < rhs.first;
-            });
-        }
-
-        size_t size() const {
-            return _values.size();
-        }
     };
 
     // a mem map for a vin
@@ -70,32 +55,16 @@ namespace LindormContest {
 
         void append(const Row &row);
 
+        bool empty() const;
+
         bool need_flush() const;
+
+        void convert(InternalValue& internal_value);
 
         void flush_to_tsm_file(SchemaSPtr schema, TsmFile& tsm_file);
 
     private:
-        size_t _size = 0;
-        std::map<std::string, InternalValue> _mem_map;
+        std::vector<Row> _cache;
     };
-
-    // class ShardMemMap {
-    // public:
-    //     ShardMemMap();
-    //
-    //     ~ShardMemMap();
-    //
-    //     void set_root_path(const Path& root_path);
-    //
-    //     void set_schema(SchemaSPtr schema);
-    //
-    //     void append(const Row &row);
-    //
-    // private:
-    //     Path _root_path;
-    //     SchemaSPtr _schema;
-    //     SpinLock _mutex;
-    //     std::unordered_map<std::string, std::unique_ptr<MemMap>> _mem_maps;
-    // };
 
 }

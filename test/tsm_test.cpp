@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 #include <random>
 
+#include "Root.h"
 #include "storage/tsm_file.h"
 #include "storage/tsm_writer.h"
 #include "struct/Schema.h"
@@ -77,7 +78,7 @@ namespace LindormContest::test {
     }
 
     TEST(TsmTest, BasicTsmTest) {
-        const size_t N = 2048;
+        const size_t N = 10;
         SchemaSPtr schema = std::make_shared<Schema>();
         schema->columnTypeMap.insert({"col0", COLUMN_TYPE_STRING});
         schema->columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
@@ -86,9 +87,9 @@ namespace LindormContest::test {
         ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
 
         Path flush_dir_path = std::filesystem::current_path() / "tsm";
-        TsmWriter tsm_writer(flush_pool, flush_dir_path, generate_random_string(VIN_LENGTH), schema);
+        TsmWriter tsm_writer(flush_pool, flush_dir_path, schema);
 
-        for (size_t i = 0; i < N; ++i) {
+        for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
             tsm_writer.append(generate_row());
         }
 
@@ -101,7 +102,7 @@ namespace LindormContest::test {
             tsm_files.emplace_back(std::move(tsm_file));
         }
 
-        ASSERT_EQ(tsm_files.size(), 4);
+        ASSERT_EQ(tsm_files.size(), N);
     }
 
 }
