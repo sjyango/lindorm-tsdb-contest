@@ -641,7 +641,7 @@ namespace LindormContest::test {
         }
     }
 
-    TEST(MultiThreadTest, MultiThreadInsertAndLatestTest) {
+    TEST(MultiThreadTest, MultiThreadInsertAndLatestQueryTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -677,14 +677,32 @@ namespace LindormContest::test {
             insert_data_into_db_engine(*demo, TABLE_NAME);
             INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
         });
+
+        // handle latest query
+        RECORD_TIME_COST(HANDLE_LATEST_QUERY, {
+            const size_t LATEST_QUERY_THREADS = 200;
+            std::thread latest_query_threads[LATEST_QUERY_THREADS];
+
+            for (size_t i = 0; i < LATEST_QUERY_THREADS; ++i) {
+                latest_query_threads[i] = std::thread(handle_latest_query, std::ref(*demo), TABLE_NAME);
+            }
+
+            for (auto &thread: latest_query_threads) {
+                thread.join();
+            }
+        });
+
         // shutdown
         ASSERT_EQ(0, demo->shutdown());
         INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
         // reset db
         demo = std::make_unique<TSDBEngineImpl>(table_path);
+
         // connect database
         ASSERT_EQ(0, demo->connect());
         INFO_LOG("####################### [demo->connect()] finished #######################")
+
         // handle latest query
         RECORD_TIME_COST(HANDLE_LATEST_QUERY, {
              const size_t LATEST_QUERY_THREADS = 200;
@@ -697,7 +715,6 @@ namespace LindormContest::test {
              for (auto &thread: latest_query_threads) {
                  thread.join();
              }
-             INFO_LOG("####################### [handle latest query] finished #######################")
         });
 
     }

@@ -212,6 +212,36 @@ namespace LindormContest {
 
     // tsm file representation in memory
     struct TsmFile {
+        struct ColumnIterator {
+            std::vector<DataBlock>::const_iterator _block_iter;
+            std::vector<ColumnValue>::const_iterator _value_iter;
+
+            ColumnIterator(std::vector<DataBlock>::const_iterator block_iter,
+                           std::vector<ColumnValue>::const_iterator value_iter)
+            : _block_iter(block_iter), _value_iter(value_iter) {}
+
+            ColumnIterator& operator++() {
+                ++_value_iter;
+                return *this;
+            }
+
+            const ColumnValue& operator*() {
+                if (_value_iter == (*_block_iter)._column_values.cend()) {
+                    ++_block_iter;
+                    _value_iter = (*_block_iter)._column_values.cbegin();
+                }
+                return *_value_iter;
+            }
+
+            bool operator==(const ColumnIterator& other) const {
+                return _block_iter == other._block_iter && _value_iter == other._value_iter;
+            }
+
+            bool operator!=(const ColumnIterator& other) const {
+                return !(*this == other);
+            }
+        };
+
         std::vector<DataBlock> _data_blocks;
         std::vector<IndexBlock> _index_blocks;
         Footer _footer;
@@ -223,6 +253,10 @@ namespace LindormContest {
                                    _footer(other._footer) {}
 
         ~TsmFile() = default;
+
+        ColumnIterator column_begin(const std::string& column_name) const;
+
+        ColumnIterator column_end(const std::string& column_name) const;
 
         void encode_to(std::string *buf);
 

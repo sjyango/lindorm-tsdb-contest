@@ -17,6 +17,37 @@
 
 namespace LindormContest {
 
+    TsmFile::ColumnIterator TsmFile::column_begin(const std::string &column_name) const {
+        size_t column_idx = 0;
+        for (auto it = _index_blocks.cbegin(); it != _index_blocks.cend(); ++it) {
+            if (it->_index_meta._column_name == column_name) {
+                break;
+            }
+            column_idx++;
+        }
+        assert(_data_blocks.size() % SCHEMA_COLUMN_NUMS == 0);
+        size_t block_per_column = _data_blocks.size() / SCHEMA_COLUMN_NUMS;
+        auto block_iter = _data_blocks.cbegin() + (column_idx * block_per_column);
+        auto value_iter = block_iter->_column_values.cbegin();
+        return ColumnIterator(block_iter, value_iter);
+    }
+
+    TsmFile::ColumnIterator TsmFile::column_end(const std::string &column_name) const {
+        size_t column_idx = 0;
+        for (auto it = _index_blocks.cbegin(); it != _index_blocks.cend(); ++it) {
+            if (it->_index_meta._column_name == column_name) {
+                break;
+            }
+            column_idx++;
+        }
+        assert(_data_blocks.size() % SCHEMA_COLUMN_NUMS == 0);
+        size_t block_per_column = _data_blocks.size() / SCHEMA_COLUMN_NUMS;
+        auto block_iter = _data_blocks.cbegin() + ((column_idx + 1) * block_per_column - 1);
+        auto value_iter = block_iter->_column_values.cend();
+        return ColumnIterator(block_iter, value_iter);
+    }
+
+    // _offset & _size & _index_offset & _footer_offset are lazily inited
     void TsmFile::encode_to(std::string *buf) {
         size_t index_entry_count = 0;
         // encode data blocks and record offset & size

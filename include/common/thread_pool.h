@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "Root.h"
+#include "common/spinlock.h"
 
 namespace LindormContest {
 
@@ -37,22 +38,22 @@ namespace LindormContest {
         ~ConcurrentQueue() = default;
 
         bool empty() {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<SpinLock> l(_lock);
             return _queue.empty();
         }
 
         int size() {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<SpinLock> l(_lock);
             return _queue.size();
         }
 
         void enqueue(std::function<void()>&& task) {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<SpinLock> l(_lock);
             _queue.push_back(std::move(task));
         }
 
         bool dequeue(std::function<void()>& task) {
-            std::unique_lock<std::mutex> lock(_mutex);
+            std::lock_guard<SpinLock> l(_lock);
             if (_queue.empty()) {
                 return false;
             }
@@ -62,8 +63,8 @@ namespace LindormContest {
         }
 
     private:
+        SpinLock _lock;
         std::deque<std::function<void()>> _queue;
-        std::mutex _mutex;
     };
 
     class ThreadPool {
@@ -109,19 +110,6 @@ namespace LindormContest {
             _queue.enqueue(std::move(wrapper_func));
             _thread_pool_cv.notify_one();
         }
-
-        // template<typename F, typename... Args>
-        // auto submit(F &&f, Args &&...args) -> std::future<decltype(f(args...))> {
-        //     auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
-        //     auto task_ptr = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
-        //     std::function<void()> wrapper_func = [task_ptr]() {
-        //         (*task_ptr)();
-        //     };
-        //
-        //     _queue.enqueue(std::move(wrapper_func));
-        //     _thread_pool_cv.notify_one();
-        //     return task_ptr->get_future();
-        // }
 
     private:
         class ThreadWorker {

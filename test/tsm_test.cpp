@@ -19,6 +19,7 @@
 #include "Root.h"
 #include "storage/tsm_file.h"
 #include "storage/tsm_writer.h"
+#include "storage/compaction.h"
 #include "struct/Schema.h"
 #include "struct/Row.h"
 
@@ -103,6 +104,55 @@ namespace LindormContest::test {
         }
 
         ASSERT_EQ(tsm_files.size(), N);
+    }
+
+    TEST(TsmTest, TsmCompactionTest) {
+        const size_t N = 10;
+        SchemaSPtr schema = std::make_shared<Schema>();
+        schema->columnTypeMap.insert({"col0", COLUMN_TYPE_STRING});
+        schema->columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
+        schema->columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
+
+        ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
+
+        Path flush_dir_path = std::filesystem::current_path() / "tsm";
+        TsmWriter tsm_writer(flush_pool, flush_dir_path, schema);
+
+        for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
+            tsm_writer.append(generate_row());
+        }
+
+        flush_pool->shutdown();
+        std::vector<TsmFile> tsm_files;
+
+        for (const auto& entry: std::filesystem::directory_iterator(flush_dir_path)) {
+            TsmFile tsm_file;
+            tsm_file.read_from_file(entry.path());
+            tsm_files.emplace_back(std::move(tsm_file));
+        }
+
+        ASSERT_EQ(tsm_files.size(), N);
+        size_t ts_count = 0;
+        size_t value_count = 0;
+
+        for (const auto &tsm_file: tsm_files) {
+            ts_count += tsm_file._footer._tss.size();
+
+            for (const auto &data_block: tsm_file._data_blocks) {
+                value_count += data_block._column_values.size();
+            }
+        }
+
+        TsmFile output_file;
+        multiway_compaction(schema, tsm_files, output_file);
+        size_t output_value_count = 0;
+
+        for (const auto &data_block: output_file._data_blocks) {
+            output_value_count += data_block._column_values.size();
+        }
+
+        ASSERT_EQ(output_file._footer._tss.size(), ts_count);
+        ASSERT_EQ(output_value_count, value_count);
     }
 
 }
