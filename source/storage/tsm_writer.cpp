@@ -19,9 +19,11 @@
 
 namespace LindormContest {
 
-    TsmWriter::TsmWriter(ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema)
-            : _flush_pool(flush_pool), _flush_dir_path(std::move(flush_dir_path)), _schema(schema), _flush_nums(0) {
-        _mem_map = std::make_unique<MemMap>();
+    TsmWriter::TsmWriter(const std::string& vin_str, GlobalIndexManagerSPtr index_manager,
+                         ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema)
+            : _vin_str(vin_str), _index_manager(index_manager), _flush_pool(flush_pool),
+            _flush_dir_path(std::move(flush_dir_path)), _schema(schema), _flush_nums(0) {
+        _mem_map = std::make_unique<MemMap>(_vin_str);
     }
 
     TsmWriter::~TsmWriter() = default;
@@ -35,13 +37,16 @@ namespace LindormContest {
         }
     }
 
-    void TsmWriter::flush_mem_map(MemMap *mem_map, SchemaSPtr schema, Path tsm_file_path) {
+    void TsmWriter::flush_mem_map(MemMap *mem_map, std::string vin_str, GlobalIndexManagerSPtr index_manager,
+                                  SchemaSPtr schema, Path tsm_file_path) {
         assert(mem_map != nullptr);
         TsmFile tsm_file;
         mem_map->flush_to_tsm_file(schema, tsm_file);
         // release mem map resource
         delete mem_map;
         tsm_file.write_to_file(tsm_file_path);
+        // register index blocks
+        index_manager->insert_indexes(vin_str, tsm_file_path.filename(), tsm_file._index_blocks);
     }
 
     void TsmWriter::flush_mem_map_async() {
@@ -51,16 +56,16 @@ namespace LindormContest {
         }
         std::string tsm_file_name = std::to_string(_flush_nums) + "-0.tsm";
         Path tsm_file_path = _flush_dir_path / tsm_file_name;
-        _flush_pool->submit(flush_mem_map, _mem_map.release(), _schema, tsm_file_path);
+        _flush_pool->submit(flush_mem_map, _mem_map.release(), _vin_str, _index_manager, _schema, tsm_file_path);
     }
 
     void TsmWriter::reset_mem_map() {
-        _mem_map = std::make_unique<MemMap>();
+        _mem_map = std::make_unique<MemMap>(_vin_str);
         _flush_nums++;
     }
 
-    TsmWriterManager::TsmWriterManager(ThreadPoolSPtr flush_pool, const Path &root_path)
-    : _flush_pool(flush_pool), _root_path(root_path) {}
+    TsmWriterManager::TsmWriterManager(GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, const Path &root_path)
+    : _index_manager(index_manager), _flush_pool(flush_pool), _root_path(root_path) {}
 
     TsmWriterManager::~TsmWriterManager() = default;
 
@@ -75,7 +80,8 @@ namespace LindormContest {
             if (unlikely(_tsm_writers.find(vin_str) == _tsm_writers.end())) {
                 Path flush_dir_path = _root_path / vin_str;
                 std::filesystem::create_directories(flush_dir_path);
-                _tsm_writers.emplace(vin_str, std::make_unique<TsmWriter>(_flush_pool, std::move(flush_dir_path), _schema));
+                _tsm_writers.emplace(vin_str, std::make_unique<TsmWriter>(vin_str, _index_manager,
+                                                                          _flush_pool, std::move(flush_dir_path), _schema));
             }
         }
         _tsm_writers[vin_str]->append(row);

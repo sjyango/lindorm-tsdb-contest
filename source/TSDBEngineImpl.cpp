@@ -18,9 +18,12 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
-        _latest_manager = std::make_unique<LatestManager>();
+        _index_manager = std::make_shared<GlobalIndexManager>();
         _thread_pool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
-        _writer_manager = std::make_unique<TsmWriterManager>(_thread_pool, _get_root_path());
+        _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _thread_pool, _get_root_path());
+        _latest_manager = std::make_unique<GlobalLatestManager>();
+        _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _index_manager);
+        _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _index_manager);
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -30,14 +33,19 @@ namespace LindormContest {
         if (_schema == nullptr) {
             return 0;
         }
+        _index_manager->decode_from_file(_get_root_path(), _schema);
         _latest_manager->load_latest_records_from_file(_get_latest_records_path(), _schema);
         _writer_manager->set_schema(_schema);
+        _tr_manager->set_schema(_schema);
+        _agg_manager->set_schema(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
         _schema = std::make_shared<Schema>(schema);
         _writer_manager->set_schema(_schema);
+        _tr_manager->set_schema(_schema);
+        _agg_manager->set_schema(_schema);
         return 0;
     }
 
@@ -68,11 +76,17 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
+        _tr_manager->query_time_range(trReadReq.vin,
+                                      trReadReq.timeLowerBound, trReadReq.timeUpperBound,
+                                      trReadReq.requestedColumns, trReadRes);
         return 0;
     }
 
     int TSDBEngineImpl::executeAggregateQuery(const TimeRangeAggregationRequest &aggregationReq,
                                               std::vector<Row> &aggregationRes) {
+        _agg_manager->query_aggregate(aggregationReq.vin,
+                                      aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+                                      aggregationReq.columnName, aggregationReq.aggregator,  aggregationRes);
         return 0;
     }
 

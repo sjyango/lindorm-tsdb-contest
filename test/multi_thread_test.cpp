@@ -70,6 +70,13 @@ namespace LindormContest::test {
         return dis(gen);
     }
 
+    static int64_t generate_random_timestamp(int64_t start, int64_t end) {
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<int64_t> dis(start, end);
+        return dis(gen);
+    }
+
     static double_t generate_random_float64() {
         std::random_device rd;
         std::mt19937 gen(rd());
@@ -257,14 +264,16 @@ namespace LindormContest::test {
     static void handle_time_range_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id) {
         TimeRangeQueryRequest trqr;
         trqr.tableName = TABLE_NAME;
-        if (generate_random_float64() < 1) {
+        if (generate_random_float64() < 0.9) {
             trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
             std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
-        trqr.timeLowerBound = 1689091225000;
-        trqr.timeUpperBound = 1689091275000;
+        // trqr.timeLowerBound = 1689091225000;
+        // trqr.timeUpperBound = 1689091275000;
+        trqr.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
+        trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, 1689126000000);
         trqr.requestedColumns = {"col1", "col2", "col3"};
         std::string key(trqr.vin.vin, 17);
 
@@ -308,7 +317,7 @@ namespace LindormContest::test {
             }
         }
 
-        // INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
+        INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
     }
 
     static void insert_data_into_db_engine(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
@@ -589,7 +598,7 @@ namespace LindormContest::test {
         ASSERT_EQ(0, demo->shutdown());
     }
 
-    TEST(MultiThreadTest, DISABLED_MultiThreadInsertTest) {
+    TEST(MultiThreadTest, InsertTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -623,7 +632,6 @@ namespace LindormContest::test {
         // write data
         RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
             insert_data_into_db_engine(*demo, TABLE_NAME);
-            INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
         });
         // shutdown
         ASSERT_EQ(0, demo->shutdown());
@@ -641,7 +649,7 @@ namespace LindormContest::test {
         }
     }
 
-    TEST(MultiThreadTest, MultiThreadInsertAndLatestQueryTest) {
+    TEST(MultiThreadTest, LatestQueryTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -717,6 +725,85 @@ namespace LindormContest::test {
              }
         });
 
+    }
+
+    TEST(MultiThreadTest, TimeRangeQueryTest) {
+        global_datasets.clear();
+        written_datasets.clear();
+        latest_records.clear();
+        time_range_records.clear();
+
+        const size_t READ_FILE_THREADS = 1;
+        std::thread read_file_threads[READ_FILE_THREADS];
+
+        for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
+            read_file_threads[i] = std::thread(generate_dataset, i);
+        }
+
+        for (auto &thread: read_file_threads) {
+            thread.join();
+        }
+
+        // create DBEngine
+        const std::string TABLE_NAME = "demo";
+        Path table_path = std::filesystem::current_path() / TABLE_NAME;
+        if (std::filesystem::exists(table_path)) {
+            std::filesystem::remove_all(table_path);
+        }
+        std::filesystem::create_directory(table_path);
+        std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(table_path);
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        // create schema
+        Schema schema = generate_schema();
+        // create table
+        ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
+        // write data
+        RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
+            insert_data_into_db_engine(*demo, TABLE_NAME);
+            INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+        });
+
+        // handle time range query
+        RECORD_TIME_COST(HANDLE_TIME_RANGE_QUERY, {
+            const size_t TIME_RANGE_QUERY_THREADS = 200;
+            std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
+
+            for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
+                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
+            }
+
+            for (auto &thread: time_range_query_threads) {
+                thread.join();
+            }
+        });
+
+        INFO_LOG("####################### finished [handle_time_range_query] #######################")
+
+        // shutdown
+        ASSERT_EQ(0, demo->shutdown());
+        INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
+        // reset db
+        demo = std::make_unique<TSDBEngineImpl>(table_path);
+
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        INFO_LOG("####################### [demo->connect()] finished #######################")
+
+        // handle time range query
+        RECORD_TIME_COST(HANDLE_TIME_RANGE_QUERY, {
+            const size_t TIME_RANGE_QUERY_THREADS = 200;
+            std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
+
+            for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
+                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
+            }
+
+            for (auto &thread: time_range_query_threads) {
+                thread.join();
+            }
+        });
     }
 
 }

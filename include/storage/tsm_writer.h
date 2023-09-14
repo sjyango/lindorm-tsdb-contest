@@ -18,6 +18,7 @@
 #include <variant>
 
 #include "Root.h"
+#include "index_manager.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
@@ -30,7 +31,8 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema);
+        TsmWriter(const std::string& vin_str, GlobalIndexManagerSPtr index_manager,
+                  ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema);
 
         ~TsmWriter();
 
@@ -40,15 +42,18 @@ namespace LindormContest {
 
         void reset_mem_map();
 
-        static void flush_mem_map(MemMap *mem_map, SchemaSPtr schema, Path tsm_file_path);
+        static void flush_mem_map(MemMap *mem_map, std::string vin_str, GlobalIndexManagerSPtr index_manager,
+                                  SchemaSPtr schema, Path tsm_file_path);
 
     private:
+        std::string _vin_str;
         std::mutex _mutex;
         ThreadPoolSPtr _flush_pool;
         Path _flush_dir_path;
         SchemaSPtr _schema;
         std::unique_ptr<MemMap> _mem_map;
         uint16_t _flush_nums;
+        GlobalIndexManagerSPtr _index_manager;
     };
 
     class TsmWriterManager;
@@ -57,7 +62,7 @@ namespace LindormContest {
 
     class TsmWriterManager {
     public:
-        TsmWriterManager(ThreadPoolSPtr flush_pool, const Path& root_path);
+        TsmWriterManager(GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, const Path& root_path);
 
         ~TsmWriterManager();
 
@@ -72,7 +77,8 @@ namespace LindormContest {
         SchemaSPtr _schema;
         ThreadPoolSPtr _flush_pool;
         Path _root_path;
-        std::unordered_map<std::string, std::unique_ptr<TsmWriter>> _tsm_writers;
+        GlobalIndexManagerSPtr _index_manager;
+        std::unordered_map<std::string, std::unique_ptr<TsmWriter>> _tsm_writers; // vin -> tsm writer
     };
 
 }

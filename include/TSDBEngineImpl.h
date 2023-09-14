@@ -11,6 +11,9 @@
 #include "Root.h"
 #include "TSDBEngine.hpp"
 #include "latest_manager.h"
+#include "index_manager.h"
+#include "time_range_manager.h"
+#include "aggregate_manager.h"
 #include "storage/memmap.h"
 #include "storage/tsm_writer.h"
 
@@ -57,8 +60,11 @@ namespace LindormContest {
 
         SchemaSPtr _schema;
         ThreadPoolSPtr _thread_pool;
-        LatestManagerUPtr _latest_manager;
         TsmWriterManagerUPtr _writer_manager;
+        GlobalIndexManagerSPtr _index_manager;
+        GlobalLatestManagerUPtr _latest_manager;
+        GlobalTimeRangeManagerUPtr _tr_manager;
+        GlobalAggregateManagerUPtr _agg_manager;
     }; // End class TSDBEngineImpl.
 
 }

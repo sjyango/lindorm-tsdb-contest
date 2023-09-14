@@ -86,9 +86,9 @@ namespace LindormContest::test {
         schema->columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
 
         ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
-
+        auto index_manager = std::make_shared<GlobalIndexManager>();
         Path flush_dir_path = std::filesystem::current_path() / "tsm";
-        TsmWriter tsm_writer(flush_pool, flush_dir_path, schema);
+        TsmWriter tsm_writer("", index_manager, flush_pool, flush_dir_path, schema);
 
         for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
             tsm_writer.append(generate_row());
@@ -114,9 +114,9 @@ namespace LindormContest::test {
         schema->columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
 
         ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
-
+        auto index_manager = std::make_shared<GlobalIndexManager>();
         Path flush_dir_path = std::filesystem::current_path() / "tsm";
-        TsmWriter tsm_writer(flush_pool, flush_dir_path, schema);
+        TsmWriter tsm_writer("", index_manager, flush_pool, flush_dir_path, schema);
 
         for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
             tsm_writer.append(generate_row());

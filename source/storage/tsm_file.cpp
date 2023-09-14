@@ -116,4 +116,30 @@ namespace LindormContest {
         // decode tsm file
         decode_from(reinterpret_cast<const uint8_t *>(buf.c_str()), buf.size());
     }
+
+    void TsmFile::get_size_and_offset(const Path& tsm_file_path, uint32_t& file_size, uint32_t& index_offset, uint32_t& footer_offset) {
+        std::ifstream input_file(tsm_file_path, std::ios::binary | std::ios::ate);
+        if (!input_file.is_open() || !input_file.good()) {
+            throw std::runtime_error("failed to open the file");
+        }
+        file_size = input_file.tellg();
+        input_file.seekg(-8, std::ios::end);
+        char buf[8];
+        input_file.read(buf, 8);
+        index_offset = *reinterpret_cast<uint32_t*>(buf);
+        footer_offset = *reinterpret_cast<uint32_t*>(buf + sizeof(uint32_t));
+        input_file.close();
+    }
+
+    void TsmFile::get_footer(const Path& tsm_file_path, Footer& footer) {
+        uint32_t index_offset, footer_offset, file_size;
+        get_size_and_offset(tsm_file_path, file_size, index_offset, footer_offset);
+        uint32_t footer_size = file_size - footer_offset;
+        assert((footer_size - 2 * sizeof(uint32_t)) % sizeof(int64_t) == 0);
+        size_t ts_count = (footer_size - 2 * sizeof(uint32_t)) / sizeof(int64_t);
+        std::string buf;
+        io::stream_read_string_from_file(tsm_file_path, footer_offset, footer_size, buf);
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
+        footer.decode_from(p, ts_count);
+    }
 }

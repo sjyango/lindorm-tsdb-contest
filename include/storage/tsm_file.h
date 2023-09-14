@@ -16,11 +16,13 @@
 #pragma once
 
 #include <variant>
+#include <optional>
 
 #include "Root.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
+#include "common/time_range.h"
 #include "compression/compressor.h"
 #include "io/io_utils.h"
 
@@ -29,18 +31,26 @@ namespace LindormContest {
     // one index entry corresponds to one data block
     // an index block has a batch of index entry
     struct IndexEntry {
-        uint16_t _min_time_index;
-        uint16_t _max_time_index;
-        std::variant<int64_t, double_t> _sum;
+        uint16_t _min_time_index; // inclusive
+        uint16_t _max_time_index; // inclusive
+        int64_t _min_time; // inclusive
+        int64_t _max_time; // inclusive
+        std::variant<int32_t, double_t> _sum;
         uint16_t _count;
         uint32_t _offset;
         uint32_t _size;
 
+        TimeRange get_time_range() const {
+            return {_min_time, _max_time + 1};
+        }
+
         void encode_to(std::string *buf, ColumnType type) const {
             put_fixed(buf, _min_time_index);
             put_fixed(buf, _max_time_index);
+            put_fixed(buf, _min_time);
+            put_fixed(buf, _max_time);
             if (type == COLUMN_TYPE_INTEGER) {
-                int64_t int_value = std::get<int64_t>(_sum);
+                int32_t int_value = std::get<int32_t>(_sum);
                 put_fixed(buf, int_value);
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 double_t double_value = std::get<double_t>(_sum);
@@ -54,9 +64,11 @@ namespace LindormContest {
         void decode_from(const uint8_t *&buf, ColumnType type) {
             _min_time_index = decode_fixed<uint16_t>(buf);
             _max_time_index = decode_fixed<uint16_t>(buf);
+            _min_time = decode_fixed<int64_t>(buf);
+            _max_time = decode_fixed<int64_t>(buf);
             if (type == COLUMN_TYPE_INTEGER) {
-                int64_t int_value = decode_fixed<int64_t>(buf);
-                _sum.emplace<int64_t>(int_value);
+                int32_t int_value = decode_fixed<int32_t>(buf);
+                _sum.emplace<int32_t>(int_value);
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 double_t double_value = decode_fixed<double_t>(buf);
                 _sum.emplace<double_t>(double_value);
@@ -77,6 +89,10 @@ namespace LindormContest {
 
         IndexBlockMeta(const std::string &column_name, ColumnType type)
                 : _column_name(column_name), _type(type), _count(0) {}
+
+        IndexBlockMeta(const IndexBlockMeta& other) = default;
+
+        IndexBlockMeta& operator=(const IndexBlockMeta& other) = default;
 
         IndexBlockMeta(IndexBlockMeta &&other) noexcept
                 : _column_name(std::move(other._column_name)), _type(other._type), _count(other._count) {}
@@ -108,6 +124,10 @@ namespace LindormContest {
 
         IndexBlock(const std::string &column_name, ColumnType type) : _index_meta(column_name, type) {}
 
+        IndexBlock(const IndexBlock& other) = default;
+
+        IndexBlock& operator=(const IndexBlock& other) = default;
+
         IndexBlock(IndexBlock &&other) noexcept
                 : _index_meta(std::move(other._index_meta)), _index_entries(std::move(other._index_entries)) {}
 
@@ -116,6 +136,39 @@ namespace LindormContest {
         void add_entry(const IndexEntry &entry) {
             _index_entries.emplace_back(entry);
             _index_meta._count++;
+        }
+
+        void get_index_entries(const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
+            size_t start = std::numeric_limits<size_t>::max(), end = _index_entries.size();
+            // find lower index (inclusive)
+            for (size_t i = 0; i < _index_entries.size(); ++i) {
+                if (tr.overlap(_index_entries[i].get_time_range())) {
+                    start = i;
+                    break;
+                }
+            }
+
+            if (start == std::numeric_limits<size_t>::max()) {
+                return;
+            }
+
+            // find upper index (exclusive)
+            for (size_t i = start + 1; i < _index_entries.size(); ++i) {
+                if (!tr.overlap(_index_entries[i].get_time_range())) {
+                    end = i;
+                    break;
+                }
+            }
+            index_entries.assign(_index_entries.begin() + start, _index_entries.begin() + end);
+        }
+
+        std::optional<IndexEntry> get_max_index_entry(const TimeRange& tr) {
+            for (auto it = _index_entries.rbegin(); it != _index_entries.rend(); ++it) {
+                if (tr.overlap(it->get_time_range())) {
+                    return {*it};
+                }
+            }
+            return std::nullopt;
         }
 
         void encode_to(std::string *buf) const {
@@ -218,14 +271,14 @@ namespace LindormContest {
 
             ColumnIterator(std::vector<DataBlock>::const_iterator block_iter,
                            std::vector<ColumnValue>::const_iterator value_iter)
-            : _block_iter(block_iter), _value_iter(value_iter) {}
+                    : _block_iter(block_iter), _value_iter(value_iter) {}
 
-            ColumnIterator& operator++() {
+            ColumnIterator &operator++() {
                 ++_value_iter;
                 return *this;
             }
 
-            const ColumnValue& operator*() {
+            const ColumnValue &operator*() {
                 if (_value_iter == (*_block_iter)._column_values.cend()) {
                     ++_block_iter;
                     _value_iter = (*_block_iter)._column_values.cbegin();
@@ -233,11 +286,11 @@ namespace LindormContest {
                 return *_value_iter;
             }
 
-            bool operator==(const ColumnIterator& other) const {
+            bool operator==(const ColumnIterator &other) const {
                 return _block_iter == other._block_iter && _value_iter == other._value_iter;
             }
 
-            bool operator!=(const ColumnIterator& other) const {
+            bool operator!=(const ColumnIterator &other) const {
                 return !(*this == other);
             }
         };
@@ -254,9 +307,9 @@ namespace LindormContest {
 
         ~TsmFile() = default;
 
-        ColumnIterator column_begin(const std::string& column_name) const;
+        ColumnIterator column_begin(const std::string &column_name) const;
 
-        ColumnIterator column_end(const std::string& column_name) const;
+        ColumnIterator column_end(const std::string &column_name) const;
 
         void encode_to(std::string *buf);
 
@@ -265,5 +318,9 @@ namespace LindormContest {
         void write_to_file(const Path &tsm_file_path);
 
         void read_from_file(const Path &tsm_file_path);
+
+        static void get_size_and_offset(const Path& tsm_file_path, uint32_t& file_size, uint32_t& index_offset, uint32_t& footer_offset);
+
+        static void get_footer(const Path& tsm_file_path, Footer& footer);
     };
 }

@@ -84,17 +84,19 @@ namespace LindormContest {
                 DataBlock data_block(column_value.begin() + start, column_value.begin() + end);
                 IndexEntry index_entry;
                 index_entry._min_time_index = start;
-                index_entry._max_time_index = end;
+                index_entry._max_time_index = end - 1;
+                index_entry._min_time = tss[index_entry._min_time_index];
+                index_entry._max_time = tss[index_entry._max_time_index];
                 index_entry._count = end - start;
                 switch (type) {
                     case COLUMN_TYPE_INTEGER: {
-                        int64_t int_sum = 0;
+                        int32_t int_sum = 0;
                         for (const auto &v: data_block._column_values) {
                             int32_t int_value;
                             v.getIntegerValue(int_value);
                             int_sum += int_value;
                         }
-                        index_entry._sum.emplace<int64_t>(int_sum);
+                        index_entry._sum.emplace<int32_t>(int_sum);
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {

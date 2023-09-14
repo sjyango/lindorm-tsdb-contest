@@ -17,6 +17,7 @@
 #include <random>
 
 #include "io/io_utils.h"
+#include "storage/tsm_file.h"
 
 namespace LindormContest::test {
 
@@ -52,5 +53,14 @@ namespace LindormContest::test {
              io::stream_read_string_from_file(file_path2, read_content2);
         });
         ASSERT_EQ(file_content, read_content2);
+    }
+
+    TEST(IOTest, TsmIOTest) {
+        Path tsm_file_path = std::filesystem::current_path() / "demo" / "LSVNV2182E0200009" / "17-0.tsm";
+        Footer footer;
+        std::string buf;
+        io::stream_read_string_from_file(tsm_file_path, 10334, 2888, buf);
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
+        footer.decode_from(p, 360);
     }
 }

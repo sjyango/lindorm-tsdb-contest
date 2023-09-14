@@ -20,6 +20,7 @@
 #include <mutex>
 
 #include "Root.h"
+#include "index_manager.h"
 #include "struct/Vin.h"
 #include "struct/Row.h"
 #include "struct/ColumnValue.h"
@@ -49,7 +50,7 @@ namespace LindormContest {
     // mem map is NOT multi thread safe
     class MemMap {
     public:
-        MemMap();
+        MemMap(const std::string& vin_str);
 
         ~MemMap();
 
@@ -64,6 +65,7 @@ namespace LindormContest {
         void flush_to_tsm_file(SchemaSPtr schema, TsmFile& tsm_file);
 
     private:
+        std::string _vin_str;
         std::vector<Row> _cache;
     };
 

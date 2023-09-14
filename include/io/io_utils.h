@@ -71,6 +71,7 @@ namespace LindormContest::io {
         }
         void* file_memory = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, offset);
         if (file_memory == MAP_FAILED) {
+            perror("mmap error");
             throw std::runtime_error("unable to map file to memory");
         }
         const char* file_content = static_cast<const char*>(file_memory);
@@ -95,6 +96,18 @@ namespace LindormContest::io {
             throw std::runtime_error("open file failed");
         }
         input_file >> buf;
+        input_file.close();
+    }
+
+    static void stream_read_string_from_file(const Path& file_path, uint32_t offset, uint32_t size, std::string& buf) {
+        std::ifstream input_file(file_path, std::ios::in | std::ios::binary);
+        if (!input_file.is_open() || !input_file.good()) {
+            throw std::runtime_error("open file failed");
+        }
+
+        input_file.seekg(offset, std::ios::beg);
+        buf.resize(size);
+        input_file.read(buf.data(), size);
         input_file.close();
     }
 

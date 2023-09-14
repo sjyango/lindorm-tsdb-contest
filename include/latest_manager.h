@@ -30,18 +30,16 @@
 
 namespace LindormContest {
 
-    struct LatestManager;
+    struct GlobalLatestManager;
 
-    using LatestManagerUPtr = std::unique_ptr<LatestManager>;
+    using GlobalLatestManagerUPtr = std::unique_ptr<GlobalLatestManager>;
 
     // multi thread safe
-    struct LatestManager {
-        std::unordered_map<std::string, Row> _latest_records;
-        std::shared_mutex _mutex;
+    struct GlobalLatestManager {
+    public:
+        GlobalLatestManager() = default;
 
-        LatestManager() = default;
-
-        ~LatestManager() = default;
+        ~GlobalLatestManager() = default;
 
         void add_latest(const Row& row) {
             std::string vin_str(row.vin.vin, VIN_LENGTH);
@@ -164,5 +162,9 @@ namespace LindormContest {
 
             return row;
         }
+
+    private:
+        std::unordered_map<std::string, Row> _latest_records;
+        std::shared_mutex _mutex;
     };
 }
