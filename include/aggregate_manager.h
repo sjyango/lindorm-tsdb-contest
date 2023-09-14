@@ -19,6 +19,7 @@
 #include <variant>
 #include <numeric>
 #include <optional>
+#include <limits>
 
 #include "Root.h"
 #include "struct/Vin.h"
@@ -109,13 +110,7 @@ namespace LindormContest {
             }
 
             std::pair<size_t, size_t> range = _get_value_range(footer._tss, tr, *index_entry);
-            ColumnValue file_max_value = _get_max_column_value(tsm_file_path, type, *index_entry, range);
-
-            if constexpr (std::is_same_v<T, int32_t>) {
-                file_max_value.getIntegerValue(max_value);
-            } else if constexpr (std::is_same_v<T, double_t>) {
-                file_max_value.getDoubleFloatValue(max_value);
-            }
+            max_value = _get_max_column_value<T>(tsm_file_path, type, *index_entry, range);
         }
 
         template <typename T>
@@ -169,14 +164,29 @@ namespace LindormContest {
             }
         }
 
-        ColumnValue _get_max_column_value(const Path& tsm_file_path, ColumnType type,
+        template <typename T>
+        T _get_max_column_value(const Path& tsm_file_path, ColumnType type,
                                           const IndexEntry& index_entry, const std::pair<size_t, size_t>& range) {
             DataBlock data_block;
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
-            return data_block._column_values[range.second - 1];
+            T max_value = std::numeric_limits<T>::min();
+
+            std::for_each(data_block._column_values.begin() + range.first,
+                          data_block._column_values.begin() + range.second,
+                          [&max_value] (const ColumnValue& cv) {
+                T val;
+                if constexpr (std::is_same_v<T, int32_t>) {
+                    cv.getIntegerValue(val);
+                } else if constexpr (std::is_same_v<T, double_t>) {
+                    cv.getDoubleFloatValue(val);
+                }
+                max_value = std::max(max_value, val);
+            });
+
+            return max_value;
         }
 
         template <typename T>
@@ -261,7 +271,7 @@ namespace LindormContest {
         }
 
     private:
-        const Path& _root_path;
+        Path _root_path;
         SpinLock _lock;
         SchemaSPtr _schema;
         GlobalIndexManagerSPtr _index_manager;

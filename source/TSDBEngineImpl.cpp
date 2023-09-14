@@ -86,7 +86,7 @@ namespace LindormContest {
                                               std::vector<Row> &aggregationRes) {
         _agg_manager->query_aggregate(aggregationReq.vin,
                                       aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
-                                      aggregationReq.columnName, aggregationReq.aggregator,  aggregationRes);
+                                      aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
     }
 

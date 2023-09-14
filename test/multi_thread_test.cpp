@@ -24,6 +24,7 @@
 
 #include "Root.h"
 #include "TSDBEngineImpl.h"
+#include "struct/Requests.h"
 
 namespace LindormContest::test {
 
@@ -270,8 +271,6 @@ namespace LindormContest::test {
             std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
-        // trqr.timeLowerBound = 1689091225000;
-        // trqr.timeUpperBound = 1689091275000;
         trqr.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
         trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, 1689126000000);
         trqr.requestedColumns = {"col1", "col2", "col3"};
@@ -318,6 +317,114 @@ namespace LindormContest::test {
         }
 
         INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
+    }
+
+    static void handle_aggregate_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id) {
+        TimeRangeAggregationRequest trar;
+        trar.tableName = TABLE_NAME;
+        if (generate_random_float64() < 0.9) {
+            trar.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
+        } else {
+            std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
+            std::strncpy(trar.vin.vin, rand_vin.c_str(), 17);
+        }
+        trar.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
+        trar.timeUpperBound = generate_random_timestamp(trar.timeLowerBound, 1689126000000);
+        if (generate_random_float64() < 0.5) {
+            trar.columnName = "col2";
+        } else {
+            trar.columnName = "col3";
+        }
+        if (generate_random_float64() < 0.5) {
+            trar.aggregator = MAX;
+        } else {
+            trar.aggregator = AVG;
+        }
+        trar.aggregator = MAX;
+        std::string key(trar.vin.vin, VIN_LENGTH);
+        Row tra_ground_truth;
+        std::vector<Row> tra_results;
+        db.executeAggregateQuery(trar, tra_results);
+
+        if (time_range_records.find(key) != time_range_records.end()) {
+            if (trar.aggregator == AVG) {
+                double_t sum_value = 0.0;
+                size_t value_count = 0;
+
+                for (auto& row: time_range_records[key]) {
+                    if (row.timestamp >= trar.timeLowerBound && row.timestamp < trar.timeUpperBound) {
+                        if (trar.columnName == "col2") {
+                            int32_t int_value;
+                            row.columns[trar.columnName].getIntegerValue(int_value);
+                            sum_value += int_value;
+                        } else if (trar.columnName == "col3") {
+                            double_t double_value;
+                            row.columns[trar.columnName].getDoubleFloatValue(double_value);
+                            sum_value += double_value;
+                        }
+                        value_count++;
+                    }
+                }
+
+                ColumnValue avg_value(sum_value / value_count);
+                tra_ground_truth.vin = trar.vin;
+                tra_ground_truth.timestamp = trar.timeLowerBound;
+                tra_ground_truth.columns.emplace(trar.columnName, std::move(avg_value));
+            } else if (trar.aggregator == MAX) {
+                if (trar.columnName == "col2") {
+                    int32_t max_value = std::numeric_limits<int32_t>::min();
+
+                    for (auto& row: time_range_records[key]) {
+                        if (row.timestamp >= trar.timeLowerBound && row.timestamp < trar.timeUpperBound) {
+                            int32_t int_value;
+                            row.columns[trar.columnName].getIntegerValue(int_value);
+                            max_value = std::max(max_value, int_value);
+                        }
+                    }
+
+                    ColumnValue max_column_value(max_value);
+                    tra_ground_truth.vin = trar.vin;
+                    tra_ground_truth.timestamp = trar.timeLowerBound;
+                    tra_ground_truth.columns.emplace(trar.columnName, std::move(max_column_value));
+                } else if (trar.columnName == "col3") {
+                    double_t max_value = std::numeric_limits<double_t>::min();
+
+                    for (auto& row: time_range_records[key]) {
+                        if (row.timestamp >= trar.timeLowerBound && row.timestamp < trar.timeUpperBound) {
+                            double_t double_value;
+                            row.columns[trar.columnName].getDoubleFloatValue(double_value);
+                            max_value = std::max(max_value, double_value);
+                        }
+                    }
+
+                    ColumnValue max_column_value(max_value);
+                    tra_ground_truth.vin = trar.vin;
+                    tra_ground_truth.timestamp = trar.timeLowerBound;
+                    tra_ground_truth.columns.emplace(trar.columnName, std::move(max_column_value));
+                }
+            }
+        }
+
+        ASSERT_GE(tra_results.size(), 0);
+        if (!tra_results.empty()) {
+            if (!compare_rows(tra_results[0], tra_ground_truth)) {
+                if (trar.columnName == "col2") {
+                    int32_t int_value;
+                    int32_t gt_int_value;
+                    tra_results[0].columns[trar.columnName].getIntegerValue(int_value);
+                    tra_ground_truth.columns[trar.columnName].getIntegerValue(gt_int_value);
+                    ASSERT_NE(int_value, gt_int_value);
+                } else if (trar.columnName == "col3") {
+                    double_t double_value;
+                    double_t gt_double_value;
+                    tra_results[0].columns[trar.columnName].getDoubleFloatValue(double_value);
+                    tra_ground_truth.columns[trar.columnName].getDoubleFloatValue(gt_double_value);
+                    ASSERT_NE(double_value, gt_double_value);
+                }
+            }
+        }
+
+        INFO_LOG("[handle_aggregate_query] finished %lu times, results size is %zu", id + 1, tra_results.size())
     }
 
     static void insert_data_into_db_engine(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
@@ -801,6 +908,85 @@ namespace LindormContest::test {
             }
 
             for (auto &thread: time_range_query_threads) {
+                thread.join();
+            }
+        });
+    }
+
+    TEST(MultiThreadTest, AggregateQueryTest) {
+        global_datasets.clear();
+        written_datasets.clear();
+        latest_records.clear();
+        time_range_records.clear();
+
+        const size_t READ_FILE_THREADS = 1;
+        std::thread read_file_threads[READ_FILE_THREADS];
+
+        for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
+            read_file_threads[i] = std::thread(generate_dataset, i);
+        }
+
+        for (auto &thread: read_file_threads) {
+            thread.join();
+        }
+
+        // create DBEngine
+        const std::string TABLE_NAME = "demo";
+        Path table_path = std::filesystem::current_path() / TABLE_NAME;
+        if (std::filesystem::exists(table_path)) {
+            std::filesystem::remove_all(table_path);
+        }
+        std::filesystem::create_directory(table_path);
+        std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(table_path);
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        // create schema
+        Schema schema = generate_schema();
+        // create table
+        ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
+        // write data
+        RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
+            insert_data_into_db_engine(*demo, TABLE_NAME);
+            INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+        });
+
+        // handle aggregate query
+        RECORD_TIME_COST(HANDLE_AGGREGATE_QUERY, {
+            const size_t AGGREGATE_QUERY_THREADS = 200;
+            std::thread aggregate_query_threads[AGGREGATE_QUERY_THREADS];
+
+            for (size_t i = 0; i < AGGREGATE_QUERY_THREADS; ++i) {
+                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME, i + 1);
+            }
+
+            for (auto &thread: aggregate_query_threads) {
+                thread.join();
+            }
+        });
+
+        INFO_LOG("####################### finished [handle_aggregate_query] #######################")
+
+        // shutdown
+        ASSERT_EQ(0, demo->shutdown());
+        INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
+        // reset db
+        demo = std::make_unique<TSDBEngineImpl>(table_path);
+
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        INFO_LOG("####################### [demo->connect()] finished #######################")
+
+        // handle aggregate query
+        RECORD_TIME_COST(HANDLE_AGGREGATE_QUERY, {
+            const size_t AGGREGATE_QUERY_THREADS = 200;
+            std::thread aggregate_query_threads[AGGREGATE_QUERY_THREADS];
+
+            for (size_t i = 0; i < AGGREGATE_QUERY_THREADS; ++i) {
+                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME, i + 1);
+            }
+
+            for (auto &thread: aggregate_query_threads) {
                 thread.join();
             }
         });
