@@ -43,6 +43,10 @@ namespace LindormContest {
     static constexpr size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
     static constexpr size_t MEMMAP_FLUSH_SIZE = 360;
 
+    static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;
+    static const double_t DOUBLE_NAN = *(double_t*)(&LONG_DOUBLE_NAN);
+    static const int32_t INT_NAN = 0x80000000;
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 

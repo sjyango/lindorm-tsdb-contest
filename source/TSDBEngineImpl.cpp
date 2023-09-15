@@ -24,6 +24,7 @@ namespace LindormContest {
         _latest_manager = std::make_unique<GlobalLatestManager>();
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _index_manager);
         _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _index_manager);
+        _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _index_manager);
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -38,6 +39,7 @@ namespace LindormContest {
         _writer_manager->set_schema(_schema);
         _tr_manager->set_schema(_schema);
         _agg_manager->set_schema(_schema);
+        _ds_manager->set_schema(_schema);
         return 0;
     }
 
@@ -46,6 +48,7 @@ namespace LindormContest {
         _writer_manager->set_schema(_schema);
         _tr_manager->set_schema(_schema);
         _agg_manager->set_schema(_schema);
+        _ds_manager->set_schema(_schema);
         return 0;
     }
 
@@ -84,14 +87,16 @@ namespace LindormContest {
 
     int TSDBEngineImpl::executeAggregateQuery(const TimeRangeAggregationRequest &aggregationReq,
                                               std::vector<Row> &aggregationRes) {
-        _agg_manager->query_aggregate(aggregationReq.vin,
-                                      aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+        _agg_manager->query_aggregate(aggregationReq.vin, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
     }
 
     int TSDBEngineImpl::executeDownsampleQuery(const TimeRangeDownsampleRequest &downsampleReq,
                                                std::vector<Row> &downsampleRes) {
+        _ds_manager->query_down_sample(downsampleReq.vin, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+                                       downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
+                                       downsampleReq.columnFilter, downsampleRes);
         return 0;
     }
 

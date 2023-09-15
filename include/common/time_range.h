@@ -26,6 +26,25 @@ namespace LindormContest {
         bool overlap(const TimeRange& other) const {
             return _start_time < other._end_time && other._start_time < _end_time;
         }
+
+        int64_t interval_nums(int64_t interval) const {
+            assert((_end_time - _start_time) % interval == 0);
+            return (_end_time - _start_time) / interval;
+        }
+
+        TimeRange sub_interval(int64_t interval, int64_t index) const {
+            assert(index < interval_nums(interval));
+            return {_start_time + index * interval, _start_time + (index + 1) * interval};
+        }
+
+        std::vector<TimeRange> sub_intervals(int64_t interval) const {
+            std::vector<TimeRange> trs;
+            int64_t interval_count = interval_nums(interval);
+            for (int64_t i = 0; i < interval_count; ++i) {
+                trs.emplace_back(sub_interval(interval, i));
+            }
+            return trs;
+        }
     };
 
 }
