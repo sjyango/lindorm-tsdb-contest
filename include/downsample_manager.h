@@ -63,7 +63,7 @@ namespace LindormContest {
                     if (file_state == DownSampleState::HAVE_DATA) {
                         state = DownSampleState::HAVE_DATA;
                         max_value = std::max(max_value, file_max_value);
-                    } else if (file_state == DownSampleState::FILTER_ALL_DATA) {
+                    } else if (state == DownSampleState::NO_DATA && file_state == DownSampleState::FILTER_ALL_DATA) {
                         state = DownSampleState::FILTER_ALL_DATA;
                     }
                 }
@@ -115,7 +115,7 @@ namespace LindormContest {
                         state = DownSampleState::HAVE_DATA;
                         sum_value += file_sum_value;
                         sum_count += file_sum_count;
-                    } else if (file_state == DownSampleState::FILTER_ALL_DATA) {
+                    } else if (state == DownSampleState::NO_DATA && file_state == DownSampleState::FILTER_ALL_DATA) {
                         state = DownSampleState::FILTER_ALL_DATA;
                     }
                 }
@@ -127,7 +127,7 @@ namespace LindormContest {
                 if (state == DownSampleState::FILTER_ALL_DATA) {
                     avg_value = DOUBLE_NAN;
                 } else {
-                    avg_value = sum_value / sum_count;
+                    avg_value = sum_value * 1.0 / sum_count;
                 }
 
                 ColumnValue max_column_value(avg_value);
@@ -185,15 +185,15 @@ namespace LindormContest {
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 DownSampleState entry_state;
-                T entry_sum_value;
-                size_t entry_sum_count;
+                T entry_sum_value = 0;
+                size_t entry_sum_count = 0;
                 entry_state = _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], column_filter,
                                                       ranges[i], entry_sum_value, entry_sum_count);
                 if (entry_state == DownSampleState::HAVE_DATA) {
                     file_state = DownSampleState::HAVE_DATA;
                     sum_value += entry_sum_value;
                     sum_count += entry_sum_count;
-                } else if (entry_state == DownSampleState::FILTER_ALL_DATA) {
+                } else if (file_state == DownSampleState::NO_DATA && entry_state == DownSampleState::FILTER_ALL_DATA) {
                     file_state = DownSampleState::FILTER_ALL_DATA;
                 }
             }
@@ -283,8 +283,6 @@ namespace LindormContest {
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
-            sum_value = 0;
-            sum_count = 0;
 
             std::for_each(data_block._column_values.begin() + range.first,
                           data_block._column_values.begin() + range.second,
@@ -292,13 +290,15 @@ namespace LindormContest {
                               if (!column_filter.doCompare(cv)) {
                                   return;
                               }
-                              T val;
-                              if constexpr (std::is_same_v<T, int32_t>) {
+                              if constexpr (std::is_same_v<T, int64_t>) {
+                                  int32_t val;
                                   cv.getIntegerValue(val);
+                                  sum_value += (int64_t) val;
                               } else if constexpr (std::is_same_v<T, double_t>) {
+                                  double_t val;
                                   cv.getDoubleFloatValue(val);
+                                  sum_value += val;
                               }
-                              sum_value += val;
                               sum_count++;
                           });
 
@@ -351,7 +351,7 @@ namespace LindormContest {
                 if (aggregator == MAX) {
                     _ds_managers[vin_str].query_time_range_max_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_str].query_time_range_avg_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_str].query_time_range_avg_down_sample<int64_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
