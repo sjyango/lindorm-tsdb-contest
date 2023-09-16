@@ -79,14 +79,14 @@ namespace LindormContest {
             size_t sum_count = 0;
 
             for (const auto &tsm_file_name: tsm_file_names) {
-                sum_count += _query_avg_from_one_tsm_file<T>(tsm_file_name, tr, column_name, type, sum_value);
+                _query_avg_from_one_tsm_file<T>(tsm_file_name, tr, column_name, type, sum_value, sum_count);
             }
 
             if (sum_count == 0) {
                 return;
             }
 
-            double_t avg_value = sum_value / sum_count;
+            double_t avg_value = sum_value * 1.0 / sum_count;
             ColumnValue avg_column_value(avg_value);
             Row result_row;
             result_row.vin = _vin;
@@ -114,8 +114,8 @@ namespace LindormContest {
         }
 
         template <typename T>
-        size_t _query_avg_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
-                                          const std::string& column_name, ColumnType type, T& sum_value) {
+        void _query_avg_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
+                                          const std::string& column_name, ColumnType type, T& sum_value, size_t& sum_count) {
             std::string vin_str(_vin.vin, VIN_LENGTH);
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
@@ -124,7 +124,7 @@ namespace LindormContest {
             _index_manager->query_indexes(vin_str, tsm_file_name, column_name, tr, index_entries);
 
             if (index_entries.empty()) {
-                return 0;
+                return;
             }
 
             std::vector<std::pair<size_t, size_t>> ranges;
@@ -134,7 +134,7 @@ namespace LindormContest {
                 sum_value += _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], ranges[i]);
             }
 
-            return ranges.back().second - ranges.front().first;
+            sum_count += (ranges.back().second - ranges.front().first);
         }
 
         void _get_file_names(std::vector<std::string>& tsm_file_names) {
@@ -199,23 +199,25 @@ namespace LindormContest {
             data_block.decode_from(p, type, index_entry._count);
 
             if ((range.second - range.first) == index_entry._count) {
-                return std::get<T>(index_entry._sum);
+                return index_entry.get_sum<T>();
             }
 
             // TODO(SIMD opt)
-            std::vector<T> flat_values;
-            flat_values.reserve(range.second - range.first);
-            std::transform(data_block._column_values.begin() + range.first, data_block._column_values.begin() + range.second, std::back_inserter(flat_values), [] (const ColumnValue& cv) {
-               T val;
-               if constexpr (std::is_same_v<T, int32_t>) {
-                   cv.getIntegerValue(val);
-               } else if constexpr (std::is_same_v<T, double_t>) {
-                   cv.getDoubleFloatValue(val);
-               }
-               return val;
-            });
-
-            return std::accumulate(flat_values.begin(), flat_values.end(), 0);
+            T sum_value = 0;
+            std::for_each(data_block._column_values.begin() + range.first,
+                          data_block._column_values.begin() + range.second,
+                          [&] (const ColumnValue& cv) {
+                              if constexpr (std::is_same_v<T, int64_t>) {
+                                  int32_t val;
+                                  cv.getIntegerValue(val);
+                                  sum_value += (int64_t) val;
+                              } else if constexpr (std::is_same_v<T, double_t>) {
+                                  double_t val;
+                                  cv.getDoubleFloatValue(val);
+                                  sum_value += val;
+                              }
+                          });
+            return sum_value;
         }
 
         Vin _vin;
@@ -259,7 +261,7 @@ namespace LindormContest {
                 if (aggregator == MAX) {
                     _agg_managers[vin_str].query_time_range_max_aggregate<int32_t>(tr, column_name, aggregationRes);
                 } else if (aggregator == AVG) {
-                    _agg_managers[vin_str].query_time_range_avg_aggregate<int32_t>(tr, column_name, aggregationRes);
+                    _agg_managers[vin_str].query_time_range_avg_aggregate<int64_t>(tr, column_name, aggregationRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {

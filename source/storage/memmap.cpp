@@ -77,13 +77,13 @@ namespace LindormContest {
                 index_entry._count = end - start;
                 switch (type) {
                     case COLUMN_TYPE_INTEGER: {
-                        int32_t int_sum = 0;
+                        int64_t int_sum = 0;
                         for (const auto &v: data_block._column_values) {
                             int32_t int_value;
                             v.getIntegerValue(int_value);
                             int_sum += int_value;
                         }
-                        index_entry._sum.emplace<int32_t>(int_sum);
+                        index_entry.set_sum(int_sum);
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
@@ -93,7 +93,7 @@ namespace LindormContest {
                             v.getDoubleFloatValue(double_value);
                             double_sum += double_value;
                         }
-                        index_entry._sum.emplace<double_t>(double_sum);
+                        index_entry.set_sum(double_sum);
                         break;
                     }
                     case COLUMN_TYPE_STRING: {

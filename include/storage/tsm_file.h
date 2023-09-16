@@ -35,10 +35,20 @@ namespace LindormContest {
         uint16_t _max_time_index; // inclusive
         int64_t _min_time; // inclusive
         int64_t _max_time; // inclusive
-        std::variant<int32_t, double_t> _sum;
+        char _sum[8]; // int64_t or double_t
         uint16_t _count;
         uint32_t _offset;
         uint32_t _size;
+
+        template <typename T>
+        T get_sum() const {
+            return *reinterpret_cast<const T*>(_sum);
+        }
+
+        template <typename T>
+        void set_sum(T sum) {
+            *reinterpret_cast<T*>(_sum) = sum;
+        }
 
         TimeRange get_time_range() const {
             return {_min_time, _max_time + 1};
@@ -49,13 +59,7 @@ namespace LindormContest {
             put_fixed(buf, _max_time_index);
             put_fixed(buf, _min_time);
             put_fixed(buf, _max_time);
-            if (type == COLUMN_TYPE_INTEGER) {
-                int32_t int_value = std::get<int32_t>(_sum);
-                put_fixed(buf, int_value);
-            } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
-                double_t double_value = std::get<double_t>(_sum);
-                put_fixed(buf, double_value);
-            }
+            buf->append(_sum, 8);
             put_fixed(buf, _count);
             put_fixed(buf, _offset);
             put_fixed(buf, _size);
@@ -66,13 +70,8 @@ namespace LindormContest {
             _max_time_index = decode_fixed<uint16_t>(buf);
             _min_time = decode_fixed<int64_t>(buf);
             _max_time = decode_fixed<int64_t>(buf);
-            if (type == COLUMN_TYPE_INTEGER) {
-                int32_t int_value = decode_fixed<int32_t>(buf);
-                _sum.emplace<int32_t>(int_value);
-            } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
-                double_t double_value = decode_fixed<double_t>(buf);
-                _sum.emplace<double_t>(double_value);
-            }
+            std::memcpy(_sum, buf, 8);
+            buf += 8;
             _count = decode_fixed<uint16_t>(buf);
             _offset = decode_fixed<uint32_t>(buf);
             _size = decode_fixed<uint32_t>(buf);

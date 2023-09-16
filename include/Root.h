@@ -46,6 +46,7 @@ namespace LindormContest {
     static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;
     static const double_t DOUBLE_NAN = *(double_t*)(&LONG_DOUBLE_NAN);
     static const int32_t INT_NAN = 0x80000000;
+    static const double_t EPSILON = std::pow(10.0, -5);
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)

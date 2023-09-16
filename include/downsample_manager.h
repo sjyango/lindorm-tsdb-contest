@@ -184,7 +184,7 @@ namespace LindormContest {
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
-                DownSampleState entry_state = DownSampleState::NO_DATA;
+                DownSampleState entry_state;
                 T entry_sum_value;
                 size_t entry_sum_count;
                 entry_state = _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], column_filter,
