@@ -19,7 +19,6 @@
 #include <numeric>
 #include <algorithm>
 
-#include "Root.h"
 #include "struct/Vin.h"
 #include "struct/Schema.h"
 #include "struct/CompareExpression.h"
@@ -330,10 +329,9 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        void query_down_sample(const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_down_sample(const Vin& vin, const std::string& vin_str, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                                int64_t interval, const std::string& column_name, Aggregator aggregator,
                                const CompareExpression& columnFilter, std::vector<Row>& downsampleRes) {
-            std::string vin_str(vin.vin, VIN_LENGTH);
             Path vin_dir_path = _root_path / vin_str;
             if (unlikely(!std::filesystem::exists(vin_dir_path))) {
                 return;

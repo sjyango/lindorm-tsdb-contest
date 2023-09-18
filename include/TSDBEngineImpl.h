@@ -5,8 +5,7 @@
 // the interface semantics correctly.
 //
 
-#ifndef LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H
-#define LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H
+#pragma once
 
 #include "Root.h"
 #include "TSDBEngine.hpp"
@@ -71,4 +70,3 @@ namespace LindormContest {
 
 }
 
-#endif //LINDORMTSDBCONTESTCPP_TSDBENGINEIMPL_H

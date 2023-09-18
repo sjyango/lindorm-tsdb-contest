@@ -17,7 +17,6 @@
 
 #include <queue>
 
-#include "Root.h"
 #include "storage/tsm_file.h"
 
 namespace LindormContest {

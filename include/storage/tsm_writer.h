@@ -17,7 +17,6 @@
 
 #include <variant>
 
-#include "Root.h"
 #include "index_manager.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
@@ -38,9 +37,9 @@ namespace LindormContest {
 
         void append(const Row& row);
 
-        void flush_mem_map_async();
+        void flush_mem_map_sync(bool forced = false);
 
-        void reset_mem_map();
+        void flush_mem_map_async();
 
         static void flush_mem_map(MemMap *mem_map, std::string vin_str, GlobalIndexManagerSPtr index_manager,
                                   SchemaSPtr schema, Path tsm_file_path);
@@ -69,6 +68,10 @@ namespace LindormContest {
         void set_schema(SchemaSPtr schema);
 
         void append(const Row& row);
+
+        void flush_sync(const std::string& vin_str);
+
+        void flush_all_sync();
 
         void flush_all_async();
 

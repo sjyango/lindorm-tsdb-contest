@@ -20,10 +20,8 @@
 #include <functional>
 #include <future>
 #include <thread>
-#include <utility>
 #include <vector>
 
-#include "Root.h"
 #include "common/spinlock.h"
 
 namespace LindormContest {

@@ -19,7 +19,6 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "Root.h"
 #include "index_manager.h"
 #include "struct/Vin.h"
 #include "struct/Row.h"

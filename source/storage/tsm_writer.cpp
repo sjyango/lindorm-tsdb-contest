@@ -29,12 +29,11 @@ namespace LindormContest {
     TsmWriter::~TsmWriter() = default;
 
     void TsmWriter::append(const Row& row) {
-        std::lock_guard<std::mutex> l(_mutex);
-        _mem_map->append(row);
-        if (unlikely(_mem_map->need_flush())) {
-            flush_mem_map_async();
-            reset_mem_map();
+        {
+            std::lock_guard<std::mutex> l(_mutex);
+            _mem_map->append(row);
         }
+        flush_mem_map_sync();
     }
 
     void TsmWriter::flush_mem_map(MemMap *mem_map, std::string vin_str, GlobalIndexManagerSPtr index_manager,
@@ -49,6 +48,21 @@ namespace LindormContest {
         index_manager->insert_indexes(vin_str, tsm_file_path.filename(), tsm_file._index_blocks);
     }
 
+    void TsmWriter::flush_mem_map_sync(bool forced) {
+        std::lock_guard<std::mutex> l(_mutex);
+        if (unlikely(_mem_map->empty())) {
+            return;
+        }
+        if (likely(!forced && !_mem_map->need_flush())) {
+            return;
+        }
+        std::string tsm_file_name = std::to_string(_flush_nums) + "-0.tsm";
+        Path tsm_file_path = _flush_dir_path / tsm_file_name;
+        flush_mem_map(_mem_map.release(), _vin_str, _index_manager, _schema, tsm_file_path);
+        _mem_map = std::make_unique<MemMap>(_vin_str);
+        _flush_nums++;
+    }
+
     void TsmWriter::flush_mem_map_async() {
         assert(_mem_map != nullptr);
         if (unlikely(_mem_map->empty())) {
@@ -57,9 +71,6 @@ namespace LindormContest {
         std::string tsm_file_name = std::to_string(_flush_nums) + "-0.tsm";
         Path tsm_file_path = _flush_dir_path / tsm_file_name;
         _flush_pool->submit(flush_mem_map, _mem_map.release(), _vin_str, _index_manager, _schema, tsm_file_path);
-    }
-
-    void TsmWriter::reset_mem_map() {
         _mem_map = std::make_unique<MemMap>(_vin_str);
         _flush_nums++;
     }
@@ -85,6 +96,19 @@ namespace LindormContest {
             }
         }
         _tsm_writers[vin_str]->append(row);
+    }
+
+    void TsmWriterManager::flush_sync(const std::string &vin_str) {
+        if (_tsm_writers.find(vin_str) == _tsm_writers.end()) {
+            return;
+        }
+        _tsm_writers[vin_str]->flush_mem_map_sync(true);
+    }
+
+    void TsmWriterManager::flush_all_sync() {
+        for (auto &tsm_writer: _tsm_writers) {
+            tsm_writer.second->flush_mem_map_sync();
+        }
     }
 
     void TsmWriterManager::flush_all_async() {

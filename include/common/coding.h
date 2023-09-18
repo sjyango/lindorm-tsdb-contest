@@ -15,8 +15,6 @@
 
 #pragma once
 
-#include "Root.h"
-
 namespace LindormContest {
 
     template <typename T>

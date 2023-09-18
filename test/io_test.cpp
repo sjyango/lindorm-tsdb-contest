@@ -40,10 +40,10 @@ namespace LindormContest::test {
         std::string file_content = generate_random_string(20 * 1024 * 1024);
         Path file_path1 = std::filesystem::current_path() / "io_test1.tsm";
         std::string read_content1;
-        RECORD_TIME_COST(IO_TEST1, {
-             io::mmap_write_string_to_file(file_path1, file_content);
-             io::mmap_read_string_from_file(file_path1, read_content1);
-        });
+        // RECORD_TIME_COST(IO_TEST1, {
+        //      io::mmap_write_string_to_file(file_path1, file_content);
+        //      io::mmap_read_string_from_file(file_path1, read_content1);
+        // });
         ASSERT_EQ(file_content, read_content1);
 
         Path file_path2 = std::filesystem::current_path() / "io_test2.tsm";

@@ -18,7 +18,6 @@
 #include <variant>
 #include <optional>
 
-#include "Root.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"

@@ -21,7 +21,6 @@
 #include <fstream>
 #include <optional>
 
-#include "Root.h"
 #include "struct/Vin.h"
 #include "struct/Row.h"
 #include "struct/ColumnValue.h"
@@ -30,12 +29,12 @@
 
 namespace LindormContest {
 
-    struct GlobalLatestManager;
+    class GlobalLatestManager;
 
     using GlobalLatestManagerUPtr = std::unique_ptr<GlobalLatestManager>;
 
     // multi thread safe
-    struct GlobalLatestManager {
+    class GlobalLatestManager {
     public:
         GlobalLatestManager() = default;
 

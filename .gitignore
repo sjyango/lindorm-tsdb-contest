@@ -3,3 +3,8 @@ cmake-build-debug/
 .clion.source.upload.marker
 build/
 thirdparty/
+submit/
+
+debug.sh
+release.sh
+ccflags

@@ -604,6 +604,21 @@ namespace LindormContest::test {
         // INFO_LOG("[handle_down_sample_query] finished %lu times, results size is %zu", id + 1, trds_results.size())
     }
 
+    static void handle_multi_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id, size_t exec_time) {
+        for (int i = 0; i < exec_time; ++i) {
+            auto rand_num = generate_random_float64();
+            if (rand_num >= 0 && rand_num < 0.25) {
+                handle_latest_query(db, TABLE_NAME);
+            } else if (rand_num >= 0.25 && rand_num < 0.5) {
+                handle_time_range_query(db, TABLE_NAME, id);
+            } else if (rand_num >= 0.5 && rand_num < 0.75) {
+                handle_aggregate_query(db, TABLE_NAME, id);
+            } else {
+                handle_downsample_query(db, TABLE_NAME, id);
+            }
+        }
+    }
+
     static void insert_data_into_db_engine(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
         const size_t INSERT_DATA_THREADS = 16;
         std::thread insert_data_threads[INSERT_DATA_THREADS];
@@ -644,15 +659,9 @@ namespace LindormContest::test {
                 time_range_records[key].push_back(row);
             }
 
-//        if (generate_random_float64() < 0.1) {
-//            if (generate_random_float64() < 0.5) {
-//                handle_latest_query(db, TABLE_NAME, 0);
-//                INFO_LOG("###################### execute [handle_latest_query] read after write success ######################")
-//            } else {
-//                handle_time_range_query(db, TABLE_NAME, 0);
-//                INFO_LOG("###################### execute [handle_time_range_query] read after write success ######################")
-//            }
-//        }
+            if (generate_random_float64() < 0.5) {
+                handle_multi_query(db, TABLE_NAME, thread_id, 10);
+            }
         };
 
         for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -1025,6 +1034,83 @@ namespace LindormContest::test {
             }
 
             for (auto &thread: downsample_query_threads) {
+                thread.join();
+            }
+        });
+    }
+
+    TEST(MultiThreadTest, MultiQueryTest) {
+        global_datasets.clear();
+        written_datasets.clear();
+        latest_records.clear();
+        time_range_records.clear();
+
+        const size_t READ_FILE_THREADS = 1;
+        std::thread read_file_threads[READ_FILE_THREADS];
+
+        for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
+            read_file_threads[i] = std::thread(generate_dataset, i);
+        }
+
+        for (auto &thread: read_file_threads) {
+            thread.join();
+        }
+
+        // create DBEngine
+        const std::string TABLE_NAME = "demo";
+        Path table_path = std::filesystem::current_path() / TABLE_NAME;
+        if (std::filesystem::exists(table_path)) {
+            std::filesystem::remove_all(table_path);
+        }
+        std::filesystem::create_directory(table_path);
+        std::unique_ptr<TSDBEngineImpl> demo = std::make_unique<TSDBEngineImpl>(table_path);
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        // create schema
+        Schema schema = generate_schema();
+        // create table
+        ASSERT_EQ(0, demo->createTable(TABLE_NAME, schema));
+        // write data
+        RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
+            insert_data_into_db_engine(*demo, TABLE_NAME);
+            INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
+        });
+
+        // handle multi query
+        RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
+            const size_t MULTI_QUERY_THREADS = 200;
+            std::thread multi_query_threads[MULTI_QUERY_THREADS];
+
+            for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+            }
+
+            for (auto &thread: multi_query_threads) {
+                thread.join();
+            }
+        });
+
+        // shutdown
+        ASSERT_EQ(0, demo->shutdown());
+        INFO_LOG("####################### [demo->shutdown()] finished #######################")
+
+        // reset db
+        demo = std::make_unique<TSDBEngineImpl>(table_path);
+
+        // connect database
+        ASSERT_EQ(0, demo->connect());
+        INFO_LOG("####################### [demo->connect()] finished #######################")
+
+        // handle multi query
+        RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
+            const size_t MULTI_QUERY_THREADS = 200;
+            std::thread multi_query_threads[MULTI_QUERY_THREADS];
+
+            for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+            }
+
+            for (auto &thread: multi_query_threads) {
                 thread.join();
             }
         });

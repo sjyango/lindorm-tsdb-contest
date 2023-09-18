@@ -26,7 +26,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "Root.h"
 #include "struct/Requests.h"
 #include "struct/Row.h"
 #include "struct/Schema.h"

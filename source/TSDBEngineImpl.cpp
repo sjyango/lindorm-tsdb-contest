@@ -55,7 +55,7 @@ namespace LindormContest {
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
         _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
-        _writer_manager->flush_all_async();
+        _writer_manager->flush_all_sync();
         _thread_pool->shutdown();
         return 0;
     }
@@ -79,7 +79,9 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
-        _tr_manager->query_time_range(trReadReq.vin,
+        std::string vin_str(trReadReq.vin.vin, VIN_LENGTH);
+        _writer_manager->flush_sync(vin_str);
+        _tr_manager->query_time_range(trReadReq.vin, vin_str,
                                       trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                       trReadReq.requestedColumns, trReadRes);
         return 0;
@@ -87,14 +89,18 @@ namespace LindormContest {
 
     int TSDBEngineImpl::executeAggregateQuery(const TimeRangeAggregationRequest &aggregationReq,
                                               std::vector<Row> &aggregationRes) {
-        _agg_manager->query_aggregate(aggregationReq.vin, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+        std::string vin_str(aggregationReq.vin.vin, VIN_LENGTH);
+        _writer_manager->flush_sync(vin_str);
+        _agg_manager->query_aggregate(aggregationReq.vin, vin_str, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
     }
 
     int TSDBEngineImpl::executeDownsampleQuery(const TimeRangeDownsampleRequest &downsampleReq,
                                                std::vector<Row> &downsampleRes) {
-        _ds_manager->query_down_sample(downsampleReq.vin, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+        std::string vin_str(downsampleReq.vin.vin, VIN_LENGTH);
+        _writer_manager->flush_sync(vin_str);
+        _ds_manager->query_down_sample(downsampleReq.vin, vin_str, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
                                        downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                        downsampleReq.columnFilter, downsampleRes);
         return 0;

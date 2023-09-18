@@ -21,7 +21,6 @@
 #include <optional>
 #include <limits>
 
-#include "Root.h"
 #include "struct/Vin.h"
 #include "storage/tsm_file.h"
 #include "struct/Row.h"
@@ -241,9 +240,8 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        void query_aggregate(const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_aggregate(const Vin& vin, const std::string& vin_str, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                              const std::string& column_name, Aggregator aggregator, std::vector<Row>& aggregationRes) {
-            std::string vin_str(vin.vin, VIN_LENGTH);
             Path vin_dir_path = _root_path / vin_str;
             if (unlikely(!std::filesystem::exists(vin_dir_path))) {
                 return;

@@ -18,7 +18,6 @@
 #include <unordered_map>
 #include <shared_mutex>
 
-#include "Root.h"
 #include "common/spinlock.h"
 #include "common/time_range.h"
 #include "storage/tsm_file.h"
