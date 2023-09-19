@@ -32,18 +32,20 @@ namespace LindormContest {
     public:
         DownSampleManager() = default;
 
-        DownSampleManager(const Vin& vin, const Path& vin_dir_path,
-                          SchemaSPtr schema, GlobalIndexManagerSPtr index_manager)
-                : _vin(vin), _vin_dir_path(vin_dir_path), _schema(schema), _index_manager(index_manager) {}
+        DownSampleManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
+                : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
 
         DownSampleManager(DownSampleManager&& other) = default;
 
         ~DownSampleManager() = default;
 
+        void set_schema(SchemaSPtr schema) {
+            _schema = schema;
+        }
+
         template <typename T>
         void query_time_range_max_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             std::vector<std::string> tsm_file_names;
             _get_file_names(tsm_file_names);
             ColumnType type = _schema->columnTypeMap[column_name];
@@ -81,7 +83,7 @@ namespace LindormContest {
 
                 ColumnValue max_column_value(max_value);
                 Row result_row;
-                result_row.vin = _vin;
+                result_row.vin = encode_vin(_vin_num);
                 result_row.timestamp = sub_tr._start_time;
                 result_row.columns.emplace(column_name, std::move(max_column_value));
                 downsampleRes.emplace_back(std::move(result_row));
@@ -91,7 +93,6 @@ namespace LindormContest {
         template <typename T>
         void query_time_range_avg_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             std::vector<std::string> tsm_file_names;
             _get_file_names(tsm_file_names);
             ColumnType type = _schema->columnTypeMap[column_name];
@@ -131,7 +132,7 @@ namespace LindormContest {
 
                 ColumnValue max_column_value(avg_value);
                 Row result_row;
-                result_row.vin = _vin;
+                result_row.vin = encode_vin(_vin_num);
                 result_row.timestamp = sub_tr._start_time;
                 result_row.columns.emplace(column_name, std::move(max_column_value));
                 downsampleRes.emplace_back(std::move(result_row));
@@ -149,32 +150,31 @@ namespace LindormContest {
         DownSampleState _query_max_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
                                           const std::string& column_name, ColumnType type,
                                           const CompareExpression& column_filter, T& max_value) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
-            auto index_entry = _index_manager->query_max_index(vin_str, tsm_file_name, column_name, tr);
+            IndexEntry index_entry;
+            bool existed = _index_manager->query_max_index(_vin_num, tsm_file_name, column_name, tr, index_entry);
 
-            if (!index_entry.has_value()) {
+            if (!existed) {
                 return DownSampleState::NO_DATA;
             }
 
-            std::pair<size_t, size_t> range = _get_value_range(footer._tss, tr, *index_entry);
-            return _get_max_column_value<T>(tsm_file_path, type, *index_entry, column_filter, range, max_value);
+            std::pair<size_t, size_t> range = _get_value_range(footer._tss, tr, index_entry);
+            return _get_max_column_value<T>(tsm_file_path, type, index_entry, column_filter, range, max_value);
         }
 
         template <typename T>
         DownSampleState _query_avg_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
                                             const std::string& column_name, ColumnType type,
                                             const CompareExpression& column_filter, T& sum_value, size_t& sum_count) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
             std::vector<IndexEntry> index_entries;
-            _index_manager->query_indexes(vin_str, tsm_file_name, column_name, tr, index_entries);
+            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
 
-            if (index_entries.empty()) {
+            if (!existed) {
                 return DownSampleState::NO_DATA;
             }
 
@@ -308,7 +308,7 @@ namespace LindormContest {
             return DownSampleState::HAVE_DATA;
         }
 
-        Vin _vin;
+        uint16_t _vin_num;
         Path _vin_dir_path;
         SchemaSPtr _schema;
         GlobalIndexManagerSPtr _index_manager;
@@ -321,50 +321,44 @@ namespace LindormContest {
     class GlobalDownSampleManager {
     public:
         GlobalDownSampleManager(const Path& root_path, GlobalIndexManagerSPtr index_manager)
-        : _root_path(root_path), _index_manager(index_manager) {}
+        : _schema(nullptr) {
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                Path vin_dir_path = root_path / std::to_string(vin_num);
+                _ds_managers[vin_num] = std::make_unique<DownSampleManager>(vin_num, vin_dir_path, index_manager);
+            }
+        }
 
         ~GlobalDownSampleManager() = default;
 
         void set_schema(SchemaSPtr schema) {
             _schema = schema;
+            for (auto &ds_manager: _ds_managers) {
+                ds_manager->set_schema(_schema);
+            }
         }
 
-        void query_down_sample(const Vin& vin, const std::string& vin_str, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_down_sample(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                                int64_t interval, const std::string& column_name, Aggregator aggregator,
                                const CompareExpression& columnFilter, std::vector<Row>& downsampleRes) {
-            Path vin_dir_path = _root_path / vin_str;
-            if (unlikely(!std::filesystem::exists(vin_dir_path))) {
-                return;
-            }
-            {
-                std::lock_guard<SpinLock> l(_lock);
-                if (_ds_managers.find(vin_str) == _ds_managers.end()) {
-                    DownSampleManager ds_manager(vin, vin_dir_path, _schema, _index_manager);
-                    _ds_managers.emplace(vin_str, std::move(ds_manager));
-                }
-            }
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
             ColumnType type = _schema->columnTypeMap[column_name];
             if (type == COLUMN_TYPE_INTEGER) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_str].query_time_range_max_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_str].query_time_range_avg_down_sample<int64_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<int64_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_str].query_time_range_max_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_str].query_time_range_avg_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
                 }
             }
         }
 
     private:
-        Path _root_path;
-        SpinLock _lock;
         SchemaSPtr _schema;
-        GlobalIndexManagerSPtr _index_manager;
-        std::unordered_map<std::string, DownSampleManager> _ds_managers;
+        std::unique_ptr<DownSampleManager> _ds_managers[VIN_NUM_RANGE];
     };
 }

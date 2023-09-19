@@ -16,6 +16,7 @@
 #pragma once
 
 #include <variant>
+#include <atomic>
 
 #include "index_manager.h"
 #include "struct/Schema.h"
@@ -30,10 +31,11 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(const std::string& vin_str, GlobalIndexManagerSPtr index_manager,
-                  ThreadPoolSPtr flush_pool, Path flush_dir_path, SchemaSPtr schema);
+        TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, Path flush_dir_path);
 
         ~TsmWriter();
+
+        void set_schema(SchemaSPtr schema);
 
         void append(const Row& row);
 
@@ -41,17 +43,17 @@ namespace LindormContest {
 
         void flush_mem_map_async();
 
-        static void flush_mem_map(MemMap *mem_map, std::string vin_str, GlobalIndexManagerSPtr index_manager,
+        static void flush_mem_map(MemMap *mem_map, uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
                                   SchemaSPtr schema, Path tsm_file_path);
 
     private:
-        std::string _vin_str;
+        uint16_t _vin_num;
         std::mutex _mutex;
         ThreadPoolSPtr _flush_pool;
         Path _flush_dir_path;
         SchemaSPtr _schema;
         std::unique_ptr<MemMap> _mem_map;
-        uint16_t _flush_nums;
+        std::atomic<uint16_t> _flush_nums;
         GlobalIndexManagerSPtr _index_manager;
     };
 
@@ -69,19 +71,14 @@ namespace LindormContest {
 
         void append(const Row& row);
 
-        void flush_sync(const std::string& vin_str);
+        void flush_sync(uint16_t vin_num);
 
         void flush_all_sync();
 
         void flush_all_async();
 
     private:
-        SpinLock _lock;
-        SchemaSPtr _schema;
-        ThreadPoolSPtr _flush_pool;
-        Path _root_path;
-        GlobalIndexManagerSPtr _index_manager;
-        std::unordered_map<std::string, std::unique_ptr<TsmWriter>> _tsm_writers; // vin -> tsm writer
+        std::unique_ptr<TsmWriter> _tsm_writers[VIN_NUM_RANGE]; // vin_num -> tsm writer
     };
 
 }

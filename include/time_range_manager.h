@@ -30,17 +30,19 @@ namespace LindormContest {
     public:
         TimeRangeManager() = default;
 
-        TimeRangeManager(const Vin& vin, const Path& vin_dir_path,
-                         SchemaSPtr schema, GlobalIndexManagerSPtr index_manager)
-        : _vin(vin), _vin_dir_path(vin_dir_path), _schema(schema), _index_manager(index_manager) {}
+        TimeRangeManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
+        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
 
         TimeRangeManager(TimeRangeManager&& other) = default;
 
         ~TimeRangeManager() = default;
 
+        void set_schema(SchemaSPtr schema) {
+            _schema = schema;
+        }
+
         void query_time_range(const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             std::vector<std::string> tsm_file_names;
             _get_file_names(tsm_file_names);
 
@@ -52,7 +54,6 @@ namespace LindormContest {
     private:
         void _query_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
                                       const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            std::string vin_str(_vin.vin, VIN_LENGTH);
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
             Footer footer;
@@ -60,11 +61,11 @@ namespace LindormContest {
             std::vector<std::pair<size_t, size_t>> ranges;
 
             for (const auto &column_name: requested_columns) {
-                std::vector<IndexEntry> index_entries;
                 std::vector<ColumnValue> column_values;
-                _index_manager->query_indexes(vin_str, tsm_file_name, column_name, tr, index_entries);
+                std::vector<IndexEntry> index_entries;
+                bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
 
-                if (index_entries.empty()) {
+                if (!existed) {
                     return;
                 }
 
@@ -83,7 +84,7 @@ namespace LindormContest {
 
             for (size_t i = 0; i < row_nums; ++i) {
                 Row result_row;
-                result_row.vin = _vin;
+                result_row.vin = encode_vin(_vin_num);
                 result_row.timestamp = footer._tss[ts_start++];
 
                 for (const auto &column_name: requested_columns) {
@@ -134,7 +135,7 @@ namespace LindormContest {
             }
         }
 
-        Vin _vin;
+        uint16_t _vin_num;
         Path _vin_dir_path;
         SchemaSPtr _schema;
         GlobalIndexManagerSPtr _index_manager;
@@ -146,38 +147,29 @@ namespace LindormContest {
 
     class GlobalTimeRangeManager {
     public:
-        GlobalTimeRangeManager(const Path& root_path, GlobalIndexManagerSPtr index_manager)
-        : _root_path(root_path), _index_manager(index_manager) {}
+        GlobalTimeRangeManager(const Path& root_path, GlobalIndexManagerSPtr index_manager) {
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                Path vin_dir_path = root_path / std::to_string(vin_num);
+                _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path, index_manager);
+            }
+        }
 
         ~GlobalTimeRangeManager() = default;
 
         void set_schema(SchemaSPtr schema) {
-            _schema = schema;
+            for (auto &tr_manager: _tr_managers) {
+                tr_manager->set_schema(schema);
+            }
         }
 
-        void query_time_range(const Vin& vin, const std::string& vin_str, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_time_range(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                               const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            Path vin_dir_path = _root_path / vin_str;
-            if (!std::filesystem::exists(vin_dir_path)) {
-                return;
-            }
-            {
-                std::lock_guard<SpinLock> l(_lock);
-                if (_tr_managers.find(vin_str) == _tr_managers.end()) {
-                    TimeRangeManager tr_manager(vin, vin_dir_path, _schema, _index_manager);
-                    _tr_managers.emplace(vin_str, std::move(tr_manager));
-                }
-            }
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
-            _tr_managers[vin_str].query_time_range(tr, requested_columns, trReadRes);
+            _tr_managers[vin_num]->query_time_range(tr, requested_columns, trReadRes);
         }
 
     private:
-        Path _root_path;
-        SpinLock _lock;
-        SchemaSPtr _schema;
-        GlobalIndexManagerSPtr _index_manager;
-        std::unordered_map<std::string, TimeRangeManager> _tr_managers;
+        std::unique_ptr<TimeRangeManager> _tr_managers[VIN_NUM_RANGE];
     };
 
 }

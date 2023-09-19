@@ -49,7 +49,7 @@ namespace LindormContest {
     // mem map is NOT multi thread safe
     class MemMap {
     public:
-        MemMap(const std::string& vin_str);
+        MemMap();
 
         ~MemMap();
 
@@ -64,7 +64,6 @@ namespace LindormContest {
         void flush_to_tsm_file(SchemaSPtr schema, TsmFile& tsm_file);
 
     private:
-        std::string _vin_str;
         std::vector<Row> _cache;
     };
 

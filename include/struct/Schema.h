@@ -50,7 +50,6 @@ namespace LindormContest {
         Schema& operator=(const Schema &rhs);
     }Schema;
 
-    using SchemaSPtr = std::shared_ptr<Schema>;
 }
 
 #endif //LINDORM_TSDB_CONTEST_CPP_SCHEMA_H

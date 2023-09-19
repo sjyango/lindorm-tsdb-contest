@@ -20,7 +20,7 @@ set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -fPIC -g -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -fPIC -g -fopenmp -lstdc++fs")
 
 set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=address -DADDRESS_SANITIZER")
 
@@ -60,4 +60,4 @@ add_subdirectory(test)
 file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
-add_library(DBLib ${sources_c} ${sources_cpp})
+add_library(DBLib ${sources_c} ${sources_cpp} include/compaction_manager.h include/base.h)

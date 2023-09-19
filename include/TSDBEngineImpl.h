@@ -7,13 +7,14 @@
 
 #pragma once
 
-#include "Root.h"
+#include "base.h"
 #include "TSDBEngine.hpp"
 #include "latest_manager.h"
 #include "index_manager.h"
 #include "time_range_manager.h"
 #include "aggregate_manager.h"
 #include "downsample_manager.h"
+#include "compaction_manager.h"
 #include "storage/memmap.h"
 #include "storage/tsm_writer.h"
 
@@ -66,6 +67,7 @@ namespace LindormContest {
         GlobalTimeRangeManagerUPtr _tr_manager;
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
+        GlobalCompactionManagerUPtr _compaction_manager;
     }; // End class TSDBEngineImpl.
 
 }

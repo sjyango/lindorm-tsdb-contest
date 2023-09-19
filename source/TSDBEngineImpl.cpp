@@ -7,7 +7,6 @@
 
 #include "TSDBEngineImpl.h"
 #include <fstream>
-#include <optional>
 
 namespace LindormContest {
 
@@ -25,6 +24,7 @@ namespace LindormContest {
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _index_manager);
         _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _index_manager);
         _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _index_manager);
+        _compaction_manager = std::make_unique<GlobalCompactionManager>(_get_root_path(), _index_manager);
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -40,6 +40,7 @@ namespace LindormContest {
         _tr_manager->set_schema(_schema);
         _agg_manager->set_schema(_schema);
         _ds_manager->set_schema(_schema);
+        _compaction_manager->set_schema(_schema);
         return 0;
     }
 
@@ -49,13 +50,14 @@ namespace LindormContest {
         _tr_manager->set_schema(_schema);
         _agg_manager->set_schema(_schema);
         _ds_manager->set_schema(_schema);
+        _compaction_manager->set_schema(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
         _writer_manager->flush_all_sync();
+        _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
         _thread_pool->shutdown();
         return 0;
     }
@@ -70,37 +72,46 @@ namespace LindormContest {
 
     int TSDBEngineImpl::executeLatestQuery(const LatestQueryRequest &pReadReq, std::vector<Row> &pReadRes) {
         for (const auto &vin: pReadReq.vins) {
-            std::optional<Row> result = _latest_manager->get_latest(vin, pReadReq.requestedColumns);
-            if (result.has_value()) {
-                pReadRes.emplace_back(std::move(*result));
+            uint16_t vin_num = decode_vin(vin);
+            if (unlikely(vin_num == INVALID_VIN_NUM)) {
+                continue;
             }
+            pReadRes.emplace_back(std::move(_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns)));
         }
         return 0;
     }
 
     int TSDBEngineImpl::executeTimeRangeQuery(const TimeRangeQueryRequest &trReadReq, std::vector<Row> &trReadRes) {
-        std::string vin_str(trReadReq.vin.vin, VIN_LENGTH);
-        _writer_manager->flush_sync(vin_str);
-        _tr_manager->query_time_range(trReadReq.vin, vin_str,
-                                      trReadReq.timeLowerBound, trReadReq.timeUpperBound,
+        uint16_t vin_num = decode_vin(trReadReq.vin);
+        if (unlikely(vin_num == INVALID_VIN_NUM)) {
+            return 0;
+        }
+        _writer_manager->flush_sync(vin_num);
+        _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                       trReadReq.requestedColumns, trReadRes);
         return 0;
     }
 
     int TSDBEngineImpl::executeAggregateQuery(const TimeRangeAggregationRequest &aggregationReq,
                                               std::vector<Row> &aggregationRes) {
-        std::string vin_str(aggregationReq.vin.vin, VIN_LENGTH);
-        _writer_manager->flush_sync(vin_str);
-        _agg_manager->query_aggregate(aggregationReq.vin, vin_str, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+        uint16_t vin_num = decode_vin(aggregationReq.vin);
+        if (unlikely(vin_num == INVALID_VIN_NUM)) {
+            return 0;
+        }
+        _writer_manager->flush_sync(vin_num);
+        _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
     }
 
     int TSDBEngineImpl::executeDownsampleQuery(const TimeRangeDownsampleRequest &downsampleReq,
                                                std::vector<Row> &downsampleRes) {
-        std::string vin_str(downsampleReq.vin.vin, VIN_LENGTH);
-        _writer_manager->flush_sync(vin_str);
-        _ds_manager->query_down_sample(downsampleReq.vin, vin_str, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+        uint16_t vin_num = decode_vin(downsampleReq.vin);
+        if (unlikely(vin_num == INVALID_VIN_NUM)) {
+            return 0;
+        }
+        _writer_manager->flush_sync(vin_num);
+        _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
                                        downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                        downsampleReq.columnFilter, downsampleRes);
         return 0;

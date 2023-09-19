@@ -41,33 +41,26 @@ namespace LindormContest {
         ~GlobalLatestManager() = default;
 
         void add_latest(const Row& row) {
-            std::string vin_str(row.vin.vin, VIN_LENGTH);
-            std::unique_lock<std::shared_mutex> l(_mutex);
-            if (unlikely(_latest_records.find(vin_str) == _latest_records.end())) {
-                _latest_records.emplace(vin_str, row);
-            }
-            if (row.timestamp > _latest_records[vin_str].timestamp) {
-                _latest_records[vin_str] = row;
+            uint16_t vin_num = decode_vin(row.vin);
+            std::unique_lock<std::shared_mutex> l(_latest_mutexes[vin_num]);
+            if (row.timestamp > _latest_records[vin_num].timestamp) {
+                _latest_records[vin_num] = row;
             }
         }
 
-        std::optional<Row> get_latest(const Vin& vin, const std::set<std::string>& requested_columns) {
-            std::string vin_str(vin.vin, VIN_LENGTH);
+        Row get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns) {
             Row latest_row;
             {
-                std::shared_lock<std::shared_mutex> l(_mutex);
-                if (_latest_records.find(vin_str) == _latest_records.end()) {
-                    return std::nullopt;
-                }
-                latest_row = _latest_records[vin_str];
+                std::shared_lock<std::shared_mutex> l(_latest_mutexes[vin_num]);
+                latest_row = _latest_records[vin_num];
             }
-            Row result;
-            result.vin = vin;
-            result.timestamp = latest_row.timestamp;
+            Row result_row;
+            result_row.vin = vin;
+            result_row.timestamp = latest_row.timestamp;
             for (const auto& requested_column : requested_columns) {
-                result.columns.emplace(requested_column, latest_row.columns.at(requested_column));
+                result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
             }
-            return {std::move(result)};
+            return result_row;
         }
 
         void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) {
@@ -76,10 +69,7 @@ namespace LindormContest {
                 throw std::runtime_error("Failed to open file for writing.");
             }
 
-            uint32_t latest_record_nums = _latest_records.size();
-            output_file.write((char*) &latest_record_nums, sizeof(uint32_t));
-
-            for (const auto &[vin_str, latest_record]: _latest_records) {
+            for (const auto & latest_record: _latest_records) {
                 append_row_to_file(output_file, schema, latest_record);
             }
 
@@ -98,13 +88,10 @@ namespace LindormContest {
                 return;
             }
 
-            uint32_t latest_record_nums;
-            input_file.read((char*) &latest_record_nums, sizeof(uint32_t));
-
-            for (uint32_t i = 0; i < latest_record_nums; ++i) {
+            for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
                 Row row = read_row_from_stream(input_file, schema);
-                std::string vin_str(row.vin.vin, VIN_LENGTH);
-                _latest_records[vin_str] = row;
+                uint16_t vin_num = decode_vin(row.vin);
+                _latest_records[vin_num] = row;
             }
 
             input_file.close();
@@ -127,43 +114,42 @@ namespace LindormContest {
             fin.read((char *) &row.timestamp, sizeof(int64_t));
 
             for (const auto &[column_name, column_type] : schema->columnTypeMap) {
-                ColumnValue* column_value;
-
                 switch (column_type) {
                     case COLUMN_TYPE_INTEGER: {
                         int32_t int_value;
                         fin.read((char *) &int_value, sizeof(int32_t));
-                        column_value = new ColumnValue(int_value);
+                        ColumnValue column_value(int_value);
+                        row.columns.emplace(column_name, std::move(column_value));
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
                         double_t double_value;
                         fin.read((char *) &double_value, sizeof(double_t));
-                        column_value = new ColumnValue(double_value);
+                        ColumnValue column_value(double_value);
+                        row.columns.emplace(column_name, std::move(column_value));
                         break;
                     }
                     case COLUMN_TYPE_STRING: {
                         int32_t str_length;
                         fin.read((char *) &str_length, sizeof(int32_t));
-                        char *str_buff = new char[str_length];
-                        fin.read(str_buff, str_length);
-                        column_value = new ColumnValue(str_buff, str_length);
-                        delete[]str_buff;
+                        char *str_buf = new char[str_length];
+                        fin.read(str_buf, str_length);
+                        ColumnValue column_value(str_buf, str_length);
+                        row.columns.emplace(column_name, std::move(column_value));
+                        delete[]str_buf;
                         break;
                     }
                     default: {
                         throw std::runtime_error("Undefined column type, this is not expected");
                     }
                 }
-                row.columns.emplace(column_name, std::move(*column_value));
-                delete column_value;
             }
 
             return row;
         }
 
     private:
-        std::unordered_map<std::string, Row> _latest_records;
-        std::shared_mutex _mutex;
+        Row _latest_records[VIN_NUM_RANGE];
+        std::shared_mutex _latest_mutexes[VIN_NUM_RANGE];
     };
 }

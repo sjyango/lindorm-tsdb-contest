@@ -144,7 +144,7 @@ namespace LindormContest::test {
 
     static void generate_dataset(size_t dataset_id) {
         // std::string dataset_filename = "test_data_" + std::to_string(dataset_id) + ".csv";
-        std::string dataset_filename = "10vin_10h.csv";
+        std::string dataset_filename = "5000vin_1000s.csv";
         std::ifstream inputFile(std::filesystem::current_path() / dataset_filename);
         assert(inputFile.is_open());
         std::vector<Row> dataset;
@@ -209,7 +209,7 @@ namespace LindormContest::test {
                 lqr.vins.push_back(global_datasets[rand_index].vin);
                 request_vins.emplace_back(global_datasets[rand_index].vin.vin, 17);
             } else {
-                std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
+                std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
                 Vin vin;
                 std::strncpy(vin.vin, rand_vin.c_str(), 17);
                 lqr.vins.push_back(vin);
@@ -260,7 +260,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
         trqr.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
@@ -317,7 +317,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trar.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
             std::strncpy(trar.vin.vin, rand_vin.c_str(), 17);
         }
         trar.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
@@ -425,7 +425,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trdr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E020" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
             std::strncpy(trdr.vin.vin, rand_vin.c_str(), 17);
         }
         const size_t INTERVAL_NUM = 100;
@@ -720,7 +720,7 @@ namespace LindormContest::test {
             for (const auto & tsm_path: std::filesystem::directory_iterator(vin_path.path())) {
                 file_count++;
             }
-            ASSERT_EQ(file_count, 100);
+            ASSERT_EQ(file_count, 1000 / 200);
         }
     }
 

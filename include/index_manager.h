@@ -56,20 +56,20 @@ namespace LindormContest {
             }
         }
 
-        void query_indexes(const std::string& file_name, const std::string& column_name,
+        bool query_indexes(const std::string& file_name, const std::string& column_name,
                            const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
             std::shared_lock<std::shared_mutex> l(_mutex);
             assert(_index_entries.find(file_name) != _index_entries.end());
             assert(_index_entries[file_name].find(column_name) != _index_entries[file_name].end());
-            _index_entries[file_name][column_name].get_index_entries(tr, index_entries);
+            return _index_entries[file_name][column_name].get_index_entries(tr, index_entries);
         }
 
-        std::optional<IndexEntry> query_max_index(const std::string& file_name,
-                                                  const std::string& column_name, const TimeRange& tr) {
+        bool query_max_index(const std::string& file_name, const std::string& column_name,
+                             const TimeRange& tr, IndexEntry& index_entry) {
             std::shared_lock<std::shared_mutex> l(_mutex);
             assert(_index_entries.find(file_name) != _index_entries.end());
             assert(_index_entries[file_name].find(column_name) != _index_entries[file_name].end());
-            return _index_entries[file_name][column_name].get_max_index_entry(tr);
+            return _index_entries[file_name][column_name].get_max_index_entry(tr, index_entry);
         }
 
         void decode_from_file(const Path& vin_dir_path, SchemaSPtr schema) {
@@ -110,49 +110,36 @@ namespace LindormContest {
 
         ~GlobalIndexManager() = default;
 
-        void insert_indexes(const std::string& vin_str, const std::string& file_name, const std::vector<IndexBlock>& index_blocks) {
-            {
-                std::lock_guard<SpinLock> l(_lock);
-                if (_index_managers.find(vin_str) == _index_managers.end()) {
-                    IndexManager index_manager;
-                    _index_managers.emplace(vin_str, std::move(index_manager));
-                }
-            }
-            _index_managers[vin_str].insert_indexes(file_name, index_blocks);
+        void insert_indexes(uint16_t vin_num, const std::string& file_name, const std::vector<IndexBlock>& index_blocks) {
+            _index_managers[vin_num].insert_indexes(file_name, index_blocks);
         }
 
-        void remove_indexes(const std::string& vin_str, const std::string& file_name) {
-            _index_managers[vin_str].remove_indexes(file_name);
+        void remove_indexes(uint16_t vin_num, const std::string& file_name) {
+            _index_managers[vin_num].remove_indexes(file_name);
         }
 
-        void remove_indexes(const std::string& vin_str, const std::vector<std::string>& file_names) {
-            _index_managers[vin_str].remove_indexes(file_names);
+        void remove_indexes(uint16_t vin_num, const std::vector<std::string>& file_names) {
+            _index_managers[vin_num].remove_indexes(file_names);
         }
 
-        void query_indexes(const std::string& vin_str, const std::string& file_name, const std::string& column_name,
+        bool query_indexes(uint16_t vin_num, const std::string& file_name, const std::string& column_name,
                            const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            _index_managers[vin_str].query_indexes(file_name, column_name, tr, index_entries);
+            return _index_managers[vin_num].query_indexes(file_name, column_name, tr, index_entries);
         }
 
-        std::optional<IndexEntry> query_max_index(const std::string& vin_str, const std::string& file_name,
-                                                  const std::string& column_name, const TimeRange& tr) {
-            return _index_managers[vin_str].query_max_index(file_name, column_name, tr);
+        bool query_max_index(uint16_t vin_num, const std::string& file_name,
+                             const std::string& column_name, const TimeRange& tr, IndexEntry& index_entry) {
+            return _index_managers[vin_num].query_max_index(file_name, column_name, tr, index_entry);
         }
 
         void decode_from_file(const Path& root_path, SchemaSPtr schema) {
-            for (auto& entry: std::filesystem::directory_iterator(root_path)) {
-                if (entry.is_directory()) {
-                    std::string vin_str = entry.path().filename();
-                    Path vin_dir_path = root_path / vin_str;
-                    IndexManager index_manager;
-                    index_manager.decode_from_file(vin_dir_path, schema);
-                    _index_managers.emplace(vin_str, std::move(index_manager));
-                }
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                Path vin_dir_path = root_path / std::to_string(vin_num);
+                _index_managers[vin_num].decode_from_file(vin_dir_path, schema);
             }
         }
 
     private:
-        std::unordered_map<std::string, IndexManager> _index_managers;
-        SpinLock _lock;
+        IndexManager _index_managers[VIN_NUM_RANGE];
     };
 }

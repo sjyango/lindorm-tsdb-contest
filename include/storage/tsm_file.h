@@ -136,7 +136,7 @@ namespace LindormContest {
             _index_meta._count++;
         }
 
-        void get_index_entries(const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
+        bool get_index_entries(const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
             size_t start = std::numeric_limits<size_t>::max(), end = _index_entries.size();
             // find lower index (inclusive)
             for (size_t i = 0; i < _index_entries.size(); ++i) {
@@ -145,11 +145,9 @@ namespace LindormContest {
                     break;
                 }
             }
-
             if (start == std::numeric_limits<size_t>::max()) {
-                return;
+                return false;
             }
-
             // find upper index (exclusive)
             for (size_t i = start + 1; i < _index_entries.size(); ++i) {
                 if (!tr.overlap(_index_entries[i].get_time_range())) {
@@ -158,15 +156,17 @@ namespace LindormContest {
                 }
             }
             index_entries.assign(_index_entries.begin() + start, _index_entries.begin() + end);
+            return true;
         }
 
-        std::optional<IndexEntry> get_max_index_entry(const TimeRange& tr) {
+        bool get_max_index_entry(const TimeRange& tr, IndexEntry& index_entry) {
             for (auto it = _index_entries.rbegin(); it != _index_entries.rend(); ++it) {
                 if (tr.overlap(it->get_time_range())) {
-                    return {*it};
+                    index_entry = *it;
+                    return true;
                 }
             }
-            return std::nullopt;
+            return false;
         }
 
         void encode_to(std::string *buf) const {

@@ -17,11 +17,7 @@
 
 namespace LindormContest {
 
-    /// #################### MemMap #####################
-
-    MemMap::MemMap(const std::string& vin_str) : _vin_str(vin_str) {
-        _cache.reserve(MEMMAP_FLUSH_SIZE);
-    }
+    MemMap::MemMap() = default;
 
     MemMap::~MemMap() = default;
 
@@ -111,32 +107,4 @@ namespace LindormContest {
         }
     }
 
-    /// #################### MemMap #####################
-
-    /// ################## ShardMemMap ##################
-
-    // ShardMemMap::ShardMemMap() = default;
-    //
-    // ShardMemMap::~ShardMemMap() = default;
-    //
-    // void ShardMemMap::set_root_path(const Path &root_path) {
-    //     _root_path = root_path;
-    // }
-    //
-    // void ShardMemMap::set_schema(SchemaSPtr schema) {
-    //     _schema = schema;
-    // }
-
-    // void ShardMemMap::append(const Row &row) {
-    //     std::string vin_str(row.vin.vin, VIN_LENGTH);
-    //     {
-    //         std::lock_guard<SpinLock> l(_mutex);
-    //         if (_mem_maps.find(vin_str) == _mem_maps.end()) {
-    //             _mem_maps.emplace(vin_str, std::make_unique<MemMap>(_root_path, _schema, vin_str));
-    //         }
-    //     }
-    //     _mem_maps[vin_str]->append(row);
-    // }
-
-    /// ################## ShardMemMap ##################
 }
