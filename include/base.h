@@ -60,7 +60,7 @@ namespace LindormContest {
     using Path = std::filesystem::path;
     using SchemaSPtr = std::shared_ptr<Schema>;
 
-    static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
+    static constexpr size_t SCHEMA_COLUMN_NUMS = 60;
     static constexpr size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
     static constexpr size_t MEMMAP_FLUSH_SIZE = 180;
 

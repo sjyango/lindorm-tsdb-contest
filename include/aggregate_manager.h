@@ -50,7 +50,7 @@ namespace LindormContest {
             std::vector<std::string> tsm_file_names;
             _get_file_names(tsm_file_names);
             ColumnType type = _schema->columnTypeMap[column_name];
-            T max_value = std::numeric_limits<T>::min();
+            T max_value = std::numeric_limits<T>::lowest();
 
             for (const auto &tsm_file_name: tsm_file_names) {
                 T file_max_value;
@@ -60,7 +60,7 @@ namespace LindormContest {
                 max_value = std::max(max_value, file_max_value);
             }
 
-            if (unlikely(max_value == std::numeric_limits<T>::min())) {
+            if (unlikely(max_value == std::numeric_limits<T>::lowest())) {
                 return;
             }
 
@@ -109,7 +109,8 @@ namespace LindormContest {
             if (!existed) {
                 return false;
             }
-            max_value = _get_max_column_value<T>(tsm_file_path, type, index_entry, _get_value_range(footer._tss, tr, index_entry));
+            auto range = _get_value_range(footer._tss, tr, index_entry);
+            max_value = _get_max_column_value<T>(tsm_file_path, type, index_entry, range);
             return true;
         }
 
@@ -171,7 +172,7 @@ namespace LindormContest {
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
-            T max_value = std::numeric_limits<T>::min();
+            T max_value = std::numeric_limits<T>::lowest();
 
             std::for_each(data_block._column_values.begin() + range.first,
                           data_block._column_values.begin() + range.second,

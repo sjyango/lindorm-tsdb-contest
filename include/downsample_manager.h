@@ -52,13 +52,13 @@ namespace LindormContest {
 
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
                 DownSampleState state = DownSampleState::NO_DATA;
-                T max_value = std::numeric_limits<T>::min();
+                T max_value = std::numeric_limits<T>::lowest();
 
                 // once one tsm has data, the state is HAVE_DATA
                 // if all tsms have no data, the state is NO_DATA
                 // if some tsms have filtered all data, but the rest tsms have no data, the state is FILTER_ALL_DATA
                 for (const auto &tsm_file_name: tsm_file_names) {
-                    T file_max_value = std::numeric_limits<T>::min();
+                    T file_max_value = std::numeric_limits<T>::lowest();
                     DownSampleState file_state = _query_max_from_one_tsm_file<T>(tsm_file_name, sub_tr, column_name,
                                                                       type, column_filter, file_max_value);
                     if (file_state == DownSampleState::HAVE_DATA) {
@@ -245,7 +245,7 @@ namespace LindormContest {
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
-            max_value = std::numeric_limits<T>::min();
+            max_value = std::numeric_limits<T>::lowest();
 
             std::for_each(data_block._column_values.begin() + range.first,
                           data_block._column_values.begin() + range.second,
@@ -262,7 +262,7 @@ namespace LindormContest {
                               max_value = std::max(max_value, val);
                           });
 
-            if (max_value == std::numeric_limits<T>::min()) {
+            if (max_value == std::numeric_limits<T>::lowest()) {
                 return DownSampleState::FILTER_ALL_DATA;
             }
 
