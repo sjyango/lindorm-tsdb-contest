@@ -53,7 +53,7 @@ namespace LindormContest {
             T max_value = std::numeric_limits<T>::lowest();
 
             for (const auto &tsm_file_name: tsm_file_names) {
-                T file_max_value;
+                T file_max_value = std::numeric_limits<T>::lowest();
                 if (!_query_max_from_one_tsm_file<T>(tsm_file_name, tr, column_name, type, file_max_value)) {
                     continue;
                 }
@@ -104,13 +104,20 @@ namespace LindormContest {
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
-            IndexEntry index_entry;
-            bool existed = _index_manager->query_max_index(_vin_num, tsm_file_name, column_name, tr, index_entry);
+            std::vector<IndexEntry> index_entries;
+            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
+
             if (!existed) {
                 return false;
             }
-            auto range = _get_value_range(footer._tss, tr, index_entry);
-            max_value = _get_max_column_value<T>(tsm_file_path, type, index_entry, range);
+
+            std::vector<IndexRange> ranges;
+            _get_value_ranges(footer._tss, tr, index_entries, ranges);
+
+            for (size_t i = 0; i < index_entries.size(); ++i) {
+                max_value = std::max(max_value, _get_max_column_value<T>(tsm_file_path, type, index_entries[i], ranges[i]));
+            }
+
             return true;
         }
 
@@ -127,14 +134,14 @@ namespace LindormContest {
                 return;
             }
 
-            std::vector<std::pair<size_t, size_t>> ranges;
+            std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 sum_value += _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], ranges[i]);
             }
 
-            sum_count += (ranges.back().second - ranges.front().first);
+            sum_count += (ranges.back().global_end_index() - ranges.front().global_start_index());
         }
 
         void _get_file_names(std::vector<std::string>& tsm_file_names) {
@@ -145,20 +152,21 @@ namespace LindormContest {
             }
         }
 
-        std::pair<size_t, size_t> _get_value_range(const std::vector<int64_t>& tss,
-                                                   const TimeRange& tr, const IndexEntry& index_entry) {
-            size_t start = index_entry._min_time_index; // inclusive
-            size_t end = index_entry._max_time_index; // inclusive
+        IndexRange _get_value_range(const std::vector<int64_t>& tss, const TimeRange& tr, const IndexEntry& index_entry) {
+            uint16_t start = index_entry._min_time_index; // inclusive
+            uint16_t end = index_entry._max_time_index; // inclusive
 
             while (tss[start] < tr._start_time) { start++; }
             while (tss[end] >= tr._end_time) { end--; }
 
-            return {start, end + 1};
+            return {static_cast<uint16_t>(start % DATA_BLOCK_ITEM_NUMS),
+                    static_cast<uint16_t>(end % DATA_BLOCK_ITEM_NUMS + 1),
+                    static_cast<uint16_t>(start / DATA_BLOCK_ITEM_NUMS)};
         }
 
         void _get_value_ranges(const std::vector<int64_t>& tss, const TimeRange& tr,
                                const std::vector<IndexEntry>& index_entries,
-                               std::vector<std::pair<size_t, size_t>>& ranges) {
+                               std::vector<IndexRange>& ranges) {
             for (const auto &index_entry: index_entries) {
                 ranges.emplace_back(_get_value_range(tss, tr, index_entry));
             }
@@ -166,16 +174,21 @@ namespace LindormContest {
 
         template <typename T>
         T _get_max_column_value(const Path& tsm_file_path, ColumnType type,
-                                          const IndexEntry& index_entry, const std::pair<size_t, size_t>& range) {
+                                const IndexEntry& index_entry, const IndexRange& range) {
             DataBlock data_block;
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
-            T max_value = std::numeric_limits<T>::lowest();
 
-            std::for_each(data_block._column_values.begin() + range.first,
-                          data_block._column_values.begin() + range.second,
+            if ((range._end_index - range._start_index) == index_entry._count) {
+                return index_entry.get_max<T>();
+            }
+
+            // TODO(SIMD opt)
+            T max_value = std::numeric_limits<T>::lowest();
+            std::for_each(data_block._column_values.begin() + range._start_index,
+                          data_block._column_values.begin() + range._end_index,
                           [&max_value] (const ColumnValue& cv) {
                 T val;
                 if constexpr (std::is_same_v<T, int32_t>) {
@@ -185,27 +198,25 @@ namespace LindormContest {
                 }
                 max_value = std::max(max_value, val);
             });
-
             return max_value;
         }
 
         template <typename T>
         T _get_sum_column_value(const Path& tsm_file_path, ColumnType type,
-                                const IndexEntry& index_entry, const std::pair<size_t, size_t>& range) {
+                                const IndexEntry& index_entry, const IndexRange& range) {
             DataBlock data_block;
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
 
-            if ((range.second - range.first) == index_entry._count) {
+            if ((range._end_index - range._start_index) == index_entry._count) {
                 return index_entry.get_sum<T>();
             }
-
             // TODO(SIMD opt)
             T sum_value = 0;
-            std::for_each(data_block._column_values.begin() + range.first,
-                          data_block._column_values.begin() + range.second,
+            std::for_each(data_block._column_values.begin() + range._start_index,
+                          data_block._column_values.begin() + range._end_index,
                           [&sum_value] (const ColumnValue& cv) {
                 if constexpr (std::is_same_v<T, int64_t>) {
                   int32_t val;

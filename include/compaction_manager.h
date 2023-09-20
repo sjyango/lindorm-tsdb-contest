@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <thread>
+
 #include "base.h"
 #include "struct/Vin.h"
 #include "struct/Schema.h"
@@ -107,8 +109,8 @@ namespace LindormContest {
             for (const auto &input_file: input_files) {
                 for (const auto &column: schema->columnTypeMap) {
                     if (unlikely(_min_heaps.find(column.first) == _min_heaps.cend())) {
-                        std::priority_queue<CompactionRecord, std::vector<CompactionRecord>, CompareFunc> _pq;
-                        _min_heaps.emplace(column.first, std::move(_pq));
+                        std::priority_queue<CompactionRecord, std::vector<CompactionRecord>, CompareFunc> pq;
+                        _min_heaps.emplace(column.first, std::move(pq));
                     }
                     auto ts_iter = input_file._footer._tss.cbegin();
                     auto ts_end_iter = input_file._footer._tss.cend();
@@ -157,22 +159,28 @@ namespace LindormContest {
                     switch (type) {
                         case COLUMN_TYPE_INTEGER: {
                             int64_t int_sum = 0;
+                            int32_t int_max = std::numeric_limits<int32_t>::lowest();
                             for (const auto &v: data_block._column_values) {
                                 int32_t int_value;
                                 v.getIntegerValue(int_value);
                                 int_sum += int_value;
+                                int_max = std::max(int_max, int_value);
                             }
                             index_entry.set_sum(int_sum);
+                            index_entry.set_max(int_max);
                             break;
                         }
                         case COLUMN_TYPE_DOUBLE_FLOAT: {
                             double_t double_sum = 0.0;
+                            double_t double_max = std::numeric_limits<double_t>::lowest();
                             for (const auto &v: data_block._column_values) {
                                 double_t double_value;
                                 v.getDoubleFloatValue(double_value);
                                 double_sum += double_value;
+                                double_max = std::max(double_max, double_value);
                             }
                             index_entry.set_sum(double_sum);
+                            index_entry.set_max(double_max);
                             break;
                         }
                         case COLUMN_TYPE_STRING: {
@@ -206,6 +214,7 @@ namespace LindormContest {
     class GlobalCompactionManager {
     public:
         GlobalCompactionManager(const Path& root_path, GlobalIndexManagerSPtr index_manager) {
+            _thread_pool = std::make_unique<ThreadPool>(std::thread::hardware_concurrency());
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
                 Path vin_dir_path = root_path / std::to_string(vin_num);
                 _compaction_managers[vin_num] = std::make_unique<CompactionManager>(vin_num, vin_dir_path, index_manager);
@@ -218,11 +227,19 @@ namespace LindormContest {
             }
         }
 
-        void level_compaction(uint16_t vin_num, int32_t level = 0) {
-            _compaction_managers[vin_num]->level_compaction(level);
+        static void level_compaction(CompactionManager* compaction_manager, int32_t level = 0) {
+            compaction_manager->level_compaction(level);
+        }
+
+        void level_compaction_all(int32_t level = 0) {
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                _thread_pool->submit(level_compaction, _compaction_managers[vin_num].get(), level);
+            }
+            _thread_pool->shutdown();
         }
 
     private:
+        ThreadPoolUPtr _thread_pool;
         std::unique_ptr<CompactionManager> _compaction_managers[VIN_NUM_RANGE];
     };
 

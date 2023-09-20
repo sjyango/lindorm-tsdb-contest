@@ -27,7 +27,9 @@
 namespace LindormContest {
 
     class ThreadPool;
+
     using ThreadPoolSPtr = std::shared_ptr<ThreadPool>;
+    using ThreadPoolUPtr = std::unique_ptr<ThreadPool>;
 
     class ConcurrentQueue {
     public:
@@ -118,11 +120,15 @@ namespace LindormContest {
                 std::function<void()> func;
                 bool dequeued;
 
-                while (!_thread_pool->_shutdown) {
+                while (true) {
                     {
                         std::unique_lock<std::mutex> lock(_thread_pool->_thread_pool_mutex);
-                        if (_thread_pool->_queue.empty()) {
+                        while (!_thread_pool->_shutdown && _thread_pool->_queue.empty()) {
                             _thread_pool->_thread_pool_cv.wait(lock);
+                        }
+                        if (_thread_pool->_shutdown && _thread_pool->_queue.empty()) {
+                            // If shutdown is requested and the queue is empty, exit the thread.
+                            return;
                         }
                         dequeued = _thread_pool->_queue.dequeue(func);
                     }

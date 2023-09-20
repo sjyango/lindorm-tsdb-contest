@@ -58,7 +58,7 @@ namespace LindormContest {
             std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
-            std::vector<std::pair<size_t, size_t>> ranges;
+            std::vector<IndexRange> ranges;
 
             for (const auto &column_name: requested_columns) {
                 std::vector<ColumnValue> column_values;
@@ -78,9 +78,8 @@ namespace LindormContest {
             }
 
             size_t row_nums = all_column_values.begin()->second.size();
-            size_t ts_start = ranges.front().first;
-            size_t ts_end = ranges.back().second;
-            assert(ts_end - ts_start == row_nums);
+            uint32_t ts_start = ranges.front().global_start_index();
+            uint32_t ts_end = ranges.back().global_end_index();
 
             for (size_t i = 0; i < row_nums; ++i) {
                 Row result_row;
@@ -107,7 +106,7 @@ namespace LindormContest {
 
         void _get_value_ranges(const std::vector<int64_t>& tss, const TimeRange& tr,
                                const std::vector<IndexEntry>& index_entries,
-                               std::vector<std::pair<size_t, size_t>>& ranges) {
+                               std::vector<IndexRange>& ranges) {
             for (const auto &index_entry: index_entries) {
                 size_t start = index_entry._min_time_index; // inclusive
                 size_t end = index_entry._max_time_index; // inclusive
@@ -115,13 +114,13 @@ namespace LindormContest {
                 while (tss[start] < tr._start_time) { start++; }
                 while (tss[end] >= tr._end_time) { end--; }
 
-                ranges.emplace_back(start, end + 1);
+                ranges.emplace_back(start % DATA_BLOCK_ITEM_NUMS, end % DATA_BLOCK_ITEM_NUMS + 1, start / DATA_BLOCK_ITEM_NUMS);
             }
         }
 
         void _get_column_values(const Path& tsm_file_path, ColumnType type,
                                 const std::vector<IndexEntry>& index_entries,
-                                const std::vector<std::pair<size_t, size_t>>& ranges,
+                                const std::vector<IndexRange>& ranges,
                                 std::vector<ColumnValue>& column_values) {
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 DataBlock data_block;
@@ -130,8 +129,8 @@ namespace LindormContest {
                 const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
                 data_block.decode_from(p, type, index_entries[i]._count);
                 column_values.insert(column_values.end(),
-                                     data_block._column_values.begin() + ranges[i].first,
-                                     data_block._column_values.begin() + ranges[i].second);
+                                     data_block._column_values.begin() + ranges[i]._start_index,
+                                     data_block._column_values.begin() + ranges[i]._end_index);
             }
         }
 

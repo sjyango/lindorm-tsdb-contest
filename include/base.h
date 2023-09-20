@@ -61,7 +61,7 @@ namespace LindormContest {
     using SchemaSPtr = std::shared_ptr<Schema>;
 
     static constexpr size_t SCHEMA_COLUMN_NUMS = 60;
-    static constexpr size_t DATA_BLOCK_ITEM_NUMS = 1024; // the size of one block is around 20KB
+    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 180;
     static constexpr size_t MEMMAP_FLUSH_SIZE = 180;
 
     static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;

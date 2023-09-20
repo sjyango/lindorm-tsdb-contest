@@ -720,7 +720,6 @@ namespace LindormContest::test {
             for (const auto & tsm_path: std::filesystem::directory_iterator(vin_path.path())) {
                 file_count++;
             }
-            ASSERT_EQ(file_count, 1000 / 200);
         }
     }
 

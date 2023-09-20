@@ -74,22 +74,28 @@ namespace LindormContest {
                 switch (type) {
                     case COLUMN_TYPE_INTEGER: {
                         int64_t int_sum = 0;
+                        int32_t int_max = std::numeric_limits<int32_t>::lowest();
                         for (const auto &v: data_block._column_values) {
                             int32_t int_value;
                             v.getIntegerValue(int_value);
                             int_sum += int_value;
+                            int_max = std::max(int_max, int_value);
                         }
                         index_entry.set_sum(int_sum);
+                        index_entry.set_max(int_max);
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
                         double_t double_sum = 0.0;
+                        double_t double_max = std::numeric_limits<double_t>::lowest();
                         for (const auto &v: data_block._column_values) {
                             double_t double_value;
                             v.getDoubleFloatValue(double_value);
                             double_sum += double_value;
+                            double_max = std::max(double_max, double_value);
                         }
                         index_entry.set_sum(double_sum);
+                        index_entry.set_max(double_max);
                         break;
                     }
                     case COLUMN_TYPE_STRING: {

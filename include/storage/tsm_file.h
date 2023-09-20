@@ -35,6 +35,7 @@ namespace LindormContest {
         int64_t _min_time; // inclusive
         int64_t _max_time; // inclusive
         char _sum[8]; // int64_t or double_t
+        char _max[8]; // int32_t or double_t
         uint16_t _count;
         uint32_t _offset;
         uint32_t _size;
@@ -49,6 +50,16 @@ namespace LindormContest {
             *reinterpret_cast<T*>(_sum) = sum;
         }
 
+        template <typename T>
+        T get_max() const {
+            return *reinterpret_cast<const T*>(_max);
+        }
+
+        template <typename T>
+        void set_max(T max) {
+            *reinterpret_cast<T*>(_max) = max;
+        }
+
         TimeRange get_time_range() const {
             return {_min_time, _max_time + 1};
         }
@@ -59,6 +70,7 @@ namespace LindormContest {
             put_fixed(buf, _min_time);
             put_fixed(buf, _max_time);
             buf->append(_sum, 8);
+            buf->append(_max, 8);
             put_fixed(buf, _count);
             put_fixed(buf, _offset);
             put_fixed(buf, _size);
@@ -70,6 +82,8 @@ namespace LindormContest {
             _min_time = decode_fixed<int64_t>(buf);
             _max_time = decode_fixed<int64_t>(buf);
             std::memcpy(_sum, buf, 8);
+            buf += 8;
+            std::memcpy(_max, buf, 8);
             buf += 8;
             _count = decode_fixed<uint16_t>(buf);
             _offset = decode_fixed<uint32_t>(buf);

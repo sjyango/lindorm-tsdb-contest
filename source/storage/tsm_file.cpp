@@ -112,7 +112,8 @@ namespace LindormContest {
     void TsmFile::read_from_file(const Path &tsm_file_path) {
         std::string buf;
         // read tsm content from file
-        io::stream_read_string_from_file(tsm_file_path, buf);
+        // io::stream_read_string_from_file(tsm_file_path, buf);
+        io::mmap_read_string_from_file(tsm_file_path, buf);
         // decode tsm file
         decode_from(reinterpret_cast<const uint8_t *>(buf.c_str()), buf.size());
     }

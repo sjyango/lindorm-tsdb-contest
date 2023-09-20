@@ -17,8 +17,8 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
-        _index_manager = std::make_shared<GlobalIndexManager>();
         _thread_pool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
+        _index_manager = std::make_shared<GlobalIndexManager>();
         _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _thread_pool, _get_root_path());
         _latest_manager = std::make_unique<GlobalLatestManager>();
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _index_manager);
@@ -58,6 +58,7 @@ namespace LindormContest {
         _save_schema_to_file();
         _writer_manager->flush_all_sync();
         _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
+        _compaction_manager->level_compaction_all();
         _thread_pool->shutdown();
         return 0;
     }

@@ -47,4 +47,21 @@ namespace LindormContest {
         }
     };
 
+    struct IndexRange {
+        uint16_t _start_index;  // inclusive
+        uint16_t _end_index;    // exclusive
+        uint16_t _block_index;
+
+        IndexRange(uint16_t start_index, uint16_t end_index, uint16_t block_index)
+        : _start_index(start_index), _end_index(end_index), _block_index(block_index) {}
+
+        uint32_t global_start_index() const {
+            return (uint32_t) _block_index * DATA_BLOCK_ITEM_NUMS + _start_index;
+        }
+
+        uint32_t global_end_index() const {
+            return (uint32_t) _block_index * DATA_BLOCK_ITEM_NUMS + _end_index;
+        }
+    };
+
 }

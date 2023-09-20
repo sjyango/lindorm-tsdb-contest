@@ -153,15 +153,31 @@ namespace LindormContest {
             Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
-            IndexEntry index_entry;
-            bool existed = _index_manager->query_max_index(_vin_num, tsm_file_name, column_name, tr, index_entry);
+            std::vector<IndexEntry> index_entries;
+            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
 
             if (!existed) {
                 return DownSampleState::NO_DATA;
             }
 
-            std::pair<size_t, size_t> range = _get_value_range(footer._tss, tr, index_entry);
-            return _get_max_column_value<T>(tsm_file_path, type, index_entry, column_filter, range, max_value);
+            DownSampleState file_state = DownSampleState::NO_DATA;
+            std::vector<IndexRange> ranges;
+            _get_value_ranges(footer._tss, tr, index_entries, ranges);
+
+            for (size_t i = 0; i < index_entries.size(); ++i) {
+                DownSampleState entry_state;
+                T entry_max_value;
+                entry_state = _get_max_column_value<T>(tsm_file_path, type, index_entries[i], column_filter,
+                                                       ranges[i], entry_max_value);
+                if (entry_state == DownSampleState::HAVE_DATA) {
+                    file_state = DownSampleState::HAVE_DATA;
+                    max_value = std::max(max_value, entry_max_value);
+                } else if (file_state == DownSampleState::NO_DATA && entry_state == DownSampleState::FILTER_ALL_DATA) {
+                    file_state = DownSampleState::FILTER_ALL_DATA;
+                }
+            }
+
+            return file_state;
         }
 
         template <typename T>
@@ -179,7 +195,7 @@ namespace LindormContest {
             }
 
             DownSampleState file_state = DownSampleState::NO_DATA;
-            std::vector<std::pair<size_t, size_t>> ranges;
+            std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
@@ -208,34 +224,29 @@ namespace LindormContest {
             }
         }
 
-        std::pair<size_t, size_t> _get_value_range(const std::vector<int64_t>& tss,
-                                                   const TimeRange& tr, const IndexEntry& index_entry) {
-            size_t start = index_entry._min_time_index; // inclusive
-            size_t end = index_entry._max_time_index; // inclusive
+        IndexRange _get_value_range(const std::vector<int64_t>& tss, const TimeRange& tr, const IndexEntry& index_entry) {
+            uint16_t start = index_entry._min_time_index; // inclusive
+            uint16_t end = index_entry._max_time_index; // inclusive
 
             while (tss[start] < tr._start_time) { start++; }
             while (tss[end] >= tr._end_time) { end--; }
 
-            return {start, end + 1};
+            return {static_cast<uint16_t>(start % DATA_BLOCK_ITEM_NUMS),
+                    static_cast<uint16_t>(end % DATA_BLOCK_ITEM_NUMS + 1),
+                    static_cast<uint16_t>(start / DATA_BLOCK_ITEM_NUMS)};
         }
 
         void _get_value_ranges(const std::vector<int64_t>& tss, const TimeRange& tr,
                                const std::vector<IndexEntry>& index_entries,
-                               std::vector<std::pair<size_t, size_t>>& ranges) {
+                               std::vector<IndexRange>& ranges) {
             for (const auto &index_entry: index_entries) {
-                size_t start = index_entry._min_time_index; // inclusive
-                size_t end = index_entry._max_time_index; // inclusive
-
-                while (tss[start] < tr._start_time) { start++; }
-                while (tss[end] >= tr._end_time) { end--; }
-
-                ranges.emplace_back(start, end + 1);
+                ranges.emplace_back(_get_value_range(tss, tr, index_entry));
             }
         }
 
         template <typename T>
         DownSampleState _get_max_column_value(const Path& tsm_file_path, ColumnType type, const IndexEntry& index_entry,
-                                const CompareExpression& column_filter, const std::pair<size_t, size_t>& range, T& max_value) {
+                                const CompareExpression& column_filter, const IndexRange& range, T& max_value) {
             if (index_entry._size == 0 || index_entry._count == 0) {
                 return DownSampleState::NO_DATA;
             }
@@ -247,8 +258,8 @@ namespace LindormContest {
             data_block.decode_from(p, type, index_entry._count);
             max_value = std::numeric_limits<T>::lowest();
 
-            std::for_each(data_block._column_values.begin() + range.first,
-                          data_block._column_values.begin() + range.second,
+            std::for_each(data_block._column_values.begin() + range._start_index,
+                          data_block._column_values.begin() + range._end_index,
                           [&] (const ColumnValue& cv) {
                               if (!column_filter.doCompare(cv)) {
                                   return;
@@ -271,7 +282,7 @@ namespace LindormContest {
 
         template <typename T>
         DownSampleState _get_sum_column_value(const Path& tsm_file_path, ColumnType type, const IndexEntry& index_entry,
-                                              const CompareExpression& column_filter, const std::pair<size_t, size_t>& range,
+                                              const CompareExpression& column_filter, const IndexRange& range,
                                               T& sum_value, size_t& sum_count) {
             if (index_entry._size == 0 || index_entry._count == 0) {
                 return DownSampleState::NO_DATA;
@@ -283,8 +294,8 @@ namespace LindormContest {
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
             data_block.decode_from(p, type, index_entry._count);
 
-            std::for_each(data_block._column_values.begin() + range.first,
-                          data_block._column_values.begin() + range.second,
+            std::for_each(data_block._column_values.begin() + range._start_index,
+                          data_block._column_values.begin() + range._end_index,
                           [&] (const ColumnValue& cv) {
                               if (!column_filter.doCompare(cv)) {
                                   return;

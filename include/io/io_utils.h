@@ -16,6 +16,10 @@
 #pragma once
 
 #include <fstream>
+#include <cstring>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "base.h"
 
@@ -52,13 +56,27 @@ namespace LindormContest::io {
         input_file.close();
     }
 
+    static void mmap_read_string_from_file(const Path& file_path, std::string& buf) {
+    int fd = open(file_path.c_str(), O_RDONLY);
+    if (fd == -1) {
+        throw std::runtime_error("open file failed");
+    }
+    off_t file_size = lseek(fd, 0, SEEK_END);
+    void* file_memory = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (file_memory == MAP_FAILED) {
+        throw std::runtime_error("unable to map file to memory");
+    }
+    const char* file_content = static_cast<const char*>(file_memory);
+    buf.assign(file_content, file_size);
+    munmap(file_memory, file_size);
+    close(fd);
 }
 
 
-// #include <cstring>
-// #include <sys/mman.h>
-// #include <fcntl.h>
-// #include <unistd.h>
+}
+
+
+
 
 // static void mmap_write_string_to_file(const Path& file_path, const std::string& buf) {
 //     int fd = open(file_path.c_str(), O_RDWR | O_CREAT);
@@ -78,22 +96,7 @@ namespace LindormContest::io {
 //     close(fd);
 // }
 
-// static void mmap_read_string_from_file(const Path& file_path, std::string& buf) {
-//     int fd = open(file_path.c_str(), O_RDONLY);
-//     if (fd == -1) {
-//         throw std::runtime_error("open file failed");
-//     }
-//     off_t file_size = lseek(fd, 0, SEEK_END);
-//     void* file_memory = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-//     if (file_memory == MAP_FAILED) {
-//         throw std::runtime_error("unable to map file to memory");
-//     }
-//     const char* file_content = static_cast<const char*>(file_memory);
-//     buf.assign(file_content, file_size);
-//     munmap(file_memory, file_size);
-//     close(fd);
-// }
-//
+
 // static void mmap_read_string_from_file(const Path& file_path, uint32_t offset, uint32_t size, std::string& buf) {
 //     int fd = open(file_path.c_str(), O_RDONLY);
 //     if (fd == -1) {
