@@ -17,14 +17,15 @@ namespace LindormContest {
      */
     TSDBEngineImpl::TSDBEngineImpl(const std::string &dataDirPath)
             : TSDBEngine(dataDirPath) {
-        _thread_pool = std::make_shared<ThreadPool>(std::thread::hardware_concurrency());
+        Path compaction_data_path = _get_root_path() / "compaction";
+        _finish_compaction = std::filesystem::exists(compaction_data_path);
         _index_manager = std::make_shared<GlobalIndexManager>();
-        _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _thread_pool, _get_root_path());
+        _compaction_manager = std::make_shared<GlobalCompactionManager>(_get_root_path(), _index_manager);
+        _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _finish_compaction, _compaction_manager, _get_root_path());
         _latest_manager = std::make_unique<GlobalLatestManager>();
-        _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _index_manager);
-        _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _index_manager);
-        _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _index_manager);
-        _compaction_manager = std::make_unique<GlobalCompactionManager>(_get_root_path(), _index_manager);
+        _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _finish_compaction, _index_manager);
+        _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _finish_compaction, _index_manager);
+        _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _finish_compaction, _index_manager);
     }
 
     TSDBEngineImpl::~TSDBEngineImpl() = default;
@@ -34,9 +35,9 @@ namespace LindormContest {
         if (_schema == nullptr) {
             return 0;
         }
+        assert(_finish_compaction);
         _index_manager->decode_from_file(_get_root_path(), _schema);
         _latest_manager->load_latest_records_from_file(_get_latest_records_path(), _schema);
-        _writer_manager->set_schema(_schema);
         _tr_manager->set_schema(_schema);
         _agg_manager->set_schema(_schema);
         _ds_manager->set_schema(_schema);
@@ -56,10 +57,12 @@ namespace LindormContest {
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _writer_manager->flush_all_sync();
         _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
-        _compaction_manager->level_compaction_all();
-        _thread_pool->shutdown();
+        _writer_manager->finalize_flush_all_sync();
+        _compaction_manager->finalize_compaction();
+        if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
+            std::filesystem::remove_all(_get_root_path() / "no-compaction");
+        }
         return 0;
     }
 
@@ -87,7 +90,9 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _writer_manager->flush_sync(vin_num);
+        if (!_finish_compaction) {
+            _writer_manager->force_flush_sync(vin_num);
+        }
         _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                       trReadReq.requestedColumns, trReadRes);
         return 0;
@@ -99,7 +104,9 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _writer_manager->flush_sync(vin_num);
+        if (!_finish_compaction) {
+            _writer_manager->force_flush_sync(vin_num);
+        }
         _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
@@ -111,7 +118,9 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _writer_manager->flush_sync(vin_num);
+        if (!_finish_compaction) {
+            _writer_manager->force_flush_sync(vin_num);
+        }
         _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
                                        downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                        downsampleReq.columnFilter, downsampleRes);

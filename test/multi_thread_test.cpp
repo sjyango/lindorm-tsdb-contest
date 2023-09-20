@@ -712,15 +712,18 @@ namespace LindormContest::test {
         ASSERT_EQ(0, demo->shutdown());
         INFO_LOG("####################### [demo->shutdown()] finished #######################")
 
-        for (const auto & vin_path : std::filesystem::directory_iterator(table_path)) {
-            if (!vin_path.is_directory()) {
-                continue;
-            }
-            size_t file_count = 0;
-            for (const auto & tsm_path: std::filesystem::directory_iterator(vin_path.path())) {
-                file_count++;
-            }
-        }
+        // for (const auto & vin_path : std::filesystem::directory_iterator(table_path / "compaction")) {
+        //     if (!vin_path.is_directory()) {
+        //         continue;
+        //     }
+        //     size_t file_count = 0;
+        //     for (const auto & tsm_path: std::filesystem::directory_iterator(vin_path.path())) {
+        //         file_count++;
+        //     }
+        //     if (file_count != 1) {
+        //         ASSERT_EQ(file_count, 1);
+        //     }
+        // }
     }
 
     TEST(MultiThreadTest, LatestQueryTest) {

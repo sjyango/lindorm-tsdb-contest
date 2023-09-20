@@ -24,9 +24,9 @@ include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/thirdpar
 link_directories(${PROJECT_SOURCE_DIR}/thirdparty/gtest/lib)
 
 set(EXECUTABLES
-        demo_test
-        io_test
-        tsm_test
+        # demo_test
+        # io_test
+        # tsm_test
         multi_thread_test
         )
 

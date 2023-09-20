@@ -43,18 +43,17 @@ namespace LindormContest {
 
         void query_time_range(const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
-            std::vector<std::string> tsm_file_names;
-            _get_file_names(tsm_file_names);
+            std::vector<Path> tsm_file_paths;
+            _get_file_paths(tsm_file_paths);
 
-            for (const auto &tsm_file_name: tsm_file_names) {
-                _query_from_one_tsm_file(tsm_file_name, tr, requested_columns, trReadRes);
+            for (const auto &tsm_file_path: tsm_file_paths) {
+                _query_from_one_tsm_file(tsm_file_path, tr, requested_columns, trReadRes);
             }
         }
 
     private:
-        void _query_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
+        void _query_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
                                       const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            Path tsm_file_path = _vin_dir_path / tsm_file_name;
             std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
@@ -63,7 +62,7 @@ namespace LindormContest {
             for (const auto &column_name: requested_columns) {
                 std::vector<ColumnValue> column_values;
                 std::vector<IndexEntry> index_entries;
-                bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
+                bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
                 if (!existed) {
                     return;
@@ -96,10 +95,10 @@ namespace LindormContest {
             assert(ts_start == ts_end);
         }
 
-        void _get_file_names(std::vector<std::string>& tsm_file_names) {
+        void _get_file_paths(std::vector<Path>& tsm_file_paths) {
             for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 if (entry.is_regular_file()) {
-                    tsm_file_names.emplace_back(entry.path().filename());
+                    tsm_file_paths.emplace_back(entry.path());
                 }
             }
         }
@@ -146,9 +145,11 @@ namespace LindormContest {
 
     class GlobalTimeRangeManager {
     public:
-        GlobalTimeRangeManager(const Path& root_path, GlobalIndexManagerSPtr index_manager) {
+        GlobalTimeRangeManager(const Path& root_path, bool finish_compaction, GlobalIndexManagerSPtr index_manager) {
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                Path vin_dir_path = root_path / std::to_string(vin_num);
+                Path vin_dir_path = finish_compaction ?
+                        root_path / "compaction" / std::to_string(vin_num)
+                        : root_path / "no-compaction" / std::to_string(vin_num);
                 _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path, index_manager);
             }
         }

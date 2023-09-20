@@ -19,9 +19,10 @@
 
 namespace LindormContest {
 
-    TsmWriter::TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, Path flush_dir_path)
-            : _vin_num(vin_num), _index_manager(index_manager), _flush_pool(flush_pool),
-            _flush_dir_path(std::move(flush_dir_path)), _schema(nullptr), _flush_nums(0) {
+    TsmWriter::TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
+                         GlobalCompactionManagerSPtr compaction_manager, Path flush_dir_path)
+            : _vin_num(vin_num), _index_manager(index_manager), _compaction_manager(compaction_manager),
+            _flush_dir_path(std::move(flush_dir_path)), _schema(nullptr), _flush_nums(0), _compaction_nums(0) {
         _mem_map = std::make_unique<MemMap>();
     }
 
@@ -63,24 +64,29 @@ namespace LindormContest {
         Path tsm_file_path = _flush_dir_path / tsm_file_name;
         flush_mem_map(_mem_map.release(), _vin_num, _index_manager, _schema, tsm_file_path);
         _mem_map = std::make_unique<MemMap>();
-    }
-
-    void TsmWriter::flush_mem_map_async() {
-        assert(_mem_map != nullptr);
-        if (unlikely(_mem_map->empty())) {
-            return;
+        if (_flush_nums % COMPACTION_FILE_NUM == 0) {
+            _compaction_manager->level_compaction_async(_vin_num, _compaction_nums, _flush_nums);
+            _compaction_nums = _flush_nums;
         }
-        std::string tsm_file_name = std::to_string(_flush_nums++) + "-0.tsm";
-        Path tsm_file_path = _flush_dir_path / tsm_file_name;
-        _flush_pool->submit(flush_mem_map, _mem_map.release(), _vin_num, _index_manager, _schema, tsm_file_path);
-        _mem_map = std::make_unique<MemMap>();
     }
 
-    TsmWriterManager::TsmWriterManager(GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, const Path &root_path) {
-        for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-            Path flush_dir_path = root_path / std::to_string(vin_num);
-            std::filesystem::create_directories(flush_dir_path);
-            _tsm_writers[vin_num] = std::make_unique<TsmWriter>(vin_num, index_manager, flush_pool, flush_dir_path);
+    void TsmWriter::finalize_flush_mem_map_sync() {
+        if (!_mem_map->empty()) {
+            std::string tsm_file_name = std::to_string(_flush_nums++) + "-0.tsm";
+            Path tsm_file_path = _flush_dir_path / tsm_file_name;
+            flush_mem_map(_mem_map.release(), _vin_num, _index_manager, _schema, tsm_file_path);
+        }
+        _compaction_manager->level_compaction_async(_vin_num, _compaction_nums, _flush_nums);
+    }
+
+    TsmWriterManager::TsmWriterManager(GlobalIndexManagerSPtr index_manager, bool finish_compaction,
+                                       GlobalCompactionManagerSPtr compaction_manager, const Path &root_path) {
+        if (!finish_compaction) {
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                Path flush_dir_path = root_path / "no-compaction" / std::to_string(vin_num);
+                std::filesystem::create_directories(flush_dir_path);
+                _tsm_writers[vin_num] = std::make_unique<TsmWriter>(vin_num, index_manager, compaction_manager, flush_dir_path);
+            }
         }
     }
 
@@ -97,19 +103,14 @@ namespace LindormContest {
         _tsm_writers[vin_num]->append(row);
     }
 
-    void TsmWriterManager::flush_sync(uint16_t vin_num) {
+    void TsmWriterManager::force_flush_sync(uint16_t vin_num) {
         _tsm_writers[vin_num]->flush_mem_map_sync(true);
     }
 
-    void TsmWriterManager::flush_all_sync() {
+    void TsmWriterManager::finalize_flush_all_sync() {
         for (auto &tsm_writer: _tsm_writers) {
-            tsm_writer->flush_mem_map_sync(true);
+            tsm_writer->finalize_flush_mem_map_sync();
         }
     }
 
-    void TsmWriterManager::flush_all_async() {
-        for (auto &tsm_writer: _tsm_writers) {
-            tsm_writer->flush_mem_map_async();
-        }
-    }
 }

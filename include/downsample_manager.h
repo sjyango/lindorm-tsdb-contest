@@ -46,8 +46,8 @@ namespace LindormContest {
         template <typename T>
         void query_time_range_max_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::vector<std::string> tsm_file_names;
-            _get_file_names(tsm_file_names);
+            std::vector<Path> tsm_file_paths;
+            _get_file_paths(tsm_file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
 
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -57,9 +57,9 @@ namespace LindormContest {
                 // once one tsm has data, the state is HAVE_DATA
                 // if all tsms have no data, the state is NO_DATA
                 // if some tsms have filtered all data, but the rest tsms have no data, the state is FILTER_ALL_DATA
-                for (const auto &tsm_file_name: tsm_file_names) {
+                for (const auto &tsm_file_path: tsm_file_paths) {
                     T file_max_value = std::numeric_limits<T>::lowest();
-                    DownSampleState file_state = _query_max_from_one_tsm_file<T>(tsm_file_name, sub_tr, column_name,
+                    DownSampleState file_state = _query_max_from_one_tsm_file<T>(tsm_file_path, sub_tr, column_name,
                                                                       type, column_filter, file_max_value);
                     if (file_state == DownSampleState::HAVE_DATA) {
                         state = DownSampleState::HAVE_DATA;
@@ -93,8 +93,8 @@ namespace LindormContest {
         template <typename T>
         void query_time_range_avg_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::vector<std::string> tsm_file_names;
-            _get_file_names(tsm_file_names);
+            std::vector<Path> tsm_file_paths;
+            _get_file_paths(tsm_file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
 
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -106,10 +106,10 @@ namespace LindormContest {
                 // once one tsm has data, the state is HAVE_DATA
                 // if all tsms have no data, the state is NO_DATA
                 // if some tsms have filtered all data, but the rest tsms have no data, the state is FILTER_ALL_DATA
-                for (const auto &tsm_file_name: tsm_file_names) {
+                for (const auto &tsm_file_path: tsm_file_paths) {
                     T file_sum_value = 0;
                     size_t file_sum_count = 0;
-                    DownSampleState file_state = _query_avg_from_one_tsm_file<T>(tsm_file_name, sub_tr, column_name, type,
+                    DownSampleState file_state = _query_avg_from_one_tsm_file<T>(tsm_file_path, sub_tr, column_name, type,
                                                                                  column_filter, file_sum_value, file_sum_count);
                     if (file_state == DownSampleState::HAVE_DATA) {
                         state = DownSampleState::HAVE_DATA;
@@ -147,14 +147,13 @@ namespace LindormContest {
         };
 
         template <typename T>
-        DownSampleState _query_max_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
+        DownSampleState _query_max_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
                                           const std::string& column_name, ColumnType type,
                                           const CompareExpression& column_filter, T& max_value) {
-            Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
             std::vector<IndexEntry> index_entries;
-            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
+            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
             if (!existed) {
                 return DownSampleState::NO_DATA;
@@ -181,14 +180,13 @@ namespace LindormContest {
         }
 
         template <typename T>
-        DownSampleState _query_avg_from_one_tsm_file(const std::string& tsm_file_name, const TimeRange& tr,
+        DownSampleState _query_avg_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
                                             const std::string& column_name, ColumnType type,
                                             const CompareExpression& column_filter, T& sum_value, size_t& sum_count) {
-            Path tsm_file_path = _vin_dir_path / tsm_file_name;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
             std::vector<IndexEntry> index_entries;
-            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_name, column_name, tr, index_entries);
+            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
             if (!existed) {
                 return DownSampleState::NO_DATA;
@@ -216,10 +214,10 @@ namespace LindormContest {
             return file_state;
         }
 
-        void _get_file_names(std::vector<std::string>& tsm_file_names) {
+        void _get_file_paths(std::vector<Path>& tsm_file_paths) {
             for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 if (entry.is_regular_file()) {
-                    tsm_file_names.emplace_back(entry.path().filename());
+                    tsm_file_paths.emplace_back(entry.path());
                 }
             }
         }
@@ -331,10 +329,12 @@ namespace LindormContest {
 
     class GlobalDownSampleManager {
     public:
-        GlobalDownSampleManager(const Path& root_path, GlobalIndexManagerSPtr index_manager)
+        GlobalDownSampleManager(const Path& root_path, bool finish_compaction, GlobalIndexManagerSPtr index_manager)
         : _schema(nullptr) {
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                Path vin_dir_path = root_path / std::to_string(vin_num);
+                Path vin_dir_path = finish_compaction ?
+                                    root_path / "compaction" / std::to_string(vin_num)
+                                    : root_path / "no-compaction" / std::to_string(vin_num);
                 _ds_managers[vin_num] = std::make_unique<DownSampleManager>(vin_num, vin_dir_path, index_manager);
             }
         }

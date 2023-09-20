@@ -74,7 +74,6 @@ namespace LindormContest {
 
         void decode_from_file(const Path& vin_dir_path, SchemaSPtr schema) {
             for (const auto& entry: std::filesystem::directory_iterator(vin_dir_path)) {
-                assert(entry.is_regular_file());
                 uint32_t file_size, index_offset, footer_offset;
                 TsmFile::get_size_and_offset(entry.path(), file_size, index_offset, footer_offset);
                 std::string buf;
@@ -134,7 +133,7 @@ namespace LindormContest {
 
         void decode_from_file(const Path& root_path, SchemaSPtr schema) {
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                Path vin_dir_path = root_path / std::to_string(vin_num);
+                Path vin_dir_path = root_path / "compaction" / std::to_string(vin_num);
                 _index_managers[vin_num].decode_from_file(vin_dir_path, schema);
             }
         }

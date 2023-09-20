@@ -16,6 +16,8 @@
 #pragma once
 
 #include <thread>
+#include <atomic>
+#include <sstream>
 
 #include "base.h"
 #include "struct/Vin.h"
@@ -24,14 +26,22 @@
 
 namespace LindormContest {
 
+    // multi thread safe
     class CompactionManager {
     public:
         CompactionManager() = default;
 
-        CompactionManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
-        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
+        CompactionManager(uint16_t vin_num, const Path& root_path, GlobalIndexManagerSPtr index_manager)
+                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr),
+                  _index_manager(index_manager), _compaction_nums(0) {
+            Path vin_dir_path = _root_path / "compaction" / std::to_string(_vin_num);
+            std::filesystem::create_directories(vin_dir_path);
+        }
 
-        CompactionManager(CompactionManager&& other) = default;
+        CompactionManager(CompactionManager &&other)
+                : _vin_num(other._vin_num), _root_path(std::move(other._root_path)),
+                  _schema(other._schema), _index_manager(other._index_manager),
+                  _compaction_nums(other._compaction_nums.load()) {}
 
         ~CompactionManager() = default;
 
@@ -39,19 +49,23 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        void level_compaction(int32_t level) {
-            std::vector<std::string> tsm_file_names;
+        void level_compaction(uint16_t start_file, uint16_t end_file, int32_t level) {
             std::vector<TsmFile> input_tsm_files;
-            _get_file_names(level, tsm_file_names);
-            _get_tsm_files(tsm_file_names, input_tsm_files);
+
+            for (uint16_t i = start_file; i < end_file; ++i) {
+                std::string tsm_file_name = std::to_string(i) + "-" + std::to_string(level) + ".tsm";
+                Path tsm_file_path = _root_path / "no-compaction" / std::to_string(_vin_num) / tsm_file_name;
+                assert(std::filesystem::exists(tsm_file_path));
+                TsmFile tsm_file;
+                tsm_file.read_from_file(tsm_file_path);
+                input_tsm_files.emplace_back(std::move(tsm_file));
+            }
+
             TsmFile output_tsm_file;
             _multiway_compaction(_schema, input_tsm_files, output_tsm_file);
-            std::string output_tsm_file_name = std::to_string(_compaction_nums) + "-" + std::to_string(level + 1) + ".tsm";
-            Path output_tsm_file_path = _vin_dir_path / output_tsm_file_name;
-            _index_manager->insert_indexes(_vin_num, output_tsm_file_name, output_tsm_file._index_blocks);
+            std::string output_tsm_file_name = std::to_string(_compaction_nums++) + "-" + std::to_string(level + 1) + ".tsm";
+            Path output_tsm_file_path = _root_path / "compaction" / std::to_string(_vin_num) / output_tsm_file_name;
             output_tsm_file.write_to_file(output_tsm_file_path);
-            _delete_tsm_files(tsm_file_names);
-            _compaction_nums++;
         }
 
     private:
@@ -59,51 +73,16 @@ namespace LindormContest {
             int64_t _ts;
             ColumnValue _value;
 
-            CompactionRecord(int64_t ts, const ColumnValue& value) : _ts(ts), _value(value) {}
+            CompactionRecord(int64_t ts, const ColumnValue &value) : _ts(ts), _value(value) {}
         };
 
         struct CompareFunc {
-            bool operator()(const CompactionRecord& lhs, const CompactionRecord& rhs) {
+            bool operator()(const CompactionRecord &lhs, const CompactionRecord &rhs) {
                 return lhs._ts > rhs._ts; // min heap
             }
         };
 
-        void _get_file_names(int32_t level, std::vector<std::string>& tsm_file_names) {
-            std::string suffix = std::to_string(level) + ".tsm";
-            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
-                if (entry.is_regular_file() && _path_ends_with(entry.path().filename(), suffix)) {
-                    tsm_file_names.emplace_back(entry.path().filename());
-                }
-            }
-        }
-
-        inline bool _path_ends_with(const std::string& path, const std::string& suffix) {
-            if (path.length() < suffix.length()) {
-                return false;
-            }
-            return path.compare(path.length() - suffix.length(), suffix.length(), suffix) == 0;
-        }
-
-        void _delete_tsm_files(const std::vector<std::string>& tsm_file_names) {
-            for (const auto &tsm_file_name: tsm_file_names) {
-                Path tsm_file_path = _vin_dir_path / tsm_file_name;
-                if (std::filesystem::exists(tsm_file_path)) {
-                    std::filesystem::remove(tsm_file_path);
-                    _index_manager->remove_indexes(_vin_num, tsm_file_name);
-                }
-            }
-        }
-
-        void _get_tsm_files(const std::vector<std::string>& tsm_file_names, std::vector<TsmFile>& tsm_files) {
-            for (const auto &tsm_file_name: tsm_file_names) {
-                Path tsm_file_path = _vin_dir_path / tsm_file_name;
-                TsmFile tsm_file;
-                tsm_file.read_from_file(tsm_file_path);
-                tsm_files.emplace_back(std::move(tsm_file));
-            }
-        }
-
-        static void _multiway_compaction(SchemaSPtr schema, const std::vector<TsmFile>& input_files, TsmFile& output_file) {
+        static void _multiway_compaction(SchemaSPtr schema, const std::vector<TsmFile> &input_files, TsmFile &output_file) {
             std::map<std::string, std::priority_queue<CompactionRecord, std::vector<CompactionRecord>, CompareFunc>> _min_heaps;
 
             for (const auto &input_file: input_files) {
@@ -134,7 +113,7 @@ namespace LindormContest {
                 std::vector<ColumnValue> column_value;
 
                 while (!min_heap.empty()) {
-                    const auto& record = min_heap.top();
+                    const auto &record = min_heap.top();
                     column_value.emplace_back(record._value);
                     if (unlikely(!has_collect_tss)) {
                         tss.emplace_back(record._ts);
@@ -194,30 +173,30 @@ namespace LindormContest {
                     index_block.add_entry(index_entry); // one index entry corresponds one data block
                 }
 
-                output_file._index_blocks.emplace_back(std::move(index_block)); // one column data corresponds one index block
+                output_file._index_blocks.emplace_back(
+                        std::move(index_block)); // one column data corresponds one index block
             }
 
             output_file._footer._tss = std::move(tss);
         }
 
         uint16_t _vin_num;
-        Path _vin_dir_path;
+        Path _root_path;
         SchemaSPtr _schema;
         GlobalIndexManagerSPtr _index_manager;
-        uint16_t _compaction_nums;
+        std::atomic<uint16_t> _compaction_nums;
     };
 
     class GlobalCompactionManager;
 
-    using GlobalCompactionManagerUPtr = std::unique_ptr<GlobalCompactionManager>;
+    using GlobalCompactionManagerSPtr = std::shared_ptr<GlobalCompactionManager>;
 
     class GlobalCompactionManager {
     public:
-        GlobalCompactionManager(const Path& root_path, GlobalIndexManagerSPtr index_manager) {
+        GlobalCompactionManager(const Path &root_path, GlobalIndexManagerSPtr index_manager) {
             _thread_pool = std::make_unique<ThreadPool>(std::thread::hardware_concurrency());
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                Path vin_dir_path = root_path / std::to_string(vin_num);
-                _compaction_managers[vin_num] = std::make_unique<CompactionManager>(vin_num, vin_dir_path, index_manager);
+                _compaction_managers[vin_num] = std::make_unique<CompactionManager>(vin_num, root_path, index_manager);
             }
         }
 
@@ -227,15 +206,17 @@ namespace LindormContest {
             }
         }
 
-        static void level_compaction(CompactionManager* compaction_manager, int32_t level = 0) {
-            compaction_manager->level_compaction(level);
+        void level_compaction_async(uint16_t vin_num, uint16_t start_file, uint16_t end_file, int32_t level = 0) {
+            _thread_pool->submit(do_level_compaction, _compaction_managers[vin_num].get(), start_file, end_file, level);
         }
 
-        void level_compaction_all(int32_t level = 0) {
-            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                _thread_pool->submit(level_compaction, _compaction_managers[vin_num].get(), level);
-            }
+        static void do_level_compaction(CompactionManager *compaction_manager, uint16_t start_file, uint16_t end_file, int32_t level = 0) {
+            compaction_manager->level_compaction(start_file, end_file, level);
+        }
+
+        void finalize_compaction() {
             _thread_pool->shutdown();
+            assert(_thread_pool->empty());
         }
 
     private:

@@ -19,6 +19,7 @@
 #include <atomic>
 
 #include "index_manager.h"
+#include "compaction_manager.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
@@ -31,7 +32,8 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, Path flush_dir_path);
+        TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
+                  GlobalCompactionManagerSPtr compaction_manager, Path flush_dir_path);
 
         ~TsmWriter();
 
@@ -41,7 +43,7 @@ namespace LindormContest {
 
         void flush_mem_map_sync(bool forced = false);
 
-        void flush_mem_map_async();
+        void finalize_flush_mem_map_sync();
 
         static void flush_mem_map(MemMap *mem_map, uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
                                   SchemaSPtr schema, Path tsm_file_path);
@@ -49,12 +51,13 @@ namespace LindormContest {
     private:
         uint16_t _vin_num;
         std::mutex _mutex;
-        ThreadPoolSPtr _flush_pool;
         Path _flush_dir_path;
         SchemaSPtr _schema;
         std::unique_ptr<MemMap> _mem_map;
-        std::atomic<uint16_t> _flush_nums;
+        uint16_t _flush_nums;
+        uint16_t _compaction_nums;
         GlobalIndexManagerSPtr _index_manager;
+        GlobalCompactionManagerSPtr _compaction_manager;
     };
 
     class TsmWriterManager;
@@ -63,7 +66,8 @@ namespace LindormContest {
 
     class TsmWriterManager {
     public:
-        TsmWriterManager(GlobalIndexManagerSPtr index_manager, ThreadPoolSPtr flush_pool, const Path& root_path);
+        TsmWriterManager(GlobalIndexManagerSPtr index_manager, bool finish_compaction,
+                         GlobalCompactionManagerSPtr compaction_manager, const Path& root_path);
 
         ~TsmWriterManager();
 
@@ -71,11 +75,9 @@ namespace LindormContest {
 
         void append(const Row& row);
 
-        void flush_sync(uint16_t vin_num);
+        void force_flush_sync(uint16_t vin_num);
 
-        void flush_all_sync();
-
-        void flush_all_async();
+        void finalize_flush_all_sync();
 
     private:
         std::unique_ptr<TsmWriter> _tsm_writers[VIN_NUM_RANGE]; // vin_num -> tsm writer

@@ -31,7 +31,8 @@ namespace LindormContest {
     static constexpr uint16_t VIN_NUM_RANGE = 5000;
     static constexpr uint16_t MIN_VIN_NUM = 3981;
     static constexpr uint16_t MAX_VIN_NUM = 8980;
-    static constexpr uint16_t INVALID_VIN_NUM = 5000;
+    static constexpr uint16_t INVALID_VIN_NUM = std::numeric_limits<uint16_t>::max();
+    static constexpr uint16_t COMPACTION_FILE_NUM = 10;
 
     // 0 ~ 4999
     inline uint16_t decode_vin(const Vin& vin) {

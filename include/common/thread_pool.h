@@ -111,6 +111,10 @@ namespace LindormContest {
             _thread_pool_cv.notify_one();
         }
 
+        bool empty() {
+            return _queue.empty();
+        }
+
     private:
         class ThreadWorker {
         public:

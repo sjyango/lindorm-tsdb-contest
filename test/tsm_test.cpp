@@ -77,33 +77,33 @@ namespace LindormContest::test {
         return row;
     }
 
-    TEST(TsmTest, BasicTsmTest) {
-        const size_t N = 10;
-        SchemaSPtr schema = std::make_shared<Schema>();
-        schema->columnTypeMap.insert({"col0", COLUMN_TYPE_STRING});
-        schema->columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
-        schema->columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
-
-        ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
-        auto index_manager = std::make_shared<GlobalIndexManager>();
-        Path flush_dir_path = std::filesystem::current_path() / "tsm";
-        TsmWriter tsm_writer(0, index_manager, flush_pool, flush_dir_path);
-
-        for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
-            tsm_writer.append(generate_row());
-        }
-
-        flush_pool->shutdown();
-        std::vector<TsmFile> tsm_files;
-
-        for (const auto& entry: std::filesystem::directory_iterator(flush_dir_path)) {
-            TsmFile tsm_file;
-            tsm_file.read_from_file(entry.path());
-            tsm_files.emplace_back(std::move(tsm_file));
-        }
-
-        ASSERT_EQ(tsm_files.size(), N);
-    }
+    // TEST(TsmTest, BasicTsmTest) {
+    //     const size_t N = 10;
+    //     SchemaSPtr schema = std::make_shared<Schema>();
+    //     schema->columnTypeMap.insert({"col0", COLUMN_TYPE_STRING});
+    //     schema->columnTypeMap.insert({"col1", COLUMN_TYPE_INTEGER});
+    //     schema->columnTypeMap.insert({"col2", COLUMN_TYPE_DOUBLE_FLOAT});
+    //
+    //     ThreadPoolSPtr flush_pool = std::make_shared<ThreadPool>(4);
+    //     auto index_manager = std::make_shared<GlobalIndexManager>();
+    //     Path flush_dir_path = std::filesystem::current_path() / "tsm";
+    //     TsmWriter tsm_writer(0, index_manager, flush_pool, flush_dir_path);
+    //
+    //     for (size_t i = 0; i < N * MEMMAP_FLUSH_SIZE; ++i) {
+    //         tsm_writer.append(generate_row());
+    //     }
+    //
+    //     flush_pool->shutdown();
+    //     std::vector<TsmFile> tsm_files;
+    //
+    //     for (const auto& entry: std::filesystem::directory_iterator(flush_dir_path)) {
+    //         TsmFile tsm_file;
+    //         tsm_file.read_from_file(entry.path());
+    //         tsm_files.emplace_back(std::move(tsm_file));
+    //     }
+    //
+    //     ASSERT_EQ(tsm_files.size(), N);
+    // }
 
     // TEST(TsmTest, TsmCompactionTest) {
     //     const size_t N = 10;

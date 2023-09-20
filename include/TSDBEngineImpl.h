@@ -59,15 +59,15 @@ namespace LindormContest {
 
         void _load_schema_from_file();
 
+        bool _finish_compaction;
         SchemaSPtr _schema;
-        ThreadPoolSPtr _thread_pool;
         TsmWriterManagerUPtr _writer_manager;
         GlobalIndexManagerSPtr _index_manager;
         GlobalLatestManagerUPtr _latest_manager;
         GlobalTimeRangeManagerUPtr _tr_manager;
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
-        GlobalCompactionManagerUPtr _compaction_manager;
+        GlobalCompactionManagerSPtr _compaction_manager;
     }; // End class TSDBEngineImpl.
 
 }
