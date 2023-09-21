@@ -22,7 +22,8 @@
 #include <thread>
 #include <vector>
 
-#include "common/spinlock.h"
+#include "spinlock.h"
+#include "concurrentqueue.h"
 
 namespace LindormContest {
 
@@ -31,41 +32,7 @@ namespace LindormContest {
     using ThreadPoolSPtr = std::shared_ptr<ThreadPool>;
     using ThreadPoolUPtr = std::unique_ptr<ThreadPool>;
 
-    class ConcurrentQueue {
-    public:
-        ConcurrentQueue() = default;
-
-        ~ConcurrentQueue() = default;
-
-        bool empty() {
-            std::lock_guard<SpinLock> l(_lock);
-            return _queue.empty();
-        }
-
-        int size() {
-            std::lock_guard<SpinLock> l(_lock);
-            return _queue.size();
-        }
-
-        void enqueue(std::function<void()>&& task) {
-            std::lock_guard<SpinLock> l(_lock);
-            _queue.push_back(std::move(task));
-        }
-
-        bool dequeue(std::function<void()>& task) {
-            std::lock_guard<SpinLock> l(_lock);
-            if (_queue.empty()) {
-                return false;
-            }
-            task = std::move(_queue.front());
-            _queue.pop_front();
-            return true;
-        }
-
-    private:
-        SpinLock _lock;
-        std::deque<std::function<void()>> _queue;
-    };
+    using ConcurrentQueue = moodycamel::ConcurrentQueue<std::function<void()>>;
 
     class ThreadPool {
     public:
@@ -112,7 +79,7 @@ namespace LindormContest {
         }
 
         bool empty() {
-            return _queue.empty();
+            return _queue.size_approx() == 0;
         }
 
     private:
@@ -127,14 +94,14 @@ namespace LindormContest {
                 while (true) {
                     {
                         std::unique_lock<std::mutex> lock(_thread_pool->_thread_pool_mutex);
-                        while (!_thread_pool->_shutdown && _thread_pool->_queue.empty()) {
+                        while (!_thread_pool->_shutdown && _thread_pool->_queue.size_approx() == 0) {
                             _thread_pool->_thread_pool_cv.wait(lock);
                         }
-                        if (_thread_pool->_shutdown && _thread_pool->_queue.empty()) {
+                        if (_thread_pool->_shutdown && _thread_pool->_queue.size_approx() == 0) {
                             // If shutdown is requested and the queue is empty, exit the thread.
                             return;
                         }
-                        dequeued = _thread_pool->_queue.dequeue(func);
+                        dequeued = _thread_pool->_queue.try_dequeue(func);
                     }
                     if (dequeued) {
                         func();
@@ -153,3 +120,39 @@ namespace LindormContest {
         std::condition_variable _thread_pool_cv;
     };
 }
+
+// class ConcurrentQueue {
+// public:
+//     ConcurrentQueue() = default;
+//
+//     ~ConcurrentQueue() = default;
+//
+//     bool empty() {
+//         std::lock_guard<SpinLock> l(_lock);
+//         return _queue.empty();
+//     }
+//
+//     int size() {
+//         std::lock_guard<SpinLock> l(_lock);
+//         return _queue.size();
+//     }
+//
+//     void enqueue(std::function<void()>&& task) {
+//         std::lock_guard<SpinLock> l(_lock);
+//         _queue.push_back(std::move(task));
+//     }
+//
+//     bool dequeue(std::function<void()>& task) {
+//         std::lock_guard<SpinLock> l(_lock);
+//         if (_queue.empty()) {
+//             return false;
+//         }
+//         task = std::move(_queue.front());
+//         _queue.pop_front();
+//         return true;
+//     }
+//
+// private:
+//     SpinLock _lock;
+//     std::deque<std::function<void()>> _queue;
+// };

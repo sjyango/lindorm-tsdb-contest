@@ -15,21 +15,17 @@
 
 #include <gtest/gtest.h>
 
-#include "common/coding.h"
+#include "common/concurrentqueue.h"
 
 namespace LindormContest::test {
+
     TEST(DemoTest, DemoTest) {
-        std::vector<int64_t> tss {12345, 12346, 12347, 12348, 12349};
-        std::string buf1;
-        std::string buf2;
-        buf1.append(reinterpret_cast<const char *>(tss.data()), tss.size() * sizeof(int64_t));
+        moodycamel::ConcurrentQueue<int> q;
+        q.enqueue(25);
 
-        for (const auto &ts: tss) {
-            put_fixed(&buf2, ts);
-        }
-
-        ASSERT_EQ(buf1, buf2);
-
-
+        int item;
+        bool found = q.try_dequeue(item);
+        assert(found && item == 25);
     }
+
 }
