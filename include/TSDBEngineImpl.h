@@ -15,7 +15,6 @@
 #include "aggregate_manager.h"
 #include "downsample_manager.h"
 #include "compaction_manager.h"
-#include "storage/memmap.h"
 #include "storage/tsm_writer.h"
 
 namespace LindormContest {

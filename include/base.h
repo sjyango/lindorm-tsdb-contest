@@ -27,12 +27,11 @@ namespace LindormContest {
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 
-    static const std::string VIN_PREFIX = "LSVNV2182E024";
+    static const std::string VIN_PREFIX = "LSVNV2182E054";
     static constexpr uint16_t VIN_NUM_RANGE = 5000;
-    static constexpr uint16_t MIN_VIN_NUM = 3981;
-    static constexpr uint16_t MAX_VIN_NUM = 8980;
+    static constexpr uint16_t MIN_VIN_NUM = 1654;
+    static constexpr uint16_t MAX_VIN_NUM = MIN_VIN_NUM + VIN_NUM_RANGE;
     static constexpr uint16_t INVALID_VIN_NUM = std::numeric_limits<uint16_t>::max();
-    static constexpr uint16_t COMPACTION_FILE_NUM = 10;
 
     // 0 ~ 4999
     inline uint16_t decode_vin(const Vin& vin) {
@@ -43,7 +42,7 @@ namespace LindormContest {
             }
             vin_num = vin_num * 10 + (vin.vin[13 + i] - '0');
         }
-        if (likely(vin_num >= MIN_VIN_NUM && vin_num <= MAX_VIN_NUM)) {
+        if (likely(vin_num >= MIN_VIN_NUM && vin_num < MAX_VIN_NUM)) {
             return vin_num - MIN_VIN_NUM;
         } else {
             return INVALID_VIN_NUM;
@@ -61,9 +60,10 @@ namespace LindormContest {
     using Path = std::filesystem::path;
     using SchemaSPtr = std::shared_ptr<Schema>;
 
-    static constexpr size_t SCHEMA_COLUMN_NUMS = 3;
+    static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 180;
-    static constexpr size_t MEMMAP_FLUSH_SIZE = 180;
+    static constexpr uint16_t FILE_FLUSH_SIZE = 900;
+    static constexpr uint16_t COMPACTION_FILE_NUM = 4;
 
     static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;
     static const double_t DOUBLE_NAN = *(double_t*)(&LONG_DOUBLE_NAN);

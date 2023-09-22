@@ -24,7 +24,6 @@
 #include "common/coding.h"
 #include "common/thread_pool.h"
 #include "common/spinlock.h"
-#include "storage/memmap.h"
 #include "storage/tsm_file.h"
 #include "compression/compressor.h"
 
@@ -33,29 +32,29 @@ namespace LindormContest {
     class TsmWriter {
     public:
         TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
-                  GlobalCompactionManagerSPtr compaction_manager, Path flush_dir_path);
+                  GlobalCompactionManagerSPtr compaction_manager, const Path& flush_dir_path);
 
         ~TsmWriter();
 
         void set_schema(SchemaSPtr schema);
 
+        void open_flush_stream();
+
+        void close_flush_stream();
+
         void append(const Row& row);
 
-        void flush_mem_map_sync(bool forced = false);
-
-        void finalize_flush_mem_map_sync();
-
-        static void flush_mem_map(MemMap *mem_map, uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
-                                  SchemaSPtr schema, Path tsm_file_path);
+        void finalize_close_flush_stream();
 
     private:
         uint16_t _vin_num;
         std::mutex _mutex;
         Path _flush_dir_path;
         SchemaSPtr _schema;
-        std::unique_ptr<MemMap> _mem_map;
         uint16_t _flush_nums;
+        uint16_t _file_nums;
         uint16_t _compaction_nums;
+        std::unique_ptr<std::ofstream> _output_file;
         GlobalIndexManagerSPtr _index_manager;
         GlobalCompactionManagerSPtr _compaction_manager;
     };
@@ -75,12 +74,10 @@ namespace LindormContest {
 
         void append(const Row& row);
 
-        void force_flush_sync(uint16_t vin_num);
-
-        void finalize_flush_all_sync();
+        void finalize_close_flush_stream();
 
     private:
-        std::unique_ptr<TsmWriter> _tsm_writers[VIN_NUM_RANGE]; // vin_num -> tsm writer
+        std::unique_ptr<TsmWriter> _tsm_writers[VIN_NUM_RANGE];
     };
 
 }

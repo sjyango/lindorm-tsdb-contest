@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "base.h"
+#include "struct/Row.h"
 
 namespace LindormContest::io {
 
@@ -57,22 +58,72 @@ namespace LindormContest::io {
     }
 
     static void mmap_read_string_from_file(const Path& file_path, std::string& buf) {
-    int fd = open(file_path.c_str(), O_RDONLY);
-    if (fd == -1) {
-        throw std::runtime_error("open file failed");
+        int fd = open(file_path.c_str(), O_RDONLY);
+        if (fd == -1) {
+            throw std::runtime_error("open file failed");
+        }
+        off_t file_size = lseek(fd, 0, SEEK_END);
+        void* file_memory = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (file_memory == MAP_FAILED) {
+            throw std::runtime_error("unable to map file to memory");
+        }
+        const char* file_content = static_cast<const char*>(file_memory);
+        buf.assign(file_content, file_size);
+        munmap(file_memory, file_size);
+        close(fd);
     }
-    off_t file_size = lseek(fd, 0, SEEK_END);
-    void* file_memory = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (file_memory == MAP_FAILED) {
-        throw std::runtime_error("unable to map file to memory");
+
+    static void write_row_to_file(std::ofstream &out, SchemaSPtr schema, const Row &row, bool vin_include) {
+        if (vin_include) {
+            out.write((const char *) row.vin.vin, VIN_LENGTH);
+        }
+        out.write((const char *) &row.timestamp, sizeof(int64_t));
+
+        for (const auto &[column_name, column_type] : schema->columnTypeMap) {
+            const ColumnValue &column_value = row.columns.at(column_name);
+            int32_t raw_size = column_value.getRawDataSize();
+            out.write(column_value.columnData, raw_size);
+        }
     }
-    const char* file_content = static_cast<const char*>(file_memory);
-    buf.assign(file_content, file_size);
-    munmap(file_memory, file_size);
-    close(fd);
-}
 
+    static void read_row_from_file(std::ifstream &in, SchemaSPtr schema, bool vin_include, Row& row) {
+        if (vin_include) {
+            in.read((char *) row.vin.vin, VIN_LENGTH);
+        }
+        in.read((char *) &row.timestamp, sizeof(int64_t));
 
+        for (const auto &[column_name, column_type] : schema->columnTypeMap) {
+            switch (column_type) {
+                case COLUMN_TYPE_INTEGER: {
+                    int32_t int_value;
+                    in.read((char *) &int_value, sizeof(int32_t));
+                    ColumnValue column_value(int_value);
+                    row.columns.emplace(column_name, std::move(column_value));
+                    break;
+                }
+                case COLUMN_TYPE_DOUBLE_FLOAT: {
+                    double_t double_value;
+                    in.read((char *) &double_value, sizeof(double_t));
+                    ColumnValue column_value(double_value);
+                    row.columns.emplace(column_name, std::move(column_value));
+                    break;
+                }
+                case COLUMN_TYPE_STRING: {
+                    int32_t str_length;
+                    in.read((char *) &str_length, sizeof(int32_t));
+                    char *str_buf = new char[str_length];
+                    in.read(str_buf, str_length);
+                    ColumnValue column_value(str_buf, str_length);
+                    row.columns.emplace(column_name, std::move(column_value));
+                    delete[]str_buf;
+                    break;
+                }
+                default: {
+                    throw std::runtime_error("Undefined column type, this is not expected");
+                }
+            }
+        }
+    }
 }
 
 

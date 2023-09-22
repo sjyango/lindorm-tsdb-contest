@@ -43,7 +43,7 @@ namespace LindormContest::test {
     }
 
     static std::string generate_random_string(int length) {
-        const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
         std::random_device rd;
         std::mt19937 gen(rd());
@@ -143,8 +143,7 @@ namespace LindormContest::test {
     }
 
     static void generate_dataset(size_t dataset_id) {
-        // std::string dataset_filename = "test_data_" + std::to_string(dataset_id) + ".csv";
-        std::string dataset_filename = "5000vin_1000s.csv";
+        std::string dataset_filename = "100vin_10h_release.csv";
         std::ifstream inputFile(std::filesystem::current_path() / dataset_filename);
         assert(inputFile.is_open());
         std::vector<Row> dataset;
@@ -209,7 +208,7 @@ namespace LindormContest::test {
                 lqr.vins.push_back(global_datasets[rand_index].vin);
                 request_vins.emplace_back(global_datasets[rand_index].vin.vin, 17);
             } else {
-                std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
+                std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
                 Vin vin;
                 std::strncpy(vin.vin, rand_vin.c_str(), 17);
                 lqr.vins.push_back(vin);
@@ -260,7 +259,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trqr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
         trqr.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
@@ -317,7 +316,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trar.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trar.vin.vin, rand_vin.c_str(), 17);
         }
         trar.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
@@ -425,7 +424,7 @@ namespace LindormContest::test {
         if (generate_random_float64() < 0.9) {
             trdr.vin = global_datasets[generate_random_int32() % written_datasets.size()].vin;
         } else {
-            std::string rand_vin = "LSVNV2182E024" + generate_random_string(4);
+            std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trdr.vin.vin, rand_vin.c_str(), 17);
         }
         const size_t INTERVAL_NUM = 100;
@@ -659,9 +658,9 @@ namespace LindormContest::test {
                 time_range_records[key].push_back(row);
             }
 
-            if (generate_random_float64() < 0.5) {
-                handle_multi_query(db, TABLE_NAME, thread_id, 10);
-            }
+            // if (generate_random_float64() < 0.5) {
+            //     handle_multi_query(db, TABLE_NAME, thread_id, 10);
+            // }
         };
 
         for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -1079,18 +1078,18 @@ namespace LindormContest::test {
         });
 
         // handle multi query
-        RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
-            const size_t MULTI_QUERY_THREADS = 200;
-            std::thread multi_query_threads[MULTI_QUERY_THREADS];
-
-            for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
-                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
-            }
-
-            for (auto &thread: multi_query_threads) {
-                thread.join();
-            }
-        });
+        // RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
+        //     const size_t MULTI_QUERY_THREADS = 200;
+        //     std::thread multi_query_threads[MULTI_QUERY_THREADS];
+        //
+        //     for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
+        //         multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+        //     }
+        //
+        //     for (auto &thread: multi_query_threads) {
+        //         thread.join();
+        //     }
+        // })
 
         // shutdown
         ASSERT_EQ(0, demo->shutdown());

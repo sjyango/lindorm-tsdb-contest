@@ -26,6 +26,7 @@
 #include "struct/ColumnValue.h"
 #include "common/coding.h"
 #include "common/spinlock.h"
+#include "io/io_utils.h"
 
 namespace LindormContest {
 
@@ -70,7 +71,7 @@ namespace LindormContest {
             }
 
             for (const auto & latest_record: _latest_records) {
-                append_row_to_file(output_file, schema, latest_record);
+                io::write_row_to_file(output_file, schema, latest_record, true);
             }
 
             output_file.flush();
@@ -89,63 +90,13 @@ namespace LindormContest {
             }
 
             for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
-                Row row = read_row_from_stream(input_file, schema);
+                Row row;
+                io::read_row_from_file(input_file, schema, true, row);
                 uint16_t vin_num = decode_vin(row.vin);
                 _latest_records[vin_num] = row;
             }
 
             input_file.close();
-        }
-
-        void append_row_to_file(std::ofstream &fout, SchemaSPtr schema, const Row &row) {
-            fout.write((const char *) row.vin.vin, VIN_LENGTH);
-            fout.write((const char *) &row.timestamp, sizeof(int64_t));
-
-            for (const auto &[column_name, column_type] : schema->columnTypeMap) {
-                const ColumnValue &column_value = row.columns.at(column_name);
-                int32_t rawSize = column_value.getRawDataSize();
-                fout.write(column_value.columnData, rawSize);
-            }
-        }
-
-        Row read_row_from_stream(std::ifstream &fin, SchemaSPtr schema) {
-            Row row;
-            fin.read((char *) row.vin.vin, VIN_LENGTH);
-            fin.read((char *) &row.timestamp, sizeof(int64_t));
-
-            for (const auto &[column_name, column_type] : schema->columnTypeMap) {
-                switch (column_type) {
-                    case COLUMN_TYPE_INTEGER: {
-                        int32_t int_value;
-                        fin.read((char *) &int_value, sizeof(int32_t));
-                        ColumnValue column_value(int_value);
-                        row.columns.emplace(column_name, std::move(column_value));
-                        break;
-                    }
-                    case COLUMN_TYPE_DOUBLE_FLOAT: {
-                        double_t double_value;
-                        fin.read((char *) &double_value, sizeof(double_t));
-                        ColumnValue column_value(double_value);
-                        row.columns.emplace(column_name, std::move(column_value));
-                        break;
-                    }
-                    case COLUMN_TYPE_STRING: {
-                        int32_t str_length;
-                        fin.read((char *) &str_length, sizeof(int32_t));
-                        char *str_buf = new char[str_length];
-                        fin.read(str_buf, str_length);
-                        ColumnValue column_value(str_buf, str_length);
-                        row.columns.emplace(column_name, std::move(column_value));
-                        delete[]str_buf;
-                        break;
-                    }
-                    default: {
-                        throw std::runtime_error("Undefined column type, this is not expected");
-                    }
-                }
-            }
-
-            return row;
         }
 
     private:
