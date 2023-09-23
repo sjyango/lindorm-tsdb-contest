@@ -31,7 +31,7 @@ namespace LindormContest {
     // RELEASE: 1654 ~ 6654 LSVNV2182E054
 
     static const std::string VIN_PREFIX = "LSVNV2182E054";
-    static constexpr uint16_t VIN_NUM_RANGE = 5000;
+    static constexpr uint16_t VIN_NUM_RANGE = 100;
     static constexpr uint16_t MIN_VIN_NUM = 1654;
     static constexpr uint16_t MAX_VIN_NUM = MIN_VIN_NUM + VIN_NUM_RANGE;
     static constexpr uint16_t INVALID_VIN_NUM = std::numeric_limits<uint16_t>::max();
@@ -63,7 +63,7 @@ namespace LindormContest {
     using Path = std::filesystem::path;
     using SchemaSPtr = std::shared_ptr<Schema>;
 
-    static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
+    static constexpr uint16_t SCHEMA_COLUMN_NUMS = 3;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 180;
     static constexpr uint16_t FILE_FLUSH_SIZE = 900;
     static constexpr uint16_t COMPACTION_FILE_NUM = 4;

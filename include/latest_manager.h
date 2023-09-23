@@ -43,25 +43,27 @@ namespace LindormContest {
 
         void add_latest(const Row& row) {
             uint16_t vin_num = decode_vin(row.vin);
-            std::unique_lock<std::shared_mutex> l(_latest_mutexes[vin_num]);
+            std::lock_guard<std::mutex> l(_latest_mutexes[vin_num]);
             if (row.timestamp > _latest_records[vin_num].timestamp) {
                 _latest_records[vin_num] = row;
             }
         }
 
-        Row get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns) {
+        bool get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
             Row latest_row;
             {
-                std::shared_lock<std::shared_mutex> l(_latest_mutexes[vin_num]);
+                std::lock_guard<std::mutex> l(_latest_mutexes[vin_num]);
                 latest_row = _latest_records[vin_num];
             }
-            Row result_row;
+            if (latest_row.timestamp == 0) {
+                return false;
+            }
             result_row.vin = vin;
             result_row.timestamp = latest_row.timestamp;
             for (const auto& requested_column : requested_columns) {
                 result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
             }
-            return result_row;
+            return true;
         }
 
         void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) {
@@ -101,6 +103,6 @@ namespace LindormContest {
 
     private:
         Row _latest_records[VIN_NUM_RANGE];
-        std::shared_mutex _latest_mutexes[VIN_NUM_RANGE];
+        std::mutex _latest_mutexes[VIN_NUM_RANGE];
     };
 }

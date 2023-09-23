@@ -19,9 +19,8 @@
 
 namespace LindormContest {
 
-    TsmWriter::TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
-                         GlobalCompactionManagerSPtr compaction_manager, const Path& flush_dir_path)
-            : _vin_num(vin_num), _index_manager(index_manager), _compaction_manager(compaction_manager),
+    TsmWriter::TsmWriter(uint16_t vin_num, const Path& flush_dir_path, GlobalCompactionManagerSPtr compaction_manager)
+            : _vin_num(vin_num), _compaction_manager(compaction_manager),
             _flush_dir_path(flush_dir_path), _schema(nullptr),
             _flush_nums(0), _file_nums(0), _compaction_nums(0) {
         open_flush_stream();
@@ -72,14 +71,11 @@ namespace LindormContest {
         _compaction_manager->level_compaction_async(_vin_num, _compaction_nums, ++_file_nums);
     }
 
-    TsmWriterManager::TsmWriterManager(GlobalIndexManagerSPtr index_manager, bool finish_compaction,
-                                       GlobalCompactionManagerSPtr compaction_manager, const Path &root_path) {
-        if (!finish_compaction) {
-            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                Path flush_dir_path = root_path / "no-compaction" / std::to_string(vin_num);
-                std::filesystem::create_directories(flush_dir_path);
-                _tsm_writers[vin_num] = std::make_unique<TsmWriter>(vin_num, index_manager, compaction_manager, flush_dir_path);
-            }
+    TsmWriterManager::TsmWriterManager(const Path &root_path, GlobalCompactionManagerSPtr compaction_manager) {
+        for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+            Path flush_dir_path = root_path / "no-compaction" / std::to_string(vin_num);
+            std::filesystem::create_directories(flush_dir_path);
+            _tsm_writers[vin_num] = std::make_unique<TsmWriter>(vin_num, flush_dir_path, compaction_manager);
         }
     }
 

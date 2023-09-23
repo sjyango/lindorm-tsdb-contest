@@ -19,9 +19,11 @@ namespace LindormContest {
             : TSDBEngine(dataDirPath) {
         Path compaction_data_path = _get_root_path() / "compaction";
         _finish_compaction = std::filesystem::exists(compaction_data_path);
+        _compaction_manager = std::make_shared<GlobalCompactionManager>(_get_root_path());
+        if (!_finish_compaction) {
+            _writer_manager = std::make_unique<TsmWriterManager>(_get_root_path(), _compaction_manager);
+        }
         _index_manager = std::make_shared<GlobalIndexManager>();
-        _compaction_manager = std::make_shared<GlobalCompactionManager>(_get_root_path(), _index_manager);
-        _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _finish_compaction, _compaction_manager, _get_root_path());
         _latest_manager = std::make_unique<GlobalLatestManager>();
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _finish_compaction, _index_manager);
         _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _finish_compaction, _index_manager);
@@ -80,7 +82,10 @@ namespace LindormContest {
             if (unlikely(vin_num == INVALID_VIN_NUM)) {
                 continue;
             }
-            pReadRes.emplace_back(std::move(_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns)));
+            Row result_row;
+            if (_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns, result_row)) {
+                pReadRes.emplace_back(std::move(result_row));
+            }
         }
         return 0;
     }

@@ -31,8 +31,7 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
-                  GlobalCompactionManagerSPtr compaction_manager, const Path& flush_dir_path);
+        TsmWriter(uint16_t vin_num, const Path& flush_dir_path, GlobalCompactionManagerSPtr compaction_manager);
 
         ~TsmWriter();
 
@@ -55,7 +54,6 @@ namespace LindormContest {
         uint16_t _file_nums;
         uint16_t _compaction_nums;
         std::unique_ptr<std::ofstream> _output_file;
-        GlobalIndexManagerSPtr _index_manager;
         GlobalCompactionManagerSPtr _compaction_manager;
     };
 
@@ -65,8 +63,7 @@ namespace LindormContest {
 
     class TsmWriterManager {
     public:
-        TsmWriterManager(GlobalIndexManagerSPtr index_manager, bool finish_compaction,
-                         GlobalCompactionManagerSPtr compaction_manager, const Path& root_path);
+        TsmWriterManager(const Path& root_path, GlobalCompactionManagerSPtr compaction_manager);
 
         ~TsmWriterManager();
 

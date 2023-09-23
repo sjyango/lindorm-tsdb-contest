@@ -87,6 +87,9 @@ namespace LindormContest::io {
     }
 
     static void read_row_from_file(std::ifstream &in, SchemaSPtr schema, bool vin_include, Row& row) {
+        if (in.eof()) {
+            return;
+        }
         if (vin_include) {
             in.read((char *) row.vin.vin, VIN_LENGTH);
         }

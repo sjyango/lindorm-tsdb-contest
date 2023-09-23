@@ -32,17 +32,15 @@ namespace LindormContest {
     public:
         CompactionManager() = default;
 
-        CompactionManager(uint16_t vin_num, const Path& root_path, GlobalIndexManagerSPtr index_manager)
-                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr),
-                  _index_manager(index_manager), _compaction_nums(0) {
+        CompactionManager(uint16_t vin_num, const Path& root_path)
+                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr), _compaction_nums(0) {
             Path vin_dir_path = _root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(vin_dir_path);
         }
 
         CompactionManager(CompactionManager &&other)
                 : _vin_num(other._vin_num), _root_path(std::move(other._root_path)),
-                  _schema(other._schema), _index_manager(other._index_manager),
-                  _compaction_nums(other._compaction_nums.load()) {}
+                  _schema(other._schema), _compaction_nums(other._compaction_nums.load()) {}
 
         ~CompactionManager() = default;
 
@@ -155,7 +153,6 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _root_path;
         SchemaSPtr _schema;
-        GlobalIndexManagerSPtr _index_manager;
         std::atomic<uint16_t> _compaction_nums;
     };
 
@@ -165,10 +162,10 @@ namespace LindormContest {
 
     class GlobalCompactionManager {
     public:
-        GlobalCompactionManager(const Path &root_path, GlobalIndexManagerSPtr index_manager) {
+        GlobalCompactionManager(const Path &root_path) {
             _thread_pool = std::make_unique<ThreadPool>(std::thread::hardware_concurrency());
             for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
-                _compaction_managers[vin_num] = std::make_unique<CompactionManager>(vin_num, root_path, index_manager);
+                _compaction_managers[vin_num] = std::make_unique<CompactionManager>(vin_num, root_path);
             }
         }
 
