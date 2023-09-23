@@ -142,7 +142,7 @@ namespace LindormContest::test {
         return res;
     }
 
-    static void generate_dataset(size_t dataset_id) {
+    static void generate_dataset() {
         std::string dataset_filename = "100vin_10h_release.csv";
         std::ifstream inputFile(std::filesystem::current_path() / dataset_filename);
         assert(inputFile.is_open());
@@ -658,9 +658,9 @@ namespace LindormContest::test {
                 time_range_records[key].push_back(row);
             }
 
-            // if (generate_random_float64() < 0.5) {
-            //     handle_multi_query(db, TABLE_NAME, thread_id, 10);
-            // }
+            if (generate_random_float64() < 0.5) {
+                handle_multi_query(db, TABLE_NAME, thread_id, 10);
+            }
         };
 
         for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -682,7 +682,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -710,19 +710,6 @@ namespace LindormContest::test {
         // shutdown
         ASSERT_EQ(0, demo->shutdown());
         INFO_LOG("####################### [demo->shutdown()] finished #######################")
-
-        // for (const auto & vin_path : std::filesystem::directory_iterator(table_path / "compaction")) {
-        //     if (!vin_path.is_directory()) {
-        //         continue;
-        //     }
-        //     size_t file_count = 0;
-        //     for (const auto & tsm_path: std::filesystem::directory_iterator(vin_path.path())) {
-        //         file_count++;
-        //     }
-        //     if (file_count != 1) {
-        //         ASSERT_EQ(file_count, 1);
-        //     }
-        // }
     }
 
     TEST(MultiThreadTest, LatestQueryTest) {
@@ -735,7 +722,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -813,7 +800,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -892,7 +879,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -971,7 +958,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -1050,7 +1037,7 @@ namespace LindormContest::test {
         std::thread read_file_threads[READ_FILE_THREADS];
 
         for (size_t i = 0; i < READ_FILE_THREADS; ++i) {
-            read_file_threads[i] = std::thread(generate_dataset, i);
+            read_file_threads[i] = std::thread(generate_dataset);
         }
 
         for (auto &thread: read_file_threads) {
@@ -1078,18 +1065,18 @@ namespace LindormContest::test {
         });
 
         // handle multi query
-        // RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
-        //     const size_t MULTI_QUERY_THREADS = 200;
-        //     std::thread multi_query_threads[MULTI_QUERY_THREADS];
-        //
-        //     for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
-        //         multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
-        //     }
-        //
-        //     for (auto &thread: multi_query_threads) {
-        //         thread.join();
-        //     }
-        // })
+        RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
+            const size_t MULTI_QUERY_THREADS = 200;
+            std::thread multi_query_threads[MULTI_QUERY_THREADS];
+
+            for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+            }
+
+            for (auto &thread: multi_query_threads) {
+                thread.join();
+            }
+        })
 
         // shutdown
         ASSERT_EQ(0, demo->shutdown());

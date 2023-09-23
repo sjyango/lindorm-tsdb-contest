@@ -30,8 +30,10 @@ namespace LindormContest {
     public:
         TimeRangeManager() = default;
 
-        TimeRangeManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
-        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
+        TimeRangeManager(uint16_t vin_num, const Path& vin_dir_path,
+                         bool finish_compaction, GlobalIndexManagerSPtr index_manager)
+        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _finish_compaction(finish_compaction),
+        _schema(nullptr), _index_manager(index_manager) {}
 
         TimeRangeManager(TimeRangeManager&& other) = default;
 
@@ -43,11 +45,15 @@ namespace LindormContest {
 
         void query_time_range(const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
-            std::vector<Path> tsm_file_paths;
-            _get_file_paths(tsm_file_paths);
+            std::vector<Path> file_paths;
+            _get_file_paths(file_paths);
 
-            for (const auto &tsm_file_path: tsm_file_paths) {
-                _query_from_one_tsm_file(tsm_file_path, tr, requested_columns, trReadRes);
+            for (const auto &file_path: file_paths) {
+                if (_finish_compaction) {
+                    _query_from_one_tsm_file(file_path, tr, requested_columns, trReadRes);
+                } else {
+                    _query_from_one_flush_file(file_path, tr, requested_columns, trReadRes);
+                }
             }
         }
 
@@ -95,10 +101,33 @@ namespace LindormContest {
             assert(ts_start == ts_end);
         }
 
-        void _get_file_paths(std::vector<Path>& tsm_file_paths) {
+        void _query_from_one_flush_file(const Path& flush_file_path, const TimeRange& tr,
+                                        const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
+            std::ifstream input_file;
+            input_file.open(flush_file_path, std::ios::in | std::ios::binary);
+            assert(input_file.is_open() && input_file.good());
+
+            for (uint16_t i = 0; i < FILE_FLUSH_SIZE && !input_file.eof(); ++i) {
+                Row row;
+                io::read_row_from_file(input_file, _schema, false, row);
+                if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
+                    Row result_row;
+                    result_row.vin = encode_vin(_vin_num);
+                    result_row.timestamp = row.timestamp;
+                    for (const auto &requestedColumn: requested_columns) {
+                        result_row.columns.emplace(requestedColumn, row.columns.at(requestedColumn));
+                    }
+                    trReadRes.emplace_back(std::move(result_row));
+                }
+            }
+
+            input_file.close();
+        }
+
+        void _get_file_paths(std::vector<Path>& file_paths) {
             for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 if (entry.is_regular_file()) {
-                    tsm_file_paths.emplace_back(entry.path());
+                    file_paths.emplace_back(entry.path());
                 }
             }
         }
@@ -136,6 +165,7 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _vin_dir_path;
         SchemaSPtr _schema;
+        bool _finish_compaction;
         GlobalIndexManagerSPtr _index_manager;
     };
 
@@ -150,7 +180,8 @@ namespace LindormContest {
                 Path vin_dir_path = finish_compaction ?
                         root_path / "compaction" / std::to_string(vin_num)
                         : root_path / "no-compaction" / std::to_string(vin_num);
-                _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path, index_manager);
+                _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path,
+                                                                           finish_compaction, index_manager);
             }
         }
 

@@ -27,6 +27,9 @@ namespace LindormContest {
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 
+    // DEBUG:   3981 ~ 8981 LSVNV2182E024
+    // RELEASE: 1654 ~ 6654 LSVNV2182E054
+
     static const std::string VIN_PREFIX = "LSVNV2182E054";
     static constexpr uint16_t VIN_NUM_RANGE = 5000;
     static constexpr uint16_t MIN_VIN_NUM = 1654;
