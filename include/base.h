@@ -65,7 +65,7 @@ namespace LindormContest {
 
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 180;
-    static constexpr uint16_t FILE_FLUSH_SIZE = 900;
+    static constexpr uint16_t FILE_FLUSH_SIZE = 850;
     static constexpr uint16_t COMPACTION_FILE_NUM = 4;
 
     static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;

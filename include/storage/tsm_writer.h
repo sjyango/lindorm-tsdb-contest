@@ -48,7 +48,6 @@ namespace LindormContest {
 
     private:
         uint16_t _vin_num;
-        std::mutex _mutex;
         Path _flush_dir_path;
         SchemaSPtr _schema;
         uint16_t _flush_nums;

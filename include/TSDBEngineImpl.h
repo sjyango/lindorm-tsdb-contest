@@ -67,6 +67,7 @@ namespace LindormContest {
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
         GlobalCompactionManagerSPtr _compaction_manager;
+        std::shared_mutex _mutexes[VIN_NUM_RANGE];
     }; // End class TSDBEngineImpl.
 
 }

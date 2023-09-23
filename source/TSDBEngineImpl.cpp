@@ -32,6 +32,8 @@ namespace LindormContest {
 
     int TSDBEngineImpl::connect() {
         _load_schema_from_file();
+        Path compaction_data_path = _get_root_path() / "compaction";
+        _finish_compaction = std::filesystem::exists(compaction_data_path);
         if (_schema == nullptr) {
             return 0;
         }
@@ -69,7 +71,11 @@ namespace LindormContest {
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
             _latest_manager->add_latest(row);
-            _writer_manager->append(row);
+            uint16_t vin_num = decode_vin(row.vin);
+            {
+                std::unique_lock<std::shared_mutex> l(_mutexes[vin_num]);
+                _writer_manager->append(row);
+            }
         }
         return 0;
     }
@@ -80,6 +86,7 @@ namespace LindormContest {
             if (unlikely(vin_num == INVALID_VIN_NUM)) {
                 continue;
             }
+            INFO_LOG("executeLatestQuery vin:%s",vin.vin)
             pReadRes.emplace_back(std::move(_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns)));
         }
         return 0;
@@ -90,8 +97,14 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
-                                      trReadReq.requestedColumns, trReadRes);
+        INFO_LOG("executeTimeRangeQuery begin vin:%s",trReadReq.vin.vin)
+        {
+            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
+            _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound,
+                                          trReadReq.timeUpperBound, trReadReq.requestedColumns,
+                                          trReadRes);
+        }
+        INFO_LOG("executeTimeRangeQuery after")
         return 0;
     }
 
@@ -100,8 +113,13 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
-                                      aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
+        {
+            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
+            _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound,
+                                          aggregationReq.timeUpperBound, aggregationReq.columnName,
+                                          aggregationReq.aggregator, aggregationRes);
+        }
+        INFO_LOG("executeAggregateQuery")
         return 0;
     }
 
@@ -110,9 +128,14 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
-                                       downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
-                                       downsampleReq.columnFilter, downsampleRes);
+        {
+            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
+            _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound,
+                                           downsampleReq.timeUpperBound, downsampleReq.interval,
+                                           downsampleReq.columnName, downsampleReq.aggregator,
+                                           downsampleReq.columnFilter, downsampleRes);
+        }
+        INFO_LOG("executeDownsampleQuery")
         return 0;
     }
 

@@ -45,6 +45,7 @@ namespace LindormContest {
         _output_file->flush();
         _output_file->close();
         _output_file = nullptr;
+        _flush_nums = 0;
         if (++_file_nums % COMPACTION_FILE_NUM == 0) {
             _compaction_manager->level_compaction_async(_vin_num, _compaction_nums, _file_nums);
             _compaction_nums = _file_nums;
@@ -52,7 +53,6 @@ namespace LindormContest {
     }
 
     void TsmWriter::append(const Row& row) {
-        std::lock_guard<std::mutex> l(_mutex);
         if (unlikely(_output_file == nullptr)) {
             open_flush_stream();
         }

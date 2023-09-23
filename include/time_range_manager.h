@@ -50,8 +50,10 @@ namespace LindormContest {
 
             for (const auto &file_path: file_paths) {
                 if (_finish_compaction) {
+                    INFO_LOG("executeTimeRangeQuery phase2")
                     _query_from_one_tsm_file(file_path, tr, requested_columns, trReadRes);
                 } else {
+                    INFO_LOG("executeTimeRangeQuery phase1")
                     _query_from_one_flush_file(file_path, tr, requested_columns, trReadRes);
                 }
             }
@@ -106,13 +108,16 @@ namespace LindormContest {
             std::ifstream input_file;
             input_file.open(flush_file_path, std::ios::in | std::ios::binary);
             assert(input_file.is_open() && input_file.good());
-
+            INFO_LOG("executeTimeRangeQuery_query_from_one_flush_file")
             for (uint16_t i = 0; i < FILE_FLUSH_SIZE && !input_file.eof(); ++i) {
                 Row row;
                 io::read_row_from_file(input_file, _schema, false, row);
+                INFO_LOG("executeTimeRangeQuery %d %s %ld",i,row.vin.vin,row.timestamp)
                 if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
                     Row result_row;
+                    INFO_LOG("executeTimeRangeQuery_successful")
                     result_row.vin = encode_vin(_vin_num);
+                    INFO_LOG("executeTimeRangeQuery_successful %s",result_row.vin.vin)
                     result_row.timestamp = row.timestamp;
                     for (const auto &requestedColumn: requested_columns) {
                         result_row.columns.emplace(requestedColumn, row.columns.at(requestedColumn));
@@ -196,6 +201,7 @@ namespace LindormContest {
         void query_time_range(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                               const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
+            INFO_LOG("executeTimeRangeQuery_query low:%ld,high:%ld",time_lower_inclusive,time_upper_exclusive)
             _tr_managers[vin_num]->query_time_range(tr, requested_columns, trReadRes);
         }
 

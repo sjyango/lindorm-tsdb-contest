@@ -20,7 +20,7 @@ set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -fPIC -g -fopenmp -lstdc++fs")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -fopenmp -lstdc++fs")
 
 set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=address -DADDRESS_SANITIZER")
 

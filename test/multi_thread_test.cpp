@@ -143,7 +143,7 @@ namespace LindormContest::test {
     }
 
     static void generate_dataset() {
-        std::string dataset_filename = "100vin_10h_release.csv";
+        std::string dataset_filename = "10vin_10h.csv";
         std::ifstream inputFile(std::filesystem::current_path() / dataset_filename);
         assert(inputFile.is_open());
         std::vector<Row> dataset;
