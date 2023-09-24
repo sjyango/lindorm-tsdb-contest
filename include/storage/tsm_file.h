@@ -214,40 +214,117 @@ namespace LindormContest {
 
         ~DataBlock() = default;
 
-        void encode_to(std::string *buf) const {
-            for (const auto &val: _column_values) {
-                buf->append(val.columnData, val.getRawDataSize());
+        void encode_to_compress(ColumnType type, std::string *buf) const {
+            std::string uncompress_buf;
+
+            for (const auto &column_value: _column_values) {
+                uncompress_buf.append(column_value.columnData, column_value.getRawDataSize());
             }
+
+            const char* uncompress_data = uncompress_buf.c_str();
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size;
+
+            switch (type) {
+                case COLUMN_TYPE_INTEGER:
+                    compress_size = compression::compress_int32(uncompress_data, uncompress_size, compress_data.get());
+                    break;
+                case COLUMN_TYPE_DOUBLE_FLOAT:
+                    compress_size = compression::compress_float(uncompress_data, uncompress_size, compress_data.get());
+                    break;
+                case COLUMN_TYPE_STRING:
+                    compress_size = compression::compress_string(uncompress_data, uncompress_size, compress_data.get());
+                    break;
+                default:
+                    break;
+            }
+
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
         }
 
-        void decode_from(const uint8_t *&buf, ColumnType type, uint16_t count) {
+        void decode_from_decompress(const char* buf, ColumnType type, uint16_t count) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+
             switch (type) {
                 case COLUMN_TYPE_INTEGER: {
+                    assert(uncompress_size / sizeof(int32_t) == count);
+                    char* start_ptr = compression::decompress_int32(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+                    int32_t* int_ptr = reinterpret_cast<int32_t*>(start_ptr);
                     for (uint16_t i = 0; i < count; ++i) {
-                        int32_t int_value = decode_fixed<int32_t>(buf);
-                        _column_values.emplace_back(int_value);
+                        _column_values.emplace_back(int_ptr[i]);
                     }
                     break;
                 }
                 case COLUMN_TYPE_DOUBLE_FLOAT: {
+                    assert(uncompress_size / sizeof(double_t) == count);
+                    char* start_ptr = compression::decompress_float(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+                    double_t* double_ptr = reinterpret_cast<double_t*>(start_ptr);
                     for (uint16_t i = 0; i < count; ++i) {
-                        double_t double_value = decode_fixed<double_t>(buf);
-                        _column_values.emplace_back(double_value);
+                        _column_values.emplace_back(double_ptr[i]);
                     }
                     break;
                 }
                 case COLUMN_TYPE_STRING: {
-                    for (uint16_t i = 0; i < count; ++i) {
-                        int32_t str_length = decode_fixed<int32_t>(buf);
-                        _column_values.emplace_back((const char *) buf, str_length);
-                        buf += str_length;
+                    compression::decompress_string(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+                    size_t str_offset = 0;
+                    uint16_t str_count = 0;
+                    while (str_offset != uncompress_size) {
+                        int32_t str_length = *reinterpret_cast<int32_t*>(uncompress_data.get() + str_offset);
+                        str_offset += sizeof(int32_t);
+                        _column_values.emplace_back(uncompress_data.get() + str_offset, str_length);
+                        str_offset += str_length;
+                        str_count++;
                     }
+                    assert(str_offset == uncompress_size);
+                    assert(str_count == count);
                     break;
                 }
                 default:
-                    throw std::runtime_error("invalid column type");
+                    break;
             }
         }
+
+        // void encode_to(std::string *buf) const {
+        //     for (const auto &val: _column_values) {
+        //         buf->append(val.columnData, val.getRawDataSize());
+        //     }
+        // }
+
+        // void decode_from(const uint8_t *&buf, ColumnType type, uint16_t count) {
+        //     switch (type) {
+        //         case COLUMN_TYPE_INTEGER: {
+        //             for (uint16_t i = 0; i < count; ++i) {
+        //                 int32_t int_value = decode_fixed<int32_t>(buf);
+        //                 _column_values.emplace_back(int_value);
+        //             }
+        //             break;
+        //         }
+        //         case COLUMN_TYPE_DOUBLE_FLOAT: {
+        //             for (uint16_t i = 0; i < count; ++i) {
+        //                 double_t double_value = decode_fixed<double_t>(buf);
+        //                 _column_values.emplace_back(double_value);
+        //             }
+        //             break;
+        //         }
+        //         case COLUMN_TYPE_STRING: {
+        //             for (uint16_t i = 0; i < count; ++i) {
+        //                 int32_t str_length = decode_fixed<int32_t>(buf);
+        //                 _column_values.emplace_back((const char *) buf, str_length);
+        //                 buf += str_length;
+        //             }
+        //             break;
+        //         }
+        //         default:
+        //             throw std::runtime_error("invalid column type");
+        //     }
+        // }
     };
 
     // footer contains all timestamps data

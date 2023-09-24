@@ -159,8 +159,7 @@ namespace LindormContest {
                 DataBlock data_block;
                 std::string buf;
                 io::stream_read_string_from_file(tsm_file_path, index_entries[i]._offset, index_entries[i]._size, buf);
-                const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
-                data_block.decode_from(p, type, index_entries[i]._count);
+                data_block.decode_from_decompress(buf.c_str(), type, index_entries[i]._count);
                 column_values.insert(column_values.end(),
                                      data_block._column_values.begin() + ranges[i]._start_index,
                                      data_block._column_values.begin() + ranges[i]._end_index);

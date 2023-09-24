@@ -350,8 +350,7 @@ namespace LindormContest {
             DataBlock data_block;
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
-            data_block.decode_from(p, type, index_entry._count);
+            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
             max_value = std::numeric_limits<T>::lowest();
 
             std::for_each(data_block._column_values.begin() + range._start_index,
@@ -387,8 +386,7 @@ namespace LindormContest {
             DataBlock data_block;
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
-            data_block.decode_from(p, type, index_entry._count);
+            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
 
             std::for_each(data_block._column_values.begin() + range._start_index,
                           data_block._column_values.begin() + range._end_index,
