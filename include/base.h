@@ -64,7 +64,7 @@ namespace LindormContest {
     using SchemaSPtr = std::shared_ptr<Schema>;
 
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
-    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 600;
+    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 900;
     static constexpr uint16_t FILE_FLUSH_SIZE = 900;    // 40 files per vin
     static constexpr uint16_t COMPACTION_FILE_NUM = 10; // 4 tsm files per vin
     static constexpr uint16_t POOL_THREAD_NUM = 8;
