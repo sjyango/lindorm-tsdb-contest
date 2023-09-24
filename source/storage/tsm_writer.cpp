@@ -35,8 +35,11 @@ namespace LindormContest {
     void TsmWriter::open_flush_stream() {
         _output_file = std::make_unique<std::ofstream>();
         Path flush_file_path = _flush_dir_path / std::to_string(_file_nums);
-        _output_file->open(flush_file_path, std::ios::out | std::ios::app | std::ios::binary | std::ios::ate);
-        assert(_output_file->is_open() && _output_file->good());
+        _output_file->open(flush_file_path, std::ios::out | std::ios::binary);
+        if (!_output_file->is_open() || !_output_file->good()) {
+            INFO_LOG("%s open failed", flush_file_path.c_str())
+            throw std::runtime_error("TsmWriter open file failed");
+        }
         _flush_nums = 0;
     }
 
@@ -51,7 +54,6 @@ namespace LindormContest {
     }
 
     void TsmWriter::append(const Row& row) {
-        std::lock_guard<std::mutex> l(_mutex);
         if (unlikely(_output_file == nullptr)) {
             open_flush_stream();
         }
@@ -87,8 +89,7 @@ namespace LindormContest {
         }
     }
 
-    void TsmWriterManager::append(const LindormContest::Row &row) {
-        uint16_t vin_num = decode_vin(row.vin);
+    void TsmWriterManager::append(uint16_t vin_num, const Row &row) {
         _tsm_writers[vin_num]->append(row);
     }
 

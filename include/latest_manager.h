@@ -34,27 +34,20 @@ namespace LindormContest {
 
     using GlobalLatestManagerUPtr = std::unique_ptr<GlobalLatestManager>;
 
-    // multi thread safe
     class GlobalLatestManager {
     public:
         GlobalLatestManager() = default;
 
         ~GlobalLatestManager() = default;
 
-        void add_latest(const Row& row) {
-            uint16_t vin_num = decode_vin(row.vin);
-            std::lock_guard<std::mutex> l(_latest_mutexes[vin_num]);
+        void add_latest(uint16_t vin_num, const Row& row) {
             if (row.timestamp > _latest_records[vin_num].timestamp) {
                 _latest_records[vin_num] = row;
             }
         }
 
         bool get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
-            Row latest_row;
-            {
-                std::lock_guard<std::mutex> l(_latest_mutexes[vin_num]);
-                latest_row = _latest_records[vin_num];
-            }
+            Row latest_row = _latest_records[vin_num];
             if (latest_row.timestamp == 0) {
                 return false;
             }
@@ -103,6 +96,5 @@ namespace LindormContest {
 
     private:
         Row _latest_records[VIN_NUM_RANGE];
-        std::mutex _latest_mutexes[VIN_NUM_RANGE];
     };
 }

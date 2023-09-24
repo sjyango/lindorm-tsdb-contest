@@ -47,7 +47,6 @@ namespace LindormContest {
 
     private:
         uint16_t _vin_num;
-        std::mutex _mutex;
         Path _flush_dir_path;
         SchemaSPtr _schema;
         uint16_t _flush_nums;
@@ -69,7 +68,7 @@ namespace LindormContest {
 
         void set_schema(SchemaSPtr schema);
 
-        void append(const Row& row);
+        void append(uint16_t vin_num, const Row& row);
 
         void finalize_close_flush_stream();
 

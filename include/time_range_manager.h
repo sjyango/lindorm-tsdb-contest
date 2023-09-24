@@ -105,17 +105,22 @@ namespace LindormContest {
                                         const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
             std::ifstream input_file;
             input_file.open(flush_file_path, std::ios::in | std::ios::binary);
-            assert(input_file.is_open() && input_file.good());
+            if (!input_file.is_open() || !input_file.good()) {
+                INFO_LOG("%s open failed", flush_file_path.c_str())
+                throw std::runtime_error("time range open file failed");
+            }
 
-            for (uint16_t i = 0; i < FILE_FLUSH_SIZE && !input_file.eof(); ++i) {
+            while (!input_file.eof()) {
                 Row row;
-                io::read_row_from_file(input_file, _schema, false, row);
+                if (!io::read_row_from_file(input_file, _schema, false, row)) {
+                    break;
+                }
                 if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
                     Row result_row;
                     result_row.vin = encode_vin(_vin_num);
                     result_row.timestamp = row.timestamp;
-                    for (const auto &requestedColumn: requested_columns) {
-                        result_row.columns.emplace(requestedColumn, row.columns.at(requestedColumn));
+                    for (const auto &requested_column: requested_columns) {
+                        result_row.columns.emplace(requested_column, row.columns.at(requested_column));
                     }
                     trReadRes.emplace_back(std::move(result_row));
                 }

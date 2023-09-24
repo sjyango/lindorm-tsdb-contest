@@ -74,6 +74,12 @@ namespace LindormContest::io {
     }
 
     static void write_row_to_file(std::ofstream &out, SchemaSPtr schema, const Row &row, bool vin_include) {
+        if (row.columns.size() != SCHEMA_COLUMN_NUMS) {
+            std::cerr << "Cannot write a non-complete row with columns' num: [" << row.columns.size() << "]. ";
+            std::cerr << "There is [" << SCHEMA_COLUMN_NUMS << "] rows in total" << std::endl;
+            throw std::exception();
+        }
+
         if (vin_include) {
             out.write((const char *) row.vin.vin, VIN_LENGTH);
         }
@@ -84,16 +90,21 @@ namespace LindormContest::io {
             int32_t raw_size = column_value.getRawDataSize();
             out.write(column_value.columnData, raw_size);
         }
+
+        out.flush();
     }
 
-    static void read_row_from_file(std::ifstream &in, SchemaSPtr schema, bool vin_include, Row& row) {
-        if (in.eof()) {
-            return;
+    static bool read_row_from_file(std::ifstream &in, SchemaSPtr schema, bool vin_include, Row& row) {
+        if (in.fail() || in.eof()) {
+            return false;
         }
         if (vin_include) {
             in.read((char *) row.vin.vin, VIN_LENGTH);
         }
         in.read((char *) &row.timestamp, sizeof(int64_t));
+        if (in.fail() || in.eof()) {
+            return false;
+        }
 
         for (const auto &[column_name, column_type] : schema->columnTypeMap) {
             switch (column_type) {
@@ -126,6 +137,8 @@ namespace LindormContest::io {
                 }
             }
         }
+
+        return true;
     }
 }
 

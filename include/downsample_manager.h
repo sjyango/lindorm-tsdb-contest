@@ -271,13 +271,18 @@ namespace LindormContest {
                                                      const CompareExpression& column_filter, T& sum_value, size_t& sum_count) {
             std::ifstream input_file;
             input_file.open(flush_file_path, std::ios::in | std::ios::binary);
-            assert(input_file.is_open() && input_file.good());
+            if (!input_file.is_open() || !input_file.good()) {
+                INFO_LOG("%s open failed", flush_file_path.c_str())
+                throw std::runtime_error("aggregate open file failed");
+            }
             size_t tr_count = 0;
             size_t non_filter_count = 0;
 
-            for (uint16_t i = 0; i < FILE_FLUSH_SIZE && !input_file.eof(); ++i) {
+            while (!input_file.eof()) {
                 Row row;
-                io::read_row_from_file(input_file, _schema, false, row);
+                if (!io::read_row_from_file(input_file, _schema, false, row)) {
+                    break;
+                }
                 if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
                     tr_count++;
                     if (!column_filter.doCompare(row.columns.at(column_name))) {
