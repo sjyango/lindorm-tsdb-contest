@@ -290,41 +290,6 @@ namespace LindormContest {
                     break;
             }
         }
-
-        // void encode_to(std::string *buf) const {
-        //     for (const auto &val: _column_values) {
-        //         buf->append(val.columnData, val.getRawDataSize());
-        //     }
-        // }
-
-        // void decode_from(const uint8_t *&buf, ColumnType type, uint16_t count) {
-        //     switch (type) {
-        //         case COLUMN_TYPE_INTEGER: {
-        //             for (uint16_t i = 0; i < count; ++i) {
-        //                 int32_t int_value = decode_fixed<int32_t>(buf);
-        //                 _column_values.emplace_back(int_value);
-        //             }
-        //             break;
-        //         }
-        //         case COLUMN_TYPE_DOUBLE_FLOAT: {
-        //             for (uint16_t i = 0; i < count; ++i) {
-        //                 double_t double_value = decode_fixed<double_t>(buf);
-        //                 _column_values.emplace_back(double_value);
-        //             }
-        //             break;
-        //         }
-        //         case COLUMN_TYPE_STRING: {
-        //             for (uint16_t i = 0; i < count; ++i) {
-        //                 int32_t str_length = decode_fixed<int32_t>(buf);
-        //                 _column_values.emplace_back((const char *) buf, str_length);
-        //                 buf += str_length;
-        //             }
-        //             break;
-        //         }
-        //         default:
-        //             throw std::runtime_error("invalid column type");
-        //     }
-        // }
     };
 
     // footer contains all timestamps data
@@ -337,18 +302,34 @@ namespace LindormContest {
 
         ~Footer() = default;
 
-        void encode_to(std::string *buf) const {
-            buf->append((const char *) _tss.data(), _tss.size() * sizeof(int64_t));
+        void encode_to_compress(std::string *buf) const {
+            uint16_t ts_count = _tss.size();
+            uint32_t uncompress_size = _tss.size() * sizeof(int64_t);
+            const char* uncompress_data = reinterpret_cast<const char*>(_tss.data());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_int64(uncompress_data, uncompress_size, compress_data.get());
+            buf->append((const char*) &ts_count, sizeof(uint16_t));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
             put_fixed(buf, _index_offset);
             put_fixed(buf, _footer_offset);
         }
 
-        void decode_from(const uint8_t *&buf, size_t ts_count) {
+        void decode_from_decompress(const char* buf) {
+            uint16_t ts_count = *reinterpret_cast<const uint16_t*>(buf);
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint16_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t) + sizeof(uint16_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + sizeof(uint16_t) + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(int64_t) == ts_count);
+            char* start_ptr = compression::decompress_int64(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
             _tss.resize(ts_count);
-            std::memcpy(_tss.data(), buf, ts_count * sizeof(int64_t));
-            buf += ts_count * sizeof(int64_t);
-            _index_offset = decode_fixed<uint32_t>(buf);
-            _footer_offset = decode_fixed<uint32_t>(buf);
+            std::memcpy(_tss.data(), start_ptr, uncompress_size);
+            const uint8_t* p = reinterpret_cast<const uint8_t*>(buf + sizeof(uint16_t) + 2 * sizeof(uint32_t) + compress_size);
+            _index_offset = decode_fixed<uint32_t>(p);
+            _footer_offset = decode_fixed<uint32_t>(p);
         }
     };
 

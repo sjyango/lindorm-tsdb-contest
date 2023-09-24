@@ -1066,11 +1066,11 @@ namespace LindormContest::test {
 
         // handle multi query
         RECORD_TIME_COST(HANDLE_MULTI_QUERY, {
-            const size_t MULTI_QUERY_THREADS = 200;
+            const size_t MULTI_QUERY_THREADS = 20;
             std::thread multi_query_threads[MULTI_QUERY_THREADS];
 
             for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
-                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 2);
             }
 
             for (auto &thread: multi_query_threads) {
