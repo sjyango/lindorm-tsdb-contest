@@ -36,6 +36,7 @@ namespace LindormContest {
                 : _vin_num(vin_num), _root_path(root_path), _schema(nullptr), _compaction_nums(0) {
             Path vin_dir_path = _root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(vin_dir_path);
+            _latest_row.vin = encode_vin(_vin_num);
         }
 
         CompactionManager(CompactionManager &&other)
@@ -71,11 +72,20 @@ namespace LindormContest {
                return lhs.timestamp < rhs.timestamp;
             });
 
+            if (input_rows.back().timestamp > _latest_row.timestamp) {
+                _latest_row.timestamp = input_rows.back().timestamp;
+                _latest_row.columns = input_rows.back().columns;
+            }
+
             TsmFile output_tsm_file;
             _multiway_compaction(_schema, input_rows, output_tsm_file);
             std::string output_tsm_file_name = std::to_string(_compaction_nums++) + ".tsm";
             Path output_tsm_file_path = _root_path / "compaction" / std::to_string(_vin_num) / output_tsm_file_name;
             output_tsm_file.write_to_file(output_tsm_file_path);
+        }
+
+        Row get_latest_row() const {
+            return _latest_row;
         }
 
     private:
@@ -154,6 +164,7 @@ namespace LindormContest {
         Path _root_path;
         SchemaSPtr _schema;
         std::atomic<uint16_t> _compaction_nums;
+        Row _latest_row;
     };
 
     class GlobalCompactionManager;
@@ -186,6 +197,20 @@ namespace LindormContest {
         void finalize_compaction() {
             _thread_pool->shutdown();
             assert(_thread_pool->empty());
+        }
+
+        void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) const {
+            std::ofstream output_file(latest_records_path, std::ios::out | std::ios::binary);
+            if (!output_file.is_open()) {
+                throw std::runtime_error("Failed to open file for writing.");
+            }
+
+            for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
+                io::write_row_to_file(output_file, schema, _compaction_managers[i]->get_latest_row(), true);
+            }
+
+            output_file.flush();
+            output_file.close();
         }
 
     private:

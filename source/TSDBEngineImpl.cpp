@@ -59,9 +59,9 @@ namespace LindormContest {
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
         _writer_manager->finalize_close_flush_stream();
         _compaction_manager->finalize_compaction();
+        _compaction_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
@@ -70,12 +70,7 @@ namespace LindormContest {
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
-            uint16_t vin_num = decode_vin(row.vin);
-            {
-                std::lock_guard<std::mutex> l(_vin_mutexes[vin_num]);
-                _latest_manager->add_latest(vin_num, row);
-                _writer_manager->append(vin_num, row);
-            }
+            _writer_manager->append(row);
         }
         return 0;
     }
@@ -86,7 +81,6 @@ namespace LindormContest {
             if (unlikely(vin_num == INVALID_VIN_NUM)) {
                 continue;
             }
-            std::lock_guard<std::mutex> l(_vin_mutexes[vin_num]);
             Row result_row;
             if (_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns, result_row)) {
                 pReadRes.emplace_back(std::move(result_row));
@@ -100,7 +94,6 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        std::lock_guard<std::mutex> l(_vin_mutexes[vin_num]);
         _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                       trReadReq.requestedColumns, trReadRes);
         return 0;
@@ -111,7 +104,6 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        std::lock_guard<std::mutex> l(_vin_mutexes[vin_num]);
         _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
@@ -122,7 +114,6 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        std::lock_guard<std::mutex> l(_vin_mutexes[vin_num]);
         _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
                                        downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                        downsampleReq.columnFilter, downsampleRes);

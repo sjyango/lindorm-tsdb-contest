@@ -54,6 +54,7 @@ namespace LindormContest {
     }
 
     void TsmWriter::append(const Row& row) {
+        std::lock_guard<std::mutex> l(_mutex);
         if (unlikely(_output_file == nullptr)) {
             open_flush_stream();
         }
@@ -89,8 +90,8 @@ namespace LindormContest {
         }
     }
 
-    void TsmWriterManager::append(uint16_t vin_num, const Row &row) {
-        _tsm_writers[vin_num]->append(row);
+    void TsmWriterManager::append(const Row &row) {
+        _tsm_writers[decode_vin(row.vin)]->append(row);
     }
 
     void TsmWriterManager::finalize_close_flush_stream() {

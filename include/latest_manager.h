@@ -40,12 +40,6 @@ namespace LindormContest {
 
         ~GlobalLatestManager() = default;
 
-        void add_latest(uint16_t vin_num, const Row& row) {
-            if (row.timestamp > _latest_records[vin_num].timestamp) {
-                _latest_records[vin_num] = row;
-            }
-        }
-
         bool get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
             Row latest_row = _latest_records[vin_num];
             if (latest_row.timestamp == 0) {
@@ -59,18 +53,35 @@ namespace LindormContest {
             return true;
         }
 
-        void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) {
-            std::ofstream output_file(latest_records_path, std::ios::out | std::ios::binary);
-            if (!output_file.is_open()) {
-                throw std::runtime_error("Failed to open file for writing.");
+
+
+        void query_from_one_flush_file(const Path& flush_file_path, Row &result_row) {
+            std::ifstream input_file;
+            input_file.open(flush_file_path, std::ios::in | std::ios::binary);
+            if (!input_file.is_open() || !input_file.good()) {
+                INFO_LOG("%s open failed", flush_file_path.c_str())
+                throw std::runtime_error("time range open file failed");
             }
 
-            for (const auto & latest_record: _latest_records) {
-                io::write_row_to_file(output_file, schema, latest_record, true);
+            while (!input_file.eof()) {
+                Row row;
+                if (!io::read_row_from_file(input_file, _schema, false, row)) {
+                    break;
+                }
+                if (row.timestamp > result_row.timestamp) {
+                    result_row = row;
+                }
             }
 
-            output_file.flush();
-            output_file.close();
+            input_file.close();
+        }
+
+        void _get_file_paths(const Path& vin_dir_path, std::vector<Path>& file_paths) {
+            for (const auto& entry: std::filesystem::directory_iterator(vin_dir_path)) {
+                if (entry.is_regular_file()) {
+                    file_paths.emplace_back(entry.path());
+                }
+            }
         }
 
         void load_latest_records_from_file(const Path& latest_records_path, SchemaSPtr schema) {
@@ -95,6 +106,7 @@ namespace LindormContest {
         }
 
     private:
+        SchemaSPtr _schema;
         Row _latest_records[VIN_NUM_RANGE];
     };
 }

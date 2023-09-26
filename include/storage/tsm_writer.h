@@ -52,6 +52,7 @@ namespace LindormContest {
         uint16_t _flush_nums;
         uint16_t _file_nums;
         uint16_t _compaction_nums;
+        std::mutex _mutex;
         std::unique_ptr<std::ofstream> _output_file;
         GlobalCompactionManagerSPtr _compaction_manager;
     };
@@ -68,7 +69,7 @@ namespace LindormContest {
 
         void set_schema(SchemaSPtr schema);
 
-        void append(uint16_t vin_num, const Row& row);
+        void append(const Row& row);
 
         void finalize_close_flush_stream();
 
