@@ -36,15 +36,45 @@ namespace LindormContest {
 
     class GlobalLatestManager {
     public:
-        GlobalLatestManager() = default;
+        GlobalLatestManager(const Path& root_path, bool finish_compaction)
+        : _root_path(root_path), _finish_compaction(finish_compaction) {}
 
         ~GlobalLatestManager() = default;
 
+        void set_schema(SchemaSPtr schema) {
+            _schema = schema;
+        }
+
+        bool query_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
+            if (_finish_compaction) {
+                return get_latest(vin_num, vin, requested_columns, result_row);
+            } else {
+                Path vin_dir_path = _root_path / "no-compaction" / std::to_string(vin_num);
+                if (!std::filesystem::exists(vin_dir_path)) {
+                    return false;
+                }
+                std::vector<Path> file_paths;
+                _get_file_paths(vin_dir_path, file_paths);
+                if (file_paths.empty()) {
+                    return false;
+                }
+                Row latest_row;
+
+                for (const auto& file_path: file_paths) {
+                    query_from_one_flush_file(file_path, latest_row);
+                }
+
+                result_row.vin = vin;
+                result_row.timestamp = latest_row.timestamp;
+                for (const auto& requested_column : requested_columns) {
+                    result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
+                }
+                return true;
+            }
+        }
+
         bool get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
             Row latest_row = _latest_records[vin_num];
-            if (latest_row.timestamp == 0) {
-                return false;
-            }
             result_row.vin = vin;
             result_row.timestamp = latest_row.timestamp;
             for (const auto& requested_column : requested_columns) {
@@ -53,9 +83,7 @@ namespace LindormContest {
             return true;
         }
 
-
-
-        void query_from_one_flush_file(const Path& flush_file_path, Row &result_row) {
+        void query_from_one_flush_file(const Path& flush_file_path, Row &latest_row) {
             std::ifstream input_file;
             input_file.open(flush_file_path, std::ios::in | std::ios::binary);
             if (!input_file.is_open() || !input_file.good()) {
@@ -68,8 +96,8 @@ namespace LindormContest {
                 if (!io::read_row_from_file(input_file, _schema, false, row)) {
                     break;
                 }
-                if (row.timestamp > result_row.timestamp) {
-                    result_row = row;
+                if (row.timestamp > latest_row.timestamp) {
+                    latest_row = row;
                 }
             }
 
@@ -84,7 +112,7 @@ namespace LindormContest {
             }
         }
 
-        void load_latest_records_from_file(const Path& latest_records_path, SchemaSPtr schema) {
+        void load_latest_records_from_file(const Path& latest_records_path) {
             if (!std::filesystem::exists(latest_records_path)) {
                 INFO_LOG("latest_records file doesn't exist")
                 return;
@@ -97,7 +125,7 @@ namespace LindormContest {
 
             for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
                 Row row;
-                io::read_row_from_file(input_file, schema, true, row);
+                io::read_row_from_file(input_file, _schema, true, row);
                 uint16_t vin_num = decode_vin(row.vin);
                 _latest_records[vin_num] = row;
             }
@@ -106,6 +134,8 @@ namespace LindormContest {
         }
 
     private:
+        Path _root_path;
+        bool _finish_compaction;
         SchemaSPtr _schema;
         Row _latest_records[VIN_NUM_RANGE];
     };
