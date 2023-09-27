@@ -23,6 +23,10 @@ namespace LindormContest {
         int64_t _start_time; // inclusive
         int64_t _end_time;   // exclusive
 
+        TimeRange() = default;
+
+        TimeRange(int64_t start_time, int64_t end_time) : _start_time(start_time), _end_time(end_time) {}
+
         bool overlap(const TimeRange& other) const {
             return _start_time < other._end_time && other._start_time < _end_time;
         }

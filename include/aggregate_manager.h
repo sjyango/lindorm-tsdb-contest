@@ -47,17 +47,15 @@ namespace LindormContest {
 
         template<typename T>
         void query_time_range_max_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
-            std::vector<Path> file_paths;
-            _get_file_paths(file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
             T max_value = std::numeric_limits<T>::lowest();
 
-            for (const auto &file_path: file_paths) {
+            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 T file_max_value = std::numeric_limits<T>::lowest();
                 if (_finish_compaction) {
-                    _query_max_from_one_tsm_file<T>(file_path, tr, column_name, type, file_max_value);
+                    _query_max_from_one_tsm_file<T>(entry.path(), tr, column_name, type, file_max_value);
                 } else {
-                    _query_max_from_one_flush_file<T>(file_path, tr, column_name, file_max_value);
+                    _query_max_from_one_flush_file<T>(entry.path(), tr, column_name, file_max_value);
                 }
                 if (file_max_value == std::numeric_limits<T>::lowest()) {
                     continue;
@@ -79,17 +77,15 @@ namespace LindormContest {
 
         template <typename T>
         void query_time_range_avg_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
-            std::vector<Path> file_paths;
-            _get_file_paths(file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
             T sum_value = 0;
             size_t sum_count = 0;
 
-            for (const auto &file_path: file_paths) {
+            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 if (_finish_compaction) {
-                    _query_avg_from_one_tsm_file<T>(file_path, tr, column_name, type, sum_value, sum_count);
+                    _query_avg_from_one_tsm_file<T>(entry.path(), tr, column_name, type, sum_value, sum_count);
                 } else {
-                    _query_avg_from_one_flush_file<T>(file_path, tr, column_name, sum_value, sum_count);
+                    _query_avg_from_one_flush_file<T>(entry.path(), tr, column_name, sum_value, sum_count);
                 }
             }
 
@@ -215,14 +211,6 @@ namespace LindormContest {
             }
 
             input_file.close();
-        }
-
-        void _get_file_paths(std::vector<Path>& tsm_file_paths) {
-            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
-                if (entry.is_regular_file()) {
-                    tsm_file_paths.emplace_back(entry.path());
-                }
-            }
         }
 
         IndexRange _get_value_range(const std::vector<int64_t>& tss, const TimeRange& tr, const IndexEntry& index_entry) {

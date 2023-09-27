@@ -48,8 +48,6 @@ namespace LindormContest {
         template <typename T>
         void query_time_range_max_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::vector<Path> file_paths;
-            _get_file_paths(file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
 
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -59,14 +57,14 @@ namespace LindormContest {
                 // once one tsm has data, the state is HAVE_DATA
                 // if all tsms have no data, the state is NO_DATA
                 // if some tsms have filtered all data, but the rest tsms have no data, the state is FILTER_ALL_DATA
-                for (const auto &file_path: file_paths) {
+                for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                     T file_max_value = std::numeric_limits<T>::lowest();
                     DownSampleState file_state;
                     if (_finish_compaction) {
-                        file_state = _query_max_from_one_tsm_file<T>(file_path, sub_tr, column_name,
+                        file_state = _query_max_from_one_tsm_file<T>(entry.path(), sub_tr, column_name,
                                                                      type, column_filter, file_max_value);
                     } else {
-                        file_state = _query_max_from_one_flush_file<T>(file_path, sub_tr, column_name,
+                        file_state = _query_max_from_one_flush_file<T>(entry.path(), sub_tr, column_name,
                                                                        column_filter, file_max_value);
                     }
                     if (file_state == DownSampleState::HAVE_DATA) {
@@ -101,8 +99,6 @@ namespace LindormContest {
         template <typename T>
         void query_time_range_avg_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
-            std::vector<Path> tsm_file_paths;
-            _get_file_paths(tsm_file_paths);
             ColumnType type = _schema->columnTypeMap[column_name];
 
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -114,16 +110,16 @@ namespace LindormContest {
                 // once one tsm has data, the state is HAVE_DATA
                 // if all tsms have no data, the state is NO_DATA
                 // if some tsms have filtered all data, but the rest tsms have no data, the state is FILTER_ALL_DATA
-                for (const auto &tsm_file_path: tsm_file_paths) {
+                for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                     T file_sum_value = 0;
                     size_t file_sum_count = 0;
                     DownSampleState file_state;
                     if (_finish_compaction) {
-                        file_state = _query_avg_from_one_tsm_file<T>(tsm_file_path, sub_tr, column_name, type,
-                                                        column_filter, file_sum_value, file_sum_count);
-                    } else {
-                        file_state = _query_avg_from_one_flush_file<T>(tsm_file_path, sub_tr, column_name,
+                        file_state = _query_avg_from_one_tsm_file<T>(entry.path(), sub_tr, column_name, type,
                                                                      column_filter, file_sum_value, file_sum_count);
+                    } else {
+                        file_state = _query_avg_from_one_flush_file<T>(entry.path(), sub_tr, column_name,
+                                                                       column_filter, file_sum_value, file_sum_count);
                     }
                     if (file_state == DownSampleState::HAVE_DATA) {
                         state = DownSampleState::HAVE_DATA;
@@ -321,14 +317,6 @@ namespace LindormContest {
                 return DownSampleState::FILTER_ALL_DATA;
             } else {
                 return DownSampleState::HAVE_DATA;
-            }
-        }
-
-        void _get_file_paths(std::vector<Path>& tsm_file_paths) {
-            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
-                if (entry.is_regular_file()) {
-                    tsm_file_paths.emplace_back(entry.path());
-                }
             }
         }
 

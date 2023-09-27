@@ -75,10 +75,9 @@ namespace LindormContest {
         }
 
         bool get_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
-            Row latest_row = _latest_records[vin_num];
-            result_row.timestamp = latest_row.timestamp;
+            result_row.timestamp = _latest_records[vin_num].timestamp;
             for (const auto& requested_column : requested_columns) {
-                result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
+                result_row.columns[requested_column] = _latest_records[vin_num].columns.at(requested_column);
             }
             return true;
         }

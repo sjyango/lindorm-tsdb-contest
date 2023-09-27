@@ -33,43 +33,9 @@ namespace LindormContest {
 
         ~IndexManager() = default;
 
-        void insert_indexes(const std::string& file_name, const std::vector<IndexBlock>& index_blocks) {
-            std::unique_lock<std::shared_mutex> l(_mutex);
-            if (_index_entries.find(file_name) == _index_entries.end()) {
-                std::unordered_map<std::string, IndexBlock> m;
-                _index_entries.emplace(file_name, std::move(m));
-            }
-            for (const auto &index_block: index_blocks) {
-                _index_entries[file_name][index_block._index_meta._column_name] = index_block;
-            }
-        }
-
-        void remove_indexes(const std::string& file_name) {
-            std::unique_lock<std::shared_mutex> l(_mutex);
-            _index_entries.erase(file_name);
-        }
-
-        void remove_indexes(const std::vector<std::string>& file_names) {
-            std::unique_lock<std::shared_mutex> l(_mutex);
-            for (const auto &file_name: file_names) {
-                _index_entries.erase(file_name);
-            }
-        }
-
         bool query_indexes(const std::string& file_name, const std::string& column_name,
                            const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            std::shared_lock<std::shared_mutex> l(_mutex);
-            assert(_index_entries.find(file_name) != _index_entries.end());
-            assert(_index_entries[file_name].find(column_name) != _index_entries[file_name].end());
             return _index_entries[file_name][column_name].get_index_entries(tr, index_entries);
-        }
-
-        bool query_max_index(const std::string& file_name, const std::string& column_name,
-                             const TimeRange& tr, IndexEntry& index_entry) {
-            std::shared_lock<std::shared_mutex> l(_mutex);
-            assert(_index_entries.find(file_name) != _index_entries.end());
-            assert(_index_entries[file_name].find(column_name) != _index_entries[file_name].end());
-            return _index_entries[file_name][column_name].get_max_index_entry(tr, index_entry);
         }
 
         void decode_from_file(const Path& vin_dir_path, SchemaSPtr schema) {
@@ -96,7 +62,6 @@ namespace LindormContest {
         using IndexContainer = std::unordered_map<std::string,
                 std::unordered_map<std::string, IndexBlock>>; // file name -> (column name -> index block)
         IndexContainer _index_entries;
-        std::shared_mutex _mutex;
     };
 
     class GlobalIndexManager;
@@ -109,26 +74,9 @@ namespace LindormContest {
 
         ~GlobalIndexManager() = default;
 
-        void insert_indexes(uint16_t vin_num, const std::string& file_name, const std::vector<IndexBlock>& index_blocks) {
-            _index_managers[vin_num].insert_indexes(file_name, index_blocks);
-        }
-
-        void remove_indexes(uint16_t vin_num, const std::string& file_name) {
-            _index_managers[vin_num].remove_indexes(file_name);
-        }
-
-        void remove_indexes(uint16_t vin_num, const std::vector<std::string>& file_names) {
-            _index_managers[vin_num].remove_indexes(file_names);
-        }
-
         bool query_indexes(uint16_t vin_num, const std::string& file_name, const std::string& column_name,
                            const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
             return _index_managers[vin_num].query_indexes(file_name, column_name, tr, index_entries);
-        }
-
-        bool query_max_index(uint16_t vin_num, const std::string& file_name,
-                             const std::string& column_name, const TimeRange& tr, IndexEntry& index_entry) {
-            return _index_managers[vin_num].query_max_index(file_name, column_name, tr, index_entry);
         }
 
         void decode_from_file(const Path& root_path, SchemaSPtr schema) {

@@ -33,15 +33,13 @@ namespace LindormContest {
         CompactionManager() = default;
 
         CompactionManager(uint16_t vin_num, const Path& root_path)
-                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr), _compaction_nums(0) {
+                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr) {
             Path vin_dir_path = _root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(vin_dir_path);
             _latest_row.vin = encode_vin(_vin_num);
         }
 
-        CompactionManager(CompactionManager &&other)
-                : _vin_num(other._vin_num), _root_path(std::move(other._root_path)),
-                  _schema(other._schema), _compaction_nums(other._compaction_nums.load()) {}
+        CompactionManager(CompactionManager &&other) = default;
 
         ~CompactionManager() = default;
 
@@ -79,7 +77,8 @@ namespace LindormContest {
 
             TsmFile output_tsm_file;
             _multiway_compaction(_schema, input_rows, output_tsm_file);
-            std::string output_tsm_file_name = std::to_string(_compaction_nums++) + ".tsm";
+            std::string output_tsm_file_name = std::to_string(decode_ts(output_tsm_file._footer._tss.front()))
+                    + "-" + std::to_string(decode_ts(output_tsm_file._footer._tss.back()));
             Path output_tsm_file_path = _root_path / "compaction" / std::to_string(_vin_num) / output_tsm_file_name;
             output_tsm_file.write_to_file(output_tsm_file_path);
         }
@@ -163,7 +162,6 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _root_path;
         SchemaSPtr _schema;
-        std::atomic<uint16_t> _compaction_nums;
         Row _latest_row;
     };
 
