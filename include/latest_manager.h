@@ -45,9 +45,9 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        bool query_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
+        bool query_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
             if (_finish_compaction) {
-                return get_latest(vin_num, vin, requested_columns, result_row);
+                return get_latest(vin_num, requested_columns, result_row);
             } else {
                 Path vin_dir_path = _root_path / "no-compaction" / std::to_string(vin_num);
                 if (!std::filesystem::exists(vin_dir_path)) {
@@ -64,18 +64,18 @@ namespace LindormContest {
                     query_from_one_flush_file(file_path, latest_row);
                 }
 
-                result_row.vin = vin;
                 result_row.timestamp = latest_row.timestamp;
+
                 for (const auto& requested_column : requested_columns) {
                     result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
                 }
+
                 return true;
             }
         }
 
-        bool get_latest(uint16_t vin_num, const Vin& vin, const std::set<std::string>& requested_columns, Row &result_row) {
+        bool get_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
             Row latest_row = _latest_records[vin_num];
-            result_row.vin = vin;
             result_row.timestamp = latest_row.timestamp;
             for (const auto& requested_column : requested_columns) {
                 result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));

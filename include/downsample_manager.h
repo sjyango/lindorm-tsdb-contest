@@ -169,18 +169,24 @@ namespace LindormContest {
             std::vector<IndexEntry> index_entries;
             bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
-            if (!existed) {
+            if (!existed || index_entries.empty()) {
                 return DownSampleState::NO_DATA;
             }
 
             DownSampleState file_state = DownSampleState::NO_DATA;
+            uint32_t global_offset = index_entries.front()._offset;
+            uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            std::string buf;
+            io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
             std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 DownSampleState entry_state;
                 T entry_max_value;
-                entry_state = _get_max_column_value<T>(tsm_file_path, type, index_entries[i], column_filter,
+                uint32_t local_offset = index_entries[i]._offset - global_offset;
+                entry_state = _get_max_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
+                                                       type, index_entries[i], column_filter,
                                                        ranges[i], entry_max_value);
                 if (entry_state == DownSampleState::HAVE_DATA) {
                     file_state = DownSampleState::HAVE_DATA;
@@ -245,6 +251,10 @@ namespace LindormContest {
             }
 
             DownSampleState file_state = DownSampleState::NO_DATA;
+            uint32_t global_offset = index_entries.front()._offset;
+            uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            std::string buf;
+            io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
             std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
@@ -252,7 +262,9 @@ namespace LindormContest {
                 DownSampleState entry_state;
                 T entry_sum_value = 0;
                 size_t entry_sum_count = 0;
-                entry_state = _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], column_filter,
+                uint32_t local_offset = index_entries[i]._offset - global_offset;
+                entry_state = _get_sum_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
+                                                       type, index_entries[i], column_filter,
                                                       ranges[i], entry_sum_value, entry_sum_count);
                 if (entry_state == DownSampleState::HAVE_DATA) {
                     file_state = DownSampleState::HAVE_DATA;
@@ -341,16 +353,14 @@ namespace LindormContest {
         }
 
         template <typename T>
-        DownSampleState _get_max_column_value(const Path& tsm_file_path, ColumnType type, const IndexEntry& index_entry,
+        DownSampleState _get_max_column_value(const Path& tsm_file_path, const char* buf, ColumnType type, const IndexEntry& index_entry,
                                 const CompareExpression& column_filter, const IndexRange& range, T& max_value) {
             if (index_entry._size == 0 || index_entry._count == 0) {
                 return DownSampleState::NO_DATA;
             }
 
             DataBlock data_block;
-            std::string buf;
-            io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
+            data_block.decode_from_decompress(buf, type, index_entry._count);
             max_value = std::numeric_limits<T>::lowest();
 
             std::for_each(data_block._column_values.begin() + range._start_index,
@@ -376,7 +386,8 @@ namespace LindormContest {
         }
 
         template <typename T>
-        DownSampleState _get_sum_column_value(const Path& tsm_file_path, ColumnType type, const IndexEntry& index_entry,
+        DownSampleState _get_sum_column_value(const Path& tsm_file_path, const char* buf,
+                                              ColumnType type, const IndexEntry& index_entry,
                                               const CompareExpression& column_filter, const IndexRange& range,
                                               T& sum_value, size_t& sum_count) {
             if (index_entry._size == 0 || index_entry._count == 0) {
@@ -384,9 +395,7 @@ namespace LindormContest {
             }
 
             DataBlock data_block;
-            std::string buf;
-            io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
+            data_block.decode_from_decompress(buf, type, index_entry._count);
 
             std::for_each(data_block._column_values.begin() + range._start_index,
                           data_block._column_values.begin() + range._end_index,

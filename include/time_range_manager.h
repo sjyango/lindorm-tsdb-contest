@@ -70,7 +70,7 @@ namespace LindormContest {
                 std::vector<IndexEntry> index_entries;
                 bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
-                if (!existed) {
+                if (!existed || index_entries.empty()) {
                     return;
                 }
 
@@ -155,11 +155,15 @@ namespace LindormContest {
                                 const std::vector<IndexEntry>& index_entries,
                                 const std::vector<IndexRange>& ranges,
                                 std::vector<ColumnValue>& column_values) {
+            uint32_t global_offset = index_entries.front()._offset;
+            uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            std::string buf;
+            io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
+
             for (size_t i = 0; i < index_entries.size(); ++i) {
+                uint32_t local_offset = index_entries[i]._offset - global_offset;
                 DataBlock data_block;
-                std::string buf;
-                io::stream_read_string_from_file(tsm_file_path, index_entries[i]._offset, index_entries[i]._size, buf);
-                data_block.decode_from_decompress(buf.c_str(), type, index_entries[i]._count);
+                data_block.decode_from_decompress(buf.c_str() + local_offset, type, index_entries[i]._count);
                 column_values.insert(column_values.end(),
                                      data_block._column_values.begin() + ranges[i]._start_index,
                                      data_block._column_values.begin() + ranges[i]._end_index);

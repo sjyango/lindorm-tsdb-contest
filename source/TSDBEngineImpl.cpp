@@ -84,7 +84,8 @@ namespace LindormContest {
                 continue;
             }
             Row result_row;
-            if (_latest_manager->query_latest(vin_num, vin, pReadReq.requestedColumns, result_row)) {
+            if (_latest_manager->query_latest(vin_num, pReadReq.requestedColumns, result_row)) {
+                result_row.vin = vin;
                 pReadRes.emplace_back(std::move(result_row));
             }
         }

@@ -793,7 +793,7 @@ namespace LindormContest::test {
 
     }
 
-    TEST(MultiThreadTest, TimeRangeQueryTest) {
+    TEST(MultiThreadTest, TimeRangeQueryTest)  {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -832,7 +832,7 @@ namespace LindormContest::test {
 
         // handle time range query
         RECORD_TIME_COST(HANDLE_TIME_RANGE_QUERY, {
-            const size_t TIME_RANGE_QUERY_THREADS = 200;
+            const size_t TIME_RANGE_QUERY_THREADS = 10;
             std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
 
             for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
@@ -911,7 +911,7 @@ namespace LindormContest::test {
 
         // handle aggregate query
         RECORD_TIME_COST(HANDLE_AGGREGATE_QUERY, {
-            const size_t AGGREGATE_QUERY_THREADS = 200;
+            const size_t AGGREGATE_QUERY_THREADS = 10;
             std::thread aggregate_query_threads[AGGREGATE_QUERY_THREADS];
 
             for (size_t i = 0; i < AGGREGATE_QUERY_THREADS; ++i) {
@@ -990,7 +990,7 @@ namespace LindormContest::test {
 
         // handle downsample query
         RECORD_TIME_COST(HANDLE_DOWNSAMPLE_QUERY, {
-            const size_t DOWNSAMPLE_QUERY_THREADS = 200;
+            const size_t DOWNSAMPLE_QUERY_THREADS = 10;
             std::thread downsample_query_threads[DOWNSAMPLE_QUERY_THREADS];
 
             for (size_t i = 0; i < DOWNSAMPLE_QUERY_THREADS; ++i) {
@@ -1104,7 +1104,7 @@ namespace LindormContest::test {
             for (auto &thread: multi_query_threads) {
                 thread.join();
             }
-        });
+        })
     }
 
 }

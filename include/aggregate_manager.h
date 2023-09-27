@@ -115,15 +115,21 @@ namespace LindormContest {
             std::vector<IndexEntry> index_entries;
             bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
-            if (!existed) {
+            if (!existed || index_entries.empty()) {
                 return;
             }
 
+            uint32_t global_offset = index_entries.front()._offset;
+            uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            std::string buf;
+            io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
             std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
-                max_value = std::max(max_value, _get_max_column_value<T>(tsm_file_path, type, index_entries[i], ranges[i]));
+                uint32_t local_offset = index_entries[i]._offset - global_offset;
+                max_value = std::max(max_value, _get_max_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
+                                                                         type, index_entries[i], ranges[i]));
             }
         }
 
@@ -164,15 +170,21 @@ namespace LindormContest {
             std::vector<IndexEntry> index_entries;
             bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
 
-            if (!existed) {
+            if (!existed || index_entries.empty()) {
                 return;
             }
 
+            uint32_t global_offset = index_entries.front()._offset;
+            uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            std::string buf;
+            io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
             std::vector<IndexRange> ranges;
             _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
-                sum_value += _get_sum_column_value<T>(tsm_file_path, type, index_entries[i], ranges[i]);
+                uint32_t local_offset = index_entries[i]._offset - global_offset;
+                sum_value += _get_sum_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
+                                                      type, index_entries[i], ranges[i]);
             }
 
             sum_count += (ranges.back().global_end_index() - ranges.front().global_start_index());
@@ -234,12 +246,10 @@ namespace LindormContest {
         }
 
         template <typename T>
-        T _get_max_column_value(const Path& tsm_file_path, ColumnType type,
+        T _get_max_column_value(const Path& tsm_file_path, const char* buf, ColumnType type,
                                 const IndexEntry& index_entry, const IndexRange& range) {
             DataBlock data_block;
-            std::string buf;
-            io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
+            data_block.decode_from_decompress(buf, type, index_entry._count);
 
             if ((range._end_index - range._start_index) == index_entry._count) {
                 return index_entry.get_max<T>();
@@ -262,12 +272,10 @@ namespace LindormContest {
         }
 
         template <typename T>
-        T _get_sum_column_value(const Path& tsm_file_path, ColumnType type,
+        T _get_sum_column_value(const Path& tsm_file_path, const char* buf, ColumnType type,
                                 const IndexEntry& index_entry, const IndexRange& range) {
             DataBlock data_block;
-            std::string buf;
-            io::stream_read_string_from_file(tsm_file_path, index_entry._offset, index_entry._size, buf);
-            data_block.decode_from_decompress(buf.c_str(), type, index_entry._count);
+            data_block.decode_from_decompress(buf, type, index_entry._count);
 
             if ((range._end_index - range._start_index) == index_entry._count) {
                 return index_entry.get_sum<T>();
