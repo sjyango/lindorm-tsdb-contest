@@ -33,6 +33,9 @@ namespace LindormContest::test {
     std::mutex dataset_mutex;
     std::mutex insert_mutex;
 
+    constexpr int64_t MIN_TS = 1694043124000;
+    constexpr int64_t MAX_TS = 1694079124000;
+
     std::unordered_map<std::string, Row> latest_records; // vin -> max_timestamp
     std::unordered_map<std::string, std::vector<Row>> time_range_records; // vin -> timestamps
 
@@ -262,8 +265,8 @@ namespace LindormContest::test {
             std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
-        trqr.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
-        trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, 1689126000000);
+        trqr.timeLowerBound = generate_random_timestamp(MIN_TS, MAX_TS);
+        trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, MAX_TS);
         trqr.requestedColumns = {"col1", "col2", "col3"};
         std::string key(trqr.vin.vin, 17);
 
@@ -319,8 +322,8 @@ namespace LindormContest::test {
             std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trar.vin.vin, rand_vin.c_str(), 17);
         }
-        trar.timeLowerBound = generate_random_timestamp(1689090000000, 1689126000000);
-        trar.timeUpperBound = generate_random_timestamp(trar.timeLowerBound, 1689126000000);
+        trar.timeLowerBound = generate_random_timestamp(MIN_TS, MAX_TS);
+        trar.timeUpperBound = generate_random_timestamp(trar.timeLowerBound, MAX_TS);
         if (generate_random_float64() < 0.5) {
             trar.columnName = "col2";
         } else {
@@ -429,7 +432,7 @@ namespace LindormContest::test {
         }
         const size_t INTERVAL_NUM = 100;
         trdr.interval = 100000;
-        trdr.timeLowerBound = generate_random_timestamp(1689090000000, 1689100000000);
+        trdr.timeLowerBound = generate_random_timestamp(MIN_TS, MAX_TS - (INTERVAL_NUM * trdr.interval));
         trdr.timeUpperBound = trdr.timeLowerBound + INTERVAL_NUM * trdr.interval;
         if (generate_random_float64() < 0.5) {
             trdr.columnName = "col2";
