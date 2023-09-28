@@ -304,10 +304,16 @@ namespace LindormContest {
 
         void encode_to_compress(std::string *buf) const {
             uint16_t ts_count = _tss.size();
-            uint32_t uncompress_size = _tss.size() * sizeof(int64_t);
-            const char* uncompress_data = reinterpret_cast<const char*>(_tss.data());
+            std::vector<uint16_t> tss(ts_count);
+
+            for (size_t i = 0; i < ts_count; ++i) {
+                tss[i] = decode_ts(_tss[i]);
+            }
+
+            uint32_t uncompress_size = ts_count * sizeof(uint16_t);
+            const char* uncompress_data = reinterpret_cast<const char*>(tss.data());
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
-            uint32_t compress_size = compression::compress_int64(uncompress_data, uncompress_size, compress_data.get());
+            uint32_t compress_size = compression::compress_int16(uncompress_data, uncompress_size, compress_data.get());
             buf->append((const char*) &ts_count, sizeof(uint16_t));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
@@ -323,10 +329,15 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + sizeof(uint16_t) + 2 * sizeof(uint32_t), compress_size);
-            assert(uncompress_size / sizeof(int64_t) == ts_count);
-            char* start_ptr = compression::decompress_int64(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            assert(uncompress_size / sizeof(uint16_t) == ts_count);
+            char* start_ptr = compression::decompress_int16(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            const uint16_t * tss = reinterpret_cast<const uint16_t*>(start_ptr);
             _tss.resize(ts_count);
-            std::memcpy(_tss.data(), start_ptr, uncompress_size);
+
+            for (uint16_t i = 0; i < ts_count; ++i) {
+                _tss[i] = encode_ts(tss[i]);
+            }
+
             const uint8_t* p = reinterpret_cast<const uint8_t*>(buf + sizeof(uint16_t) + 2 * sizeof(uint32_t) + compress_size);
             _index_offset = decode_fixed<uint32_t>(p);
             _footer_offset = decode_fixed<uint32_t>(p);
@@ -383,11 +394,7 @@ namespace LindormContest {
 
         void encode_to(std::string *buf);
 
-        void decode_from(const uint8_t *buf, uint32_t file_size);
-
         void write_to_file(const Path &tsm_file_path);
-
-        void read_from_file(const Path &tsm_file_path);
 
         static void get_size_and_offset(const Path& tsm_file_path, uint32_t& file_size, uint32_t& index_offset, uint32_t& footer_offset);
 
