@@ -70,7 +70,7 @@ namespace LindormContest {
             input_indexes.resize(input_rows.size());
             std::iota(input_indexes.begin(),input_indexes.end(),0);
             
-            pdqsort_branchless(input_indexes.begin(), input_indexes.end(), [input_rows] (const size_t& lIndex, const size_t& rIndex) {
+            pdqsort_branchless(input_indexes.begin(), input_indexes.end(), [&input_rows] (const size_t& lIndex, const size_t& rIndex) {
                return input_rows[lIndex].timestamp < input_rows[rIndex].timestamp;
             });
             
