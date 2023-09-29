@@ -173,16 +173,6 @@ namespace LindormContest {
             return true;
         }
 
-        bool get_max_index_entry(const TimeRange& tr, IndexEntry& index_entry) {
-            for (auto it = _index_entries.rbegin(); it != _index_entries.rend(); ++it) {
-                if (tr.overlap(it->get_time_range())) {
-                    index_entry = *it;
-                    return true;
-                }
-            }
-            return false;
-        }
-
         void encode_to(std::string *buf) const {
             _index_meta.encode_to(buf);
             for (const auto &entry: _index_entries) {

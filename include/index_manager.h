@@ -29,13 +29,12 @@ namespace LindormContest {
     public:
         IndexManager() = default;
 
-        IndexManager(IndexManager&& other) : _index_entries(std::move(other._index_entries)) {}
-
         ~IndexManager() = default;
 
         bool query_indexes(const std::string& file_name, const std::string& column_name,
                            const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            return _index_entries[file_name][column_name].get_index_entries(tr, index_entries);
+            uint16_t file_index = std::stoi(file_name);
+            return _index_entries[file_index][column_name].get_index_entries(tr, index_entries);
         }
 
         void decode_from_file(const Path& vin_dir_path, SchemaSPtr schema) {
@@ -45,7 +44,8 @@ namespace LindormContest {
                 std::string buf;
                 uint32_t index_size = footer_offset - index_offset;
                 io::stream_read_string_from_file(entry.path(), index_offset, index_size, buf);
-                std::unordered_map<std::string, IndexBlock> index_blocks;
+                uint16_t file_index = std::stoi(entry.path().filename().string());
+                std::unordered_map<std::string, IndexBlock>& index_blocks = _index_entries[file_index];
                 const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
 
                 for (const auto &[column_name, column_type]: schema->columnTypeMap) {
@@ -53,15 +53,11 @@ namespace LindormContest {
                     index_block.decode_from(p);
                     index_blocks.emplace(column_name, std::move(index_block));
                 }
-
-                _index_entries.emplace(entry.path().filename(), std::move(index_blocks));
             }
         }
 
     private:
-        using IndexContainer = std::unordered_map<std::string,
-                std::unordered_map<std::string, IndexBlock>>; // file name -> (column name -> index block)
-        IndexContainer _index_entries;
+        std::unordered_map<std::string, IndexBlock> _index_entries[TS_NUM_RANGE / FILE_FLUSH_SIZE / COMPACTION_FILE_NUM];
     };
 
     class GlobalIndexManager;

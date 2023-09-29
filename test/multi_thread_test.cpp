@@ -265,8 +265,9 @@ namespace LindormContest::test {
             std::string rand_vin = "LSVNV2182E054" + generate_random_string(4);
             std::strncpy(trqr.vin.vin, rand_vin.c_str(), 17);
         }
-        trqr.timeLowerBound = generate_random_timestamp(MIN_TS, MAX_TS);
-        trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, MAX_TS);
+        trqr.timeLowerBound = generate_random_timestamp(MIN_TS, MAX_TS - 600 * 1000);
+        trqr.timeUpperBound = trqr.timeLowerBound + 600 * 1000;
+        // trqr.timeUpperBound = generate_random_timestamp(trqr.timeLowerBound, MAX_TS);
         trqr.requestedColumns = {"col1", "col2", "col3"};
         std::string key(trqr.vin.vin, 17);
 

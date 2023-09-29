@@ -46,7 +46,7 @@ namespace LindormContest {
         }
 
         template<typename T>
-        void query_time_range_max_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
+        void query_time_range_max_aggregate(const Vin& vin, const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
             ColumnType type = _schema->columnTypeMap[column_name];
             T max_value = std::numeric_limits<T>::lowest();
 
@@ -69,14 +69,14 @@ namespace LindormContest {
 
             ColumnValue max_column_value(max_value);
             Row result_row;
-            result_row.vin = encode_vin(_vin_num);
+            result_row.vin = vin;
             result_row.timestamp = tr._start_time;
             result_row.columns.emplace(column_name, std::move(max_column_value));
             aggregationRes.emplace_back(std::move(result_row));
         }
 
         template <typename T>
-        void query_time_range_avg_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
+        void query_time_range_avg_aggregate(const Vin& vin, const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
             ColumnType type = _schema->columnTypeMap[column_name];
             T sum_value = 0;
             size_t sum_count = 0;
@@ -96,7 +96,7 @@ namespace LindormContest {
             double_t avg_value = sum_value * 1.0 / sum_count;
             ColumnValue avg_column_value(avg_value);
             Row result_row;
-            result_row.vin = encode_vin(_vin_num);
+            result_row.vin = vin;
             result_row.timestamp = tr._start_time;
             result_row.columns.emplace(column_name, std::move(avg_column_value));
             aggregationRes.emplace_back(std::move(result_row));
@@ -320,21 +320,21 @@ namespace LindormContest {
             }
         }
 
-        void query_aggregate(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_aggregate(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                              const std::string& column_name, Aggregator aggregator, std::vector<Row>& aggregationRes) {
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
             ColumnType type = _schema->columnTypeMap[column_name];
             if (type == COLUMN_TYPE_INTEGER) {
                 if (aggregator == MAX) {
-                    _agg_managers[vin_num]->query_time_range_max_aggregate<int32_t>(tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_max_aggregate<int32_t>(vin, tr, column_name, aggregationRes);
                 } else if (aggregator == AVG) {
-                    _agg_managers[vin_num]->query_time_range_avg_aggregate<int64_t>(tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_avg_aggregate<int64_t>(vin, tr, column_name, aggregationRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
-                    _agg_managers[vin_num]->query_time_range_max_aggregate<double_t>(tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_max_aggregate<double_t>(vin, tr, column_name, aggregationRes);
                 } else if (aggregator == AVG) {
-                    _agg_managers[vin_num]->query_time_range_avg_aggregate<double_t>(tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_avg_aggregate<double_t>(vin, tr, column_name, aggregationRes);
                 }
             }
         }

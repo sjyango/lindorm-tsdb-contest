@@ -18,6 +18,7 @@
 #include <thread>
 #include <atomic>
 #include <sstream>
+#include <numeric>
 
 #include "base.h"
 #include "struct/Vin.h"
@@ -33,7 +34,7 @@ namespace LindormContest {
         CompactionManager() = default;
 
         CompactionManager(uint16_t vin_num, const Path& root_path)
-                : _vin_num(vin_num), _root_path(root_path), _schema(nullptr) {
+                : _vin_num(vin_num), _compaction_nums(0), _root_path(root_path), _schema(nullptr) {
             Path vin_dir_path = _root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(vin_dir_path);
             _latest_row.vin = encode_vin(_vin_num);
@@ -49,6 +50,7 @@ namespace LindormContest {
 
         void level_compaction(uint16_t start_file, uint16_t end_file) {
             std::vector<Row> input_rows;
+            std::vector<uint32_t> input_indexes;
 
             for (uint16_t i = start_file; i < end_file; ++i) {
                 Path flush_file_path = _root_path / "no-compaction" / std::to_string(_vin_num) / std::to_string(i);
@@ -66,20 +68,23 @@ namespace LindormContest {
                 input_file.close();
             }
 
-            pdqsort_branchless(input_rows.begin(), input_rows.end(), [] (const Row& lhs, const Row& rhs) {
-               return lhs.timestamp < rhs.timestamp;
+            input_indexes.resize(input_rows.size());
+            std::iota(input_indexes.begin(),input_indexes.end(),0);
+
+            pdqsort_branchless(input_indexes.begin(), input_indexes.end(), [&input_rows] (uint32_t lhs, uint32_t rhs) {
+                return input_rows[lhs].timestamp < input_rows[rhs].timestamp;
             });
 
-            if (input_rows.back().timestamp > _latest_row.timestamp) {
-                _latest_row.timestamp = input_rows.back().timestamp;
-                _latest_row.columns = input_rows.back().columns;
+            int64_t last_ts = input_rows[input_indexes.back()].timestamp;
+
+            if (last_ts > _latest_row.timestamp) {
+                _latest_row.timestamp = last_ts;
+                _latest_row.columns = input_rows[input_indexes.back()].columns;
             }
 
             TsmFile output_tsm_file;
-            _multiway_compaction(_schema, input_rows, output_tsm_file);
-            std::string output_tsm_file_name = std::to_string(decode_ts(output_tsm_file._footer._tss.front()))
-                    + "-" + std::to_string(decode_ts(output_tsm_file._footer._tss.back()));
-            Path output_tsm_file_path = _root_path / "compaction" / std::to_string(_vin_num) / output_tsm_file_name;
+            _multiway_compaction(_schema, input_rows, input_indexes, output_tsm_file);
+            Path output_tsm_file_path = _root_path / "compaction" / std::to_string(_vin_num) / std::to_string(_compaction_nums++);
             output_tsm_file.write_to_file(output_tsm_file_path);
         }
 
@@ -89,19 +94,20 @@ namespace LindormContest {
 
     private:
         // input_rows are sorted
-        static void _multiway_compaction(SchemaSPtr schema, const std::vector<Row> &input_rows, TsmFile &output_file) {
+        static void _multiway_compaction(SchemaSPtr schema, const std::vector<Row> &input_rows,
+                                         const std::vector<uint32_t>& row_indexes, TsmFile &output_file) {
             size_t row_nums = input_rows.size();
-            std::vector<int64_t> tss;
+            std::vector<int64_t> tss(row_nums);
 
-            for (const auto &row: input_rows) {
-                tss.emplace_back(row.timestamp);
+            for (size_t i = 0; i < row_nums; ++i) {
+                tss[i] = input_rows[row_indexes[i]].timestamp;
             }
 
             for (const auto &[column_name, column_type]: schema->columnTypeMap) {
-                std::vector<ColumnValue> column_value;
+                std::vector<ColumnValue> column_value(row_nums);
 
-                for (const auto &row: input_rows) {
-                    column_value.emplace_back(row.columns.at(column_name));
+                for (size_t i = 0; i < row_nums; ++i) {
+                    column_value[i] = input_rows[row_indexes[i]].columns.at(column_name);
                 }
 
                 IndexBlock index_block(column_name, column_type);
@@ -160,6 +166,7 @@ namespace LindormContest {
         }
 
         uint16_t _vin_num;
+        uint16_t _compaction_nums;
         Path _root_path;
         SchemaSPtr _schema;
         Row _latest_row;

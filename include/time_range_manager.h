@@ -43,28 +43,20 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        void query_time_range(const TimeRange& tr, const std::set<std::string>& requested_columns,
+        void query_time_range(const Vin& vin, const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
             for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
                 if (_finish_compaction) {
-                    std::string file_name = entry.path().filename();
-                    size_t line_pos = file_name.find('-');
-                    TimeRange file_tr {encode_ts(static_cast<uint16_t>(std::stoi(file_name.substr(0, line_pos)))),
-                                       encode_ts(static_cast<uint16_t>(std::stoi(file_name.substr(line_pos + 1))))};
-                    if (!file_tr.overlap(tr)) {
-                        continue;
-                    }
-                    _query_from_one_tsm_file(entry.path(), tr, requested_columns, trReadRes);
+                    _query_from_one_tsm_file(vin, entry.path(), tr, requested_columns, trReadRes);
                 } else {
-                    _query_from_one_flush_file(entry.path(), tr, requested_columns, trReadRes);
+                    _query_from_one_flush_file(vin, entry.path(), tr, requested_columns, trReadRes);
                 }
             }
         }
 
     private:
-        void _query_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
+        void _query_from_one_tsm_file(const Vin& vin, const Path& tsm_file_path, const TimeRange& tr,
                                       const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            Vin vin = encode_vin(_vin_num);
             std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
             Footer footer;
             TsmFile::get_footer(tsm_file_path, footer);
@@ -106,9 +98,8 @@ namespace LindormContest {
             assert(ts_start == ts_end);
         }
 
-        void _query_from_one_flush_file(const Path& flush_file_path, const TimeRange& tr,
+        void _query_from_one_flush_file(const Vin& vin, const Path& flush_file_path, const TimeRange& tr,
                                         const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            Vin vin = encode_vin(_vin_num);
             std::ifstream input_file;
             input_file.open(flush_file_path, std::ios::in | std::ios::binary);
             if (!input_file.is_open() || !input_file.good()) {
@@ -199,10 +190,10 @@ namespace LindormContest {
             }
         }
 
-        void query_time_range(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_time_range(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                               const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
-            _tr_managers[vin_num]->query_time_range(tr, requested_columns, trReadRes);
+            _tr_managers[vin_num]->query_time_range(vin, tr, requested_columns, trReadRes);
         }
 
     private:

@@ -46,7 +46,7 @@ namespace LindormContest {
         }
 
         template <typename T>
-        void query_time_range_max_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
+        void query_time_range_max_down_sample(const Vin& vin, int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
             ColumnType type = _schema->columnTypeMap[column_name];
 
@@ -89,7 +89,7 @@ namespace LindormContest {
 
                 ColumnValue max_column_value(max_value);
                 Row result_row;
-                result_row.vin = encode_vin(_vin_num);
+                result_row.vin = vin;
                 result_row.timestamp = sub_tr._start_time;
                 result_row.columns.emplace(column_name, std::move(max_column_value));
                 downsampleRes.emplace_back(std::move(result_row));
@@ -97,7 +97,7 @@ namespace LindormContest {
         }
 
         template <typename T>
-        void query_time_range_avg_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
+        void query_time_range_avg_down_sample(const Vin& vin, int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
             ColumnType type = _schema->columnTypeMap[column_name];
 
@@ -142,7 +142,7 @@ namespace LindormContest {
 
                 ColumnValue max_column_value(avg_value);
                 Row result_row;
-                result_row.vin = encode_vin(_vin_num);
+                result_row.vin = vin;
                 result_row.timestamp = sub_tr._start_time;
                 result_row.columns.emplace(column_name, std::move(max_column_value));
                 downsampleRes.emplace_back(std::move(result_row));
@@ -443,22 +443,22 @@ namespace LindormContest {
             }
         }
 
-        void query_down_sample(uint16_t vin_num, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
+        void query_down_sample(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                                int64_t interval, const std::string& column_name, Aggregator aggregator,
                                const CompareExpression& columnFilter, std::vector<Row>& downsampleRes) {
             TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
             ColumnType type = _schema->columnTypeMap[column_name];
             if (type == COLUMN_TYPE_INTEGER) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_num]->query_time_range_max_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<int32_t>(vin, interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_num]->query_time_range_avg_down_sample<int64_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<int64_t>(vin, interval, tr, column_name, columnFilter, downsampleRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_num]->query_time_range_max_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<double_t>(vin, interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_num]->query_time_range_avg_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<double_t>(vin, interval, tr, column_name, columnFilter, downsampleRes);
                 }
             }
         }

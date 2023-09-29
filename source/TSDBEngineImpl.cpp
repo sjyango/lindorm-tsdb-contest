@@ -97,7 +97,7 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
+        _tr_manager->query_time_range(vin_num, trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
                                       trReadReq.requestedColumns, trReadRes);
         return 0;
     }
@@ -107,7 +107,7 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+        _agg_manager->query_aggregate(vin_num, aggregationReq.vin, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
                                       aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         return 0;
     }
@@ -117,7 +117,7 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+        _ds_manager->query_down_sample(vin_num, downsampleReq.vin, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
                                        downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                        downsampleReq.columnFilter, downsampleRes);
         return 0;
