@@ -28,6 +28,7 @@ set(EXECUTABLES
         # io_test
         # tsm_test
         multi_thread_test
+        compression_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})
