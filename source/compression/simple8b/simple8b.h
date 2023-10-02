@@ -88,7 +88,7 @@ static uint32_t GetSelectorNum(const uint64_t *const in)
 }
 
 template <typename T>
-uint64_t Simple8bEncode(T *input, uint64_t inputLength, uint64_t *out)
+uint64_t Simple8bEncode(const T *input, uint64_t inputLength, uint64_t *out)
 {
     uint32_t NumberOfValuesCoded = 0;
     const uint64_t *const initout = out;
@@ -392,7 +392,7 @@ uint64_t Simple8bEncode(T *input, uint64_t inputLength, uint64_t *out)
 }
 
 template <typename T>
-const uint64_t Simple8bDecode(uint64_t *input, uint64_t uncompressedLength, T *out)
+const uint64_t Simple8bDecode(const uint64_t *input, uint64_t uncompressedLength, T *out)
 {
     const uint64_t *in = input;
     const T *const end = out + uncompressedLength;
