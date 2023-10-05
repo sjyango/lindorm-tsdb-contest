@@ -1,5 +1,5 @@
 #include "compression/boolean_compression.h"
-#include "../source/compression/bitpack/include/bitpacker/bitpacker.hpp"
+//#include "../source/compression/bitpack/include/bitpacker/bitpacker.hpp"
 
 namespace LindormContest::compression {
 uint32_t CompressionBitPack::compress(const char* source, uint32_t source_size, char* dest) const {
