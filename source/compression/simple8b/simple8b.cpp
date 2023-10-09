@@ -15,98 +15,96 @@
 * Compress Integer (Simple8B).
 */
 int32_t tsCompressINTImp(const char *const input, const int32_t nelements, char *const output) {
-   // Selector value:              0    1   2   3   4   5   6   7   8  9  10  11
-   // 12  13  14  15
-   char    bit_per_integer[] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60};
-   int32_t selector_to_elems[] = {240, 120, 60, 30, 20, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1};
-   char    bit_to_selector[] = {0,  2,  3,  4,  5,  6,  7,  8,  9,  10, 10, 11, 11, 12, 12, 12, 13, 13, 13, 13, 13,
-                             14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-                             15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15};
+    // Selector value:              0    1   2   3   4   5   6   7   8  9  10  11
+    // 12  13  14  15
+    char    bit_per_integer[] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60};
+    int32_t selector_to_elems[] = {240, 120, 60, 30, 20, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1};
+    char    bit_to_selector[] = {0,  2,  3,  4,  5,  6,  7,  8,  9,  10, 10, 11, 11, 12, 12, 12, 13, 13, 13, 13, 13,
+                              14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                              15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15};
 
-   // get the byte limit. ONLY INT32
-   int32_t word_length = 4;
-   uint64_t buffer = 0;
+    // get the byte limit.
+    int32_t word_length = sizeof(int32_t);
+    uint64_t buffer = 0;
 
-   int32_t byte_limit = nelements * word_length + 1;
-   int32_t opos = 1;
-   int64_t prev_value = 0;
+    int32_t byte_limit = nelements * word_length + 1;
+    int32_t opos = 1;
+    int64_t prev_value = 0;
 
-   for (int32_t i = 0; i < nelements;) {
-       char    selector = 0;
-       char    bit = 0;
-       int32_t elems = 0;
-       int64_t prev_value_tmp = prev_value;
+    for (int32_t i = 0; i < nelements;) {
+        char    selector = 0;
+        char    bit = 0;
+        int32_t elems = 0;
+        int64_t prev_value_tmp = prev_value;
 
-       for (int32_t j = i; j < nelements; j++) {
-           // Read data from the input stream and convert it to INT64 type.
-           int64_t curr_value = 0;
-           curr_value = (int64_t)(*((int32_t *)input + j));
-           // Get difference.
-           if (!safeInt64Add(curr_value, -prev_value_tmp)) goto _copy_and_exit;
+        for (int32_t j = i; j < nelements; j++) {
+            // Read data from the input stream and convert it to INT64 type.
+            int64_t curr_value = (int64_t)(*((int32_t *)input + j));
+            // Get difference.
+            if (!safeInt64Add(curr_value, -prev_value_tmp)) goto _copy_and_exit;
 
-           int64_t diff = curr_value - prev_value_tmp;
-           // Zigzag encode the value.
-           uint64_t zigzag_value = ZIGZAG_ENCODE(int64_t, diff);
+            int64_t diff = curr_value - prev_value_tmp;
+            // Zigzag encode the value.
+            uint64_t zigzag_value = ZIGZAG_ENCODE(int64_t, diff);
 
-           if (zigzag_value >= SIMPLE8B_MAX_INT64) goto _copy_and_exit;
+            if (zigzag_value >= SIMPLE8B_MAX_INT64) goto _copy_and_exit;
 
-           int64_t tmp_bit;
-           if (zigzag_value == 0) {
-               // Take care here, __builtin_clzl give wrong anser for value 0;
-               tmp_bit = 0;
-           } else {
-               tmp_bit = (8 * BITS_PER_BYTE) - BUILDIN_CLZL(zigzag_value);
-           }
+            int64_t tmp_bit;
+            if (zigzag_value == 0) {
+                // Take care here, __builtin_clzl give wrong anser for value 0;
+                tmp_bit = 0;
+            } else {
+                tmp_bit = (sizeof(int64_t) * BITS_PER_BYTE) - BUILDIN_CLZL(zigzag_value);
+            }
 
-           if (elems + 1 <= selector_to_elems[(int32_t)selector] &&
-               elems + 1 <= selector_to_elems[(int32_t)(bit_to_selector[(int32_t)tmp_bit])]) {
-               // If can hold another one.
-               selector = selector > bit_to_selector[(int32_t)tmp_bit] ? selector : bit_to_selector[(int32_t)tmp_bit];
-               elems++;
-               bit = bit_per_integer[(int32_t)selector];
-           } else {
-               // if cannot hold another one.
-               while (elems < selector_to_elems[(int32_t)selector]) selector++;
-               elems = selector_to_elems[(int32_t)selector];
-               bit = bit_per_integer[(int32_t)selector];
-               break;
-           }
-           prev_value_tmp = curr_value;
-       }
+            if (elems + 1 <= selector_to_elems[(int32_t)selector] &&
+                elems + 1 <= selector_to_elems[(int32_t)(bit_to_selector[(int32_t)tmp_bit])]) {
+                // If can hold another one.
+                selector = selector > bit_to_selector[(int32_t)tmp_bit] ? selector : bit_to_selector[(int32_t)tmp_bit];
+                elems++;
+                bit = bit_per_integer[(int32_t)selector];
+            } else {
+                // if cannot hold another one.
+                while (elems < selector_to_elems[(int32_t)selector]) selector++;
+                elems = selector_to_elems[(int32_t)selector];
+                bit = bit_per_integer[(int32_t)selector];
+                break;
+            }
+            prev_value_tmp = curr_value;
+        }
 
+        buffer = 0;
+        buffer |= (uint64_t)selector;
+        for (int32_t k = 0; k < elems; k++) {
+            int64_t curr_value = (int64_t)(*((int32_t *)input + i)); /* get current values */
+            int64_t  diff = curr_value - prev_value;
+            uint64_t zigzag_value = ZIGZAG_ENCODE(int64_t, diff);
+            buffer |= ((zigzag_value & INT64MASK(bit)) << (bit * k + 4));
+            i++;
+            prev_value = curr_value;
+        }
 
-       buffer |= (uint64_t)selector;
-       for (int32_t k = 0; k < elems; k++) {
-           int64_t curr_value = 0; /* get current values */
-           curr_value = (int64_t)(*((int32_t *)input + i));
-           int64_t  diff = curr_value - prev_value;
-           uint64_t zigzag_value = ZIGZAG_ENCODE(int64_t, diff);
-           buffer |= ((zigzag_value & INT64MASK(bit)) << (bit * k + 4));
-           i++;
-           prev_value = curr_value;
-       }
+        // Output the encoded value to the output.
+        if (opos + sizeof(buffer) <= byte_limit) {
+            memcpy(output + opos, &buffer, sizeof(buffer));
+            opos += sizeof(buffer);
+        } else {
+        _copy_and_exit:
+            output[0] = 1;
+            memcpy(output + 1, input, byte_limit - 1);
+            return byte_limit;
+        }
+    }
 
-       // Output the encoded value to the output.
-       if (opos + sizeof(buffer) <= byte_limit) {
-           memcpy(output + opos, &buffer, sizeof(buffer));
-           opos += sizeof(buffer);
-       } else {
-       _copy_and_exit:
-           output[0] = 1;
-           memcpy(output + 1, input, byte_limit - 1);
-           return byte_limit;
-       }
-   }
-
-   // set the indicator.
-   output[0] = 0;
-   return opos;
+    // set the indicator.
+    output[0] = 0;
+    return opos;
 }
+
 
 int32_t tsDecompressINTImp(const char *const input, const int32_t nelements, char *const output) {
 
-   int32_t word_length = 0;
-   word_length = 4;
+   int32_t word_length = 4;
 
    // If not compressed.
    if (input[0] == 1) {
