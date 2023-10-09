@@ -39,85 +39,41 @@ namespace LindormContest {
         void init(SchemaSPtr schema) {
             _schema = schema;
             for (uint16_t file_idx = 0; file_idx < TSM_FILE_COUNT; ++file_idx) {
-                std::filesystem::create_directories(_flush_dir_path / std::to_string(file_idx));
-                for (const auto &[column_name, column_type]: _schema->columnTypeMap) {
-                    Path column_file_path = _flush_dir_path / std::to_string(file_idx) / column_name;
-                    int fd = open(column_file_path.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-                    assert(fd != -1);
-                    _fds[file_idx][column_name] = fd;
-                    _mutexes[file_idx][column_name] = std::make_unique<std::mutex>();
-                    if (column_type == COLUMN_TYPE_INTEGER) {
-                        auto res = ftruncate(fd, FILE_CONVERT_SIZE * sizeof(int32_t));
-                        assert(res != -1);
-                    } else if (column_type == COLUMN_TYPE_DOUBLE_FLOAT) {
-                        auto res = ftruncate(fd, FILE_CONVERT_SIZE * sizeof(double_t));
-                        assert(res != -1);
-                    }
-                }
+                Path flush_file_path = _flush_dir_path / std::to_string(file_idx);
+                _streams[file_idx].open(flush_file_path, std::ios::out | std::ios::binary);
+                assert(_streams[file_idx].is_open() && _streams[file_idx].good());
+                _write_nums[file_idx] = 0;
             }
         }
 
         void append(const Row& row) {
-            uint16_t ts_num = decode_ts(row.timestamp);
-            if (ts_num > _latest_ts.load(std::memory_order::relaxed)) {
-                _latest_ts.store(ts_num, std::memory_order::relaxed);
-            }
-            uint16_t file_idx = ts_num / FILE_CONVERT_SIZE;
-            uint16_t file_offset = ts_num % FILE_CONVERT_SIZE;
-
-            for (const auto &[column_name, column_value]: row.columns) {
-                std::lock_guard<std::mutex> l(*_mutexes[file_idx][column_name]);
-                int fd = _fds[file_idx][column_name];
-
-                switch (column_value.columnType) {
-                    case COLUMN_TYPE_INTEGER: {
-                        auto res = lseek(fd, file_offset * sizeof(int32_t), SEEK_SET);
-                        assert(res != -1);
-                        auto bytes_written = write(fd, column_value.columnData, sizeof(int32_t));
-                        assert(bytes_written != -1);
-                        break;
-                    }
-                    case COLUMN_TYPE_DOUBLE_FLOAT: {
-                        auto res = lseek(fd, file_offset * sizeof(double_t), SEEK_SET);
-                        assert(res != -1);
-                        auto bytes_written = write(fd, column_value.columnData, sizeof(double_t));
-                        assert(bytes_written != -1);
-                        break;
-                    }
-                    case COLUMN_TYPE_STRING: {
-                        std::string str_buf;
-                        put_fixed(&str_buf, file_offset);
-                        str_buf.append(column_value.columnData, column_value.getRawDataSize());
-                        auto bytes_written = write(fd, str_buf.data(), str_buf.size());
-                        assert(bytes_written != -1);
-                        break;
-                    }
-                    default:
-                        break;
+            uint16_t file_idx = decode_ts(row.timestamp) / FILE_CONVERT_SIZE;
+            std::string buf;
+            io::serialize_row(_schema, row, false, buf);
+            {
+                std::lock_guard<std::mutex> l(_mutexes[file_idx]);
+                _streams[file_idx].write(buf.c_str(), buf.size());
+                if (unlikely(++_write_nums[file_idx] == FILE_CONVERT_SIZE)) {
+                    _streams[file_idx].close();
+                    _convert_manager->convert_async(_vin_num, file_idx);
                 }
-            }
-
-            if (++_write_nums[file_idx] == FILE_CONVERT_SIZE) {
-                for (const auto &item: _fds[file_idx]) {
-                    close(item.second);
-                }
-                _convert_manager->convert_async(_vin_num, file_idx);
-                INFO_LOG("%hu-%hu starts converting", _vin_num, file_idx)
             }
         }
 
-        uint16_t get_latest_ts() const {
-            return _latest_ts.load(std::memory_order::relaxed);
+        void flush() {
+            for (uint16_t file_idx = 0; file_idx < TSM_FILE_COUNT; ++file_idx) {
+                std::lock_guard<std::mutex> l(_mutexes[file_idx]);
+                _streams[file_idx].flush();
+            }
         }
 
     private:
         uint16_t _vin_num;
-        std::atomic<uint16_t> _latest_ts {0};
         Path _flush_dir_path;
         SchemaSPtr _schema;
-        std::atomic<uint16_t> _write_nums[TSM_FILE_COUNT] = {0};
-        std::unordered_map<std::string, std::unique_ptr<std::mutex>> _mutexes[TSM_FILE_COUNT];
-        std::unordered_map<std::string, int> _fds[TSM_FILE_COUNT];
+        uint16_t _write_nums[TSM_FILE_COUNT];
+        std::mutex _mutexes[TSM_FILE_COUNT];
+        std::ofstream _streams[TSM_FILE_COUNT];
         GlobalConvertManagerSPtr _convert_manager;
     };
 
@@ -147,8 +103,8 @@ namespace LindormContest {
             _tsm_writers[decode_vin(row.vin)]->append(row);
         }
 
-        uint16_t get_latest_ts(uint16_t vin_num) const {
-            return _tsm_writers[vin_num]->get_latest_ts();
+        void flush(uint16_t vin_num) {
+            _tsm_writers[vin_num]->flush();
         }
 
     private:

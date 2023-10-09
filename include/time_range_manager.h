@@ -30,10 +30,8 @@ namespace LindormContest {
     public:
         TimeRangeManager() = default;
 
-        TimeRangeManager(uint16_t vin_num, const Path& vin_dir_path,
-                         bool finish_compaction, GlobalIndexManagerSPtr index_manager)
-        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _finish_compaction(finish_compaction),
-        _schema(nullptr), _index_manager(index_manager) {}
+        TimeRangeManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
+        : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
 
         TimeRangeManager(TimeRangeManager&& other) = default;
 
@@ -43,19 +41,16 @@ namespace LindormContest {
             _schema = schema;
         }
 
+        template <bool finish_compaction>
         void query_time_range(const Vin& vin, const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
             for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
-                if (unlikely(file_idx >= TSM_FILE_COUNT)) {
-                    return;
-                }
-
                 TimeRange file_tr (
                         std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
                         std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
                         );
 
-                if (_finish_compaction) {
+                if constexpr (finish_compaction) {
                     _query_from_one_tsm_file(vin, file_idx, file_tr, requested_columns, trReadRes);
                 } else {
                     _query_from_one_flush_file(vin, file_idx, file_tr, requested_columns, trReadRes);
@@ -98,82 +93,31 @@ namespace LindormContest {
 
         void _query_from_one_flush_file(const Vin& vin, uint16_t file_idx, const TimeRange& file_tr,
                                         const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            Path flush_dir_path = _vin_dir_path / std::to_string(file_idx);
-            std::vector<Row> file_rows;
-            uint16_t row_nums = file_tr._end_idx - file_tr._start_idx + 1;
-            file_rows.resize(row_nums);
+            Path flush_file_path = _vin_dir_path / std::to_string(file_idx);
+            std::string buf;
+            io::stream_read_string_from_file(flush_file_path, buf);
 
-            for (const auto &requested_column: requested_columns) {
-                Path flush_file_path = flush_dir_path / requested_column;
-                int fd = open(flush_file_path.c_str(), O_RDONLY);
-                assert(fd != -1);
+            if (buf.empty()) {
+                return;
+            }
 
-                switch (_schema->columnTypeMap[requested_column]) {
-                    case COLUMN_TYPE_INTEGER: {
-                        auto res = lseek(fd, file_tr._start_idx * sizeof(int32_t), SEEK_SET);
-                        assert(res != -1);
-                        std::unique_ptr<int32_t[]> int_values = std::make_unique<int32_t[]>(row_nums);
-                        auto bytes_read = read(fd, int_values.get(), row_nums * sizeof(int32_t));
-                        assert(bytes_read == row_nums * sizeof(int32_t));
-                        for (uint16_t i = 0; i < row_nums; ++i) {
-                            file_rows[i].columns.emplace(requested_column, int_values[i]);
-                        }
-                        break;
+            const char* start = buf.c_str();
+            const char* end = start + buf.size();
+
+            while (start < end) {
+                Row row;
+                io::deserialize_row(_schema, start, false, row);
+                uint16_t ts_num = decode_ts(row.timestamp) % FILE_CONVERT_SIZE;
+                if (ts_num >= file_tr._start_idx && ts_num <= file_tr._end_idx) {
+                    Row result_row;
+                    result_row.vin = vin;
+                    result_row.timestamp = row.timestamp;
+                    for (const auto &requested_column: requested_columns) {
+                        result_row.columns.emplace(requested_column, row.columns.at(requested_column));
                     }
-                    case COLUMN_TYPE_DOUBLE_FLOAT: {
-                        auto res = lseek(fd, file_tr._start_idx * sizeof(double_t), SEEK_SET);
-                        assert(res != -1);
-                        std::unique_ptr<double_t[]> double_values = std::make_unique<double_t[]>(row_nums);
-                        auto bytes_read = read(fd, double_values.get(), row_nums * sizeof(double_t));
-                        assert(bytes_read == row_nums * sizeof(double_t));
-                        for (uint16_t i = 0; i < row_nums; ++i) {
-                            file_rows[i].columns.emplace(requested_column, double_values[i]);
-                        }
-                        break;
-                    }
-                    case COLUMN_TYPE_STRING: {
-                        auto file_size = lseek(fd, 0, SEEK_END);
-                        assert(file_size != -1);
-                        std::string str_buf;
-                        str_buf.resize(file_size);
-                        auto res = lseek(fd, 0, SEEK_SET);
-                        assert(res != -1);
-                        auto bytes_read = read(fd, str_buf.data(), file_size);
-                        assert(bytes_read == file_size);
-                        ColumnValue str_values[FILE_CONVERT_SIZE];
-                        size_t str_offset = 0;
-                        uint16_t str_count = 0;
-
-                        while (str_offset != file_size) {
-                            uint16_t str_idx = *reinterpret_cast<uint16_t*>(str_buf.data() + str_offset);
-                            str_offset += sizeof(uint16_t);
-                            assert(str_idx < FILE_CONVERT_SIZE);
-                            int32_t str_length = *reinterpret_cast<int32_t*>(str_buf.data() + str_offset);
-                            str_offset += sizeof(int32_t);
-                            str_values[str_idx] = ColumnValue(str_buf.data() + str_offset, str_length);
-                            str_offset += str_length;
-                            str_count++;
-                        }
-
-                        assert(str_offset == file_size);
-                        for (uint16_t i = 0; i < row_nums; ++i) {
-                            file_rows[i].columns.emplace(requested_column, str_values[file_tr._start_idx + i]);
-                        }
-                        break;
-                    }
-                    default:
-                        break;
+                    trReadRes.emplace_back(std::move(result_row));
                 }
-
-                close(fd);
             }
-
-            for (uint16_t i = 0; i < row_nums; ++i) {
-                file_rows[i].vin = vin;
-                file_rows[i].timestamp = encode_ts(file_idx * FILE_CONVERT_SIZE + file_tr._start_idx + i);
-            }
-
-            trReadRes.insert(trReadRes.end(), file_rows.begin(), file_rows.end());
         }
 
         void _get_column_values(uint16_t file_idx, ColumnType type,
@@ -222,7 +166,6 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _vin_dir_path;
         SchemaSPtr _schema;
-        bool _finish_compaction;
         GlobalIndexManagerSPtr _index_manager;
     };
 
@@ -237,8 +180,7 @@ namespace LindormContest {
                 Path vin_dir_path = finish_compaction ?
                         root_path / "compaction" / std::to_string(vin_num)
                         : root_path / "no-compaction" / std::to_string(vin_num);
-                _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path,
-                                                                           finish_compaction, index_manager);
+                _tr_managers[vin_num] = std::make_unique<TimeRangeManager>(vin_num, vin_dir_path, index_manager);
             }
         }
 
@@ -250,6 +192,7 @@ namespace LindormContest {
             }
         }
 
+        template <bool finish_compaction>
         void query_time_range(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                               const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
             TimeRange tr;
@@ -257,7 +200,7 @@ namespace LindormContest {
             if (unlikely(tr._end_idx >= TS_NUM_RANGE)) {
                 return;
             }
-            _tr_managers[vin_num]->query_time_range(vin, tr, requested_columns, trReadRes);
+            _tr_managers[vin_num]->query_time_range<finish_compaction>(vin, tr, requested_columns, trReadRes);
         }
 
     private:

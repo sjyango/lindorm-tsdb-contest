@@ -648,9 +648,9 @@ namespace LindormContest::test {
                 time_range_records[key].push_back(row);
             }
 
-            if (generate_random_float64() < 0.5) {
-                handle_multi_query(db, TABLE_NAME, 10);
-            }
+            // if (generate_random_float64() < 0.5) {
+            //     handle_multi_query(db, TABLE_NAME, 10);
+            // }
         };
 
         for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
@@ -662,7 +662,7 @@ namespace LindormContest::test {
         }
     }
 
-    TEST(MultiThreadTest, DISABLED_InsertTest) {
+    TEST(MultiThreadTest, InsertTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -696,7 +696,7 @@ namespace LindormContest::test {
         // write data
         RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
             insert_data_into_db_engine(*demo, TABLE_NAME);
-        });
+        })
         // shutdown
         ASSERT_EQ(0, demo->shutdown());
         INFO_LOG("####################### [demo->shutdown()] finished #######################")

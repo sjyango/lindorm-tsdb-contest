@@ -50,21 +50,30 @@ namespace LindormContest {
 
         void convert(uint16_t file_idx) {
             TsmFile output_tsm_file;
+            Path flush_file_path = _no_compaction_path / std::to_string(file_idx);
+            std::string buf;
+            io::stream_read_string_from_file(flush_file_path, buf);
+            std::array<Row, FILE_CONVERT_SIZE> sorted_rows;
+            const char* start = buf.c_str();
+            const char* end = start + buf.size();
 
-            for (const auto &[column_name, column_type]: _schema->columnTypeMap) {
-                Path column_file_path = _no_compaction_path / std::to_string(file_idx) / column_name;
+            while (start < end) {
+                Row row;
+                io::deserialize_row(_schema, start, false, row);
+                uint16_t ts_num = decode_ts(row.timestamp) % FILE_CONVERT_SIZE;
+                swap_row(sorted_rows[ts_num], row);
+            }
+
+            for (const auto& [column_name, column_type] : _schema->columnTypeMap) {
                 switch (column_type) {
                     case COLUMN_TYPE_INTEGER:
-                        convert_int_column(file_idx, column_file_path, column_name, column_type,
-                                           output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+                        convert_int_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
                         break;
                     case COLUMN_TYPE_DOUBLE_FLOAT:
-                        convert_double_column(file_idx, column_file_path, column_name, column_type,
-                                              output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+                        convert_double_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
                         break;
                     case COLUMN_TYPE_STRING:
-                        convert_string_column(file_idx, column_file_path, column_name, column_type,
-                                              output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+                        convert_string_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
                         break;
                     default:
                         break;
@@ -75,21 +84,19 @@ namespace LindormContest {
             output_tsm_file.write_to_file(output_tsm_file_path);
         }
 
-        void convert_int_column(uint16_t file_idx, const Path& column_file_path,
-                                const std::string& column_name, ColumnType column_type,
-                                std::vector<std::unique_ptr<DataBlock>>& data_blocks,
-                                std::vector<IndexBlock>& index_blocks) {
-            int fd = open(column_file_path.c_str(), O_RDONLY);
-            assert(fd != -1);
+        void convert_int_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
+                                std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
             int32_t src_values[FILE_CONVERT_SIZE];
-            auto bytes_read = read(fd, src_values, FILE_CONVERT_SIZE * sizeof(int32_t));
-            assert(bytes_read == FILE_CONVERT_SIZE * sizeof(int32_t));
+
+            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
+                rows[i].columns[column_name].getIntegerValue(src_values[i]);
+            }
 
             if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
                 _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
             }
 
-            IndexBlock index_block(column_name, column_type);
+            IndexBlock index_block(column_name, COLUMN_TYPE_INTEGER);
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<IntDataBlock> data_block = std::make_unique<IntDataBlock>();
@@ -112,21 +119,19 @@ namespace LindormContest {
             index_blocks.emplace_back(std::move(index_block));
         }
 
-        void convert_double_column(uint16_t file_idx, const Path& column_file_path,
-                                const std::string& column_name, ColumnType column_type,
-                                std::vector<std::unique_ptr<DataBlock>>& data_blocks,
-                                std::vector<IndexBlock>& index_blocks) {
-            int fd = open(column_file_path.c_str(), O_RDONLY);
-            assert(fd != -1);
+        void convert_double_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
+                                std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
             double_t src_values[FILE_CONVERT_SIZE];
-            auto bytes_read = read(fd, src_values, FILE_CONVERT_SIZE * sizeof(double_t));
-            assert(bytes_read == FILE_CONVERT_SIZE * sizeof(double_t));
+
+            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
+                rows[i].columns[column_name].getDoubleFloatValue(src_values[i]);
+            }
 
             if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
                 _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
             }
 
-            IndexBlock index_block(column_name, column_type);
+            IndexBlock index_block(column_name, COLUMN_TYPE_DOUBLE_FLOAT);
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<DoubleDataBlock> data_block = std::make_unique<DoubleDataBlock>();
@@ -149,49 +154,25 @@ namespace LindormContest {
             index_blocks.emplace_back(std::move(index_block));
         }
 
-        void convert_string_column(uint16_t file_idx, const Path& column_file_path,
-                                   const std::string& column_name, ColumnType column_type,
-                                   std::vector<std::unique_ptr<DataBlock>>& data_blocks,
-                                   std::vector<IndexBlock>& index_blocks) {
-            int fd = open(column_file_path.c_str(), O_RDONLY);
-            assert(fd != -1);
-            auto file_size = lseek(fd, 0, SEEK_END);
-            assert(file_size != -1);
-            std::string str_buf;
-            str_buf.resize(file_size);
-            auto res = lseek(fd, 0, SEEK_SET);
-            assert(res != -1);
-            auto bytes_read = read(fd, str_buf.data(), file_size);
-            assert(bytes_read == file_size);
-            ColumnValue str_values[FILE_CONVERT_SIZE];
-            size_t str_offset = 0;
-            uint16_t str_count = 0;
+        void convert_string_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
+                                  std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
+            ColumnValue src_values[FILE_CONVERT_SIZE];
 
-            while (str_offset != file_size) {
-                uint16_t str_idx = *reinterpret_cast<uint16_t*>(str_buf.data() + str_offset);
-                str_offset += sizeof(uint16_t);
-                assert(str_idx < FILE_CONVERT_SIZE);
-                int32_t str_length = *reinterpret_cast<int32_t*>(str_buf.data() + str_offset);
-                str_offset += sizeof(int32_t);
-                str_values[str_idx] = ColumnValue(str_buf.data() + str_offset, str_length);
-                str_offset += str_length;
-                str_count++;
+            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
+                src_values[i] = rows[i].columns[column_name];
             }
-
-            assert(str_offset == file_size);
-            assert(str_count == FILE_CONVERT_SIZE);
 
             if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
-                _latest_row.columns[column_name] = str_values[FILE_CONVERT_SIZE - 1];
+                _latest_row.columns[column_name] = src_values[FILE_CONVERT_SIZE - 1];
             }
 
-            IndexBlock index_block(column_name, column_type);
+            IndexBlock index_block(column_name, COLUMN_TYPE_STRING);
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<StringDataBlock> data_block = std::make_unique<StringDataBlock>();
 
                 for (uint16_t j = 0; j < DATA_BLOCK_ITEM_NUMS; ++j) {
-                    data_block->_column_values[j] = str_values[i * DATA_BLOCK_ITEM_NUMS + j];
+                    std::swap(data_block->_column_values[j], src_values[i * DATA_BLOCK_ITEM_NUMS + j]);
                 }
 
                 IndexEntry index_entry;

@@ -32,10 +32,8 @@ namespace LindormContest {
     public:
         DownSampleManager() = default;
 
-        DownSampleManager(uint16_t vin_num, const Path& vin_dir_path,
-                          bool finish_compaction, GlobalIndexManagerSPtr index_manager)
-                : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _finish_compaction(finish_compaction),
-                _schema(nullptr), _index_manager(index_manager) {}
+        DownSampleManager(uint16_t vin_num, const Path& vin_dir_path, GlobalIndexManagerSPtr index_manager)
+                : _vin_num(vin_num), _vin_dir_path(vin_dir_path), _schema(nullptr), _index_manager(index_manager) {}
 
         DownSampleManager(DownSampleManager&& other) = default;
 
@@ -45,7 +43,7 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        template <typename T>
+        template<typename T, bool finish_compaction>
         void query_time_range_max_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -64,7 +62,7 @@ namespace LindormContest {
                     T file_max_value = std::numeric_limits<T>::lowest();
                     DownSampleState file_state;
 
-                    if (_finish_compaction) {
+                    if constexpr (finish_compaction) {
                         file_state = _query_max_from_one_tsm_file<T>(file_idx, file_tr, column_name,
                                                                      column_filter, file_max_value);
                     } else {
@@ -99,7 +97,7 @@ namespace LindormContest {
             }
         }
 
-        template <typename T>
+        template<typename T, bool finish_compaction>
         void query_time_range_avg_down_sample(int64_t interval, const TimeRange& tr, const std::string& column_name,
                                               const CompareExpression& column_filter, std::vector<Row> &downsampleRes) {
             for (const auto &sub_tr: tr.sub_intervals(interval)) {
@@ -121,7 +119,7 @@ namespace LindormContest {
                     size_t file_sum_count = 0;
                     DownSampleState file_state;
 
-                    if (_finish_compaction) {
+                    if constexpr (finish_compaction) {
                         file_state = _query_avg_from_one_tsm_file<T>(file_idx, file_tr, column_name,
                                                                      column_filter, file_sum_value, file_sum_count);
                     } else {
@@ -196,44 +194,38 @@ namespace LindormContest {
         template <typename T>
         DownSampleState _query_max_from_one_flush_file(uint16_t file_idx, const TimeRange& file_tr, const std::string& column_name,
                                                        const CompareExpression& column_filter, T& max_value) {
-            uint16_t row_nums = file_tr._end_idx - file_tr._start_idx + 1;
-            Path flush_file_path = _vin_dir_path / std::to_string(file_idx) / column_name;
-            int fd = open(flush_file_path.c_str(), O_RDONLY);
-            assert(fd != -1);
+            Path flush_file_path = _vin_dir_path / std::to_string(file_idx);
+            std::string buf;
+            io::stream_read_string_from_file(flush_file_path, buf);
+
+            if (buf.empty()) {
+                return DownSampleState::NO_DATA;
+            }
+
+            const char* start = buf.c_str();
+            const char* end = start + buf.size();
             size_t tr_count = 0;
             size_t non_filter_count = 0;
 
-            if constexpr (std::is_same_v<T, int32_t>) {
-                auto res = lseek(fd, file_tr._start_idx * sizeof(int32_t), SEEK_SET);
-                assert(res != -1);
-                std::unique_ptr<int32_t[]> int_values = std::make_unique<int32_t[]>(row_nums);
-                auto bytes_read = read(fd, int_values.get(), row_nums * sizeof(int32_t));
-                assert(bytes_read == row_nums * sizeof(int32_t));
-                for (uint16_t i = 0; i < row_nums; ++i) {
+            while (start < end) {
+                Row row;
+                io::deserialize_row(_schema, start, false, row);
+                uint16_t ts_num = decode_ts(row.timestamp) % FILE_CONVERT_SIZE;
+                if (ts_num >= file_tr._start_idx && ts_num <= file_tr._end_idx) {
                     tr_count++;
-                    if (!column_filter.doCompare(ColumnValue(int_values[i]))) {
+                    if (!column_filter.doCompare(row.columns.at(column_name))) {
                         continue;
                     }
                     non_filter_count++;
-                    max_value = std::max(max_value, int_values[i]);
-                }
-            } else if constexpr (std::is_same_v<T, double_t>) {
-                auto res = lseek(fd, file_tr._start_idx * sizeof(double_t), SEEK_SET);
-                assert(res != -1);
-                std::unique_ptr<double_t[]> double_values = std::make_unique<double_t[]>(row_nums);
-                auto bytes_read = read(fd, double_values.get(), row_nums * sizeof(double_t));
-                assert(bytes_read == row_nums * sizeof(double_t));
-                for (uint16_t i = 0; i < row_nums; ++i) {
-                    tr_count++;
-                    if (!column_filter.doCompare(ColumnValue(double_values[i]))) {
-                        continue;
+                    T row_value;
+                    if constexpr (std::is_same_v<T, int32_t>) {
+                        row.columns.at(column_name).getIntegerValue(row_value);
+                    } else if constexpr (std::is_same_v<T, double_t>) {
+                        row.columns.at(column_name).getDoubleFloatValue(row_value);
                     }
-                    non_filter_count++;
-                    max_value = std::max(max_value, double_values[i]);
+                    max_value = std::max(max_value, row_value);
                 }
             }
-
-            close(fd);
 
             if (tr_count == 0) {
                 return DownSampleState::NO_DATA;
@@ -281,46 +273,41 @@ namespace LindormContest {
         template <typename T>
         DownSampleState _query_avg_from_one_flush_file(uint16_t file_idx, const TimeRange& file_tr, const std::string& column_name,
                                                      const CompareExpression& column_filter, T& sum_value, size_t& sum_count) {
-            uint16_t row_nums = file_tr._end_idx - file_tr._start_idx + 1;
-            Path flush_file_path = _vin_dir_path / std::to_string(file_idx) / column_name;
-            int fd = open(flush_file_path.c_str(), O_RDONLY);
-            assert(fd != -1);
+            Path flush_file_path = _vin_dir_path / std::to_string(file_idx);
+            std::string buf;
+            io::stream_read_string_from_file(flush_file_path, buf);
+
+            if (buf.empty()) {
+                return DownSampleState::NO_DATA;
+            }
+
+            const char* start = buf.c_str();
+            const char* end = start + buf.size();
             size_t tr_count = 0;
             size_t non_filter_count = 0;
 
-            if constexpr (std::is_same_v<T, int64_t>) {
-                auto res = lseek(fd, file_tr._start_idx * sizeof(int32_t), SEEK_SET);
-                assert(res != -1);
-                std::unique_ptr<int32_t[]> int_values = std::make_unique<int32_t[]>(row_nums);
-                auto bytes_read = read(fd, int_values.get(), row_nums * sizeof(int32_t));
-                assert(bytes_read == row_nums * sizeof(int32_t));
-                for (uint16_t i = 0; i < row_nums; ++i) {
+            while (start < end) {
+                Row row;
+                io::deserialize_row(_schema, start, false, row);
+                uint16_t ts_num = decode_ts(row.timestamp) % FILE_CONVERT_SIZE;
+                if (ts_num >= file_tr._start_idx && ts_num <= file_tr._end_idx) {
                     tr_count++;
-                    if (!column_filter.doCompare(ColumnValue(int_values[i]))) {
+                    if (!column_filter.doCompare(row.columns.at(column_name))) {
                         continue;
                     }
                     non_filter_count++;
-                    sum_value += int_values[i];
-                    sum_count++;
-                }
-            } else if constexpr (std::is_same_v<T, double_t>) {
-                auto res = lseek(fd, file_tr._start_idx * sizeof(double_t), SEEK_SET);
-                assert(res != -1);
-                std::unique_ptr<double_t[]> double_values = std::make_unique<double_t[]>(row_nums);
-                auto bytes_read = read(fd, double_values.get(), row_nums * sizeof(double_t));
-                assert(bytes_read == row_nums * sizeof(double_t));
-                for (uint16_t i = 0; i < row_nums; ++i) {
-                    tr_count++;
-                    if (!column_filter.doCompare(ColumnValue(double_values[i]))) {
-                        continue;
+                    if constexpr (std::is_same_v<T, int64_t>) {
+                        int32_t row_value;
+                        row.columns.at(column_name).getIntegerValue(row_value);
+                        sum_value += (int64_t) row_value;
+                    } else if constexpr (std::is_same_v<T, double_t>) {
+                        double_t row_value;
+                        row.columns.at(column_name).getDoubleFloatValue(row_value);
+                        sum_value += row_value;
                     }
-                    non_filter_count++;
-                    sum_value += double_values[i];
                     sum_count++;
                 }
             }
-
-            close(fd);
 
             if (tr_count == 0) {
                 return DownSampleState::NO_DATA;
@@ -401,7 +388,6 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _vin_dir_path;
         SchemaSPtr _schema;
-        bool _finish_compaction;
         GlobalIndexManagerSPtr _index_manager;
     };
 
@@ -417,8 +403,7 @@ namespace LindormContest {
                 Path vin_dir_path = finish_compaction ?
                                     root_path / "compaction" / std::to_string(vin_num)
                                     : root_path / "no-compaction" / std::to_string(vin_num);
-                _ds_managers[vin_num] = std::make_unique<DownSampleManager>(vin_num, vin_dir_path,
-                                                                            finish_compaction, index_manager);
+                _ds_managers[vin_num] = std::make_unique<DownSampleManager>(vin_num, vin_dir_path, index_manager);
             }
         }
 
@@ -431,6 +416,7 @@ namespace LindormContest {
             }
         }
 
+        template <bool finish_compaction>
         void query_down_sample(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                                int64_t interval, const std::string& column_name, Aggregator aggregator,
                                const CompareExpression& columnFilter, std::vector<Row>& downsampleRes) {
@@ -442,15 +428,15 @@ namespace LindormContest {
             ColumnType type = _schema->columnTypeMap[column_name];
             if (type == COLUMN_TYPE_INTEGER) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_num]->query_time_range_max_down_sample<int32_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<int32_t, finish_compaction>(interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_num]->query_time_range_avg_down_sample<int64_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<int64_t, finish_compaction>(interval, tr, column_name, columnFilter, downsampleRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
-                    _ds_managers[vin_num]->query_time_range_max_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_max_down_sample<double_t, finish_compaction>(interval, tr, column_name, columnFilter, downsampleRes);
                 } else if (aggregator == AVG) {
-                    _ds_managers[vin_num]->query_time_range_avg_down_sample<double_t>(interval, tr, column_name, columnFilter, downsampleRes);
+                    _ds_managers[vin_num]->query_time_range_avg_down_sample<double_t, finish_compaction>(interval, tr, column_name, columnFilter, downsampleRes);
                 }
             }
 

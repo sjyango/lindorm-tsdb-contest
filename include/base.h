@@ -21,6 +21,7 @@
 #include "Root.h"
 #include "struct/Schema.h"
 #include "struct/Vin.h"
+#include "struct/Row.h"
 
 namespace LindormContest {
 
@@ -31,7 +32,7 @@ namespace LindormContest {
     // RELEASE: 1654 ~ 6654 LSVNV2182E054
 
     static const std::string VIN_PREFIX = "LSVNV2182E054";
-    static constexpr uint16_t VIN_NUM_RANGE = 5000;
+    static constexpr uint16_t VIN_NUM_RANGE = 100;
     static constexpr uint16_t MIN_VIN_NUM = 1654;
     static constexpr uint16_t MAX_VIN_NUM = MIN_VIN_NUM + VIN_NUM_RANGE;
     static constexpr uint16_t INVALID_VIN_NUM = std::numeric_limits<uint16_t>::max();
@@ -74,12 +75,19 @@ namespace LindormContest {
         return ts * 1000 + MIN_TS;
     }
 
-    static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
+    inline void swap_row(Row& lhs, Row& rhs) {
+        std::swap(lhs.vin, rhs.vin);
+        std::swap(lhs.timestamp, rhs.timestamp);
+        std::swap(lhs.columns, rhs.columns);
+    }
+
+    static constexpr uint16_t SCHEMA_COLUMN_NUMS = 3;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 1200;
     static constexpr uint16_t FILE_CONVERT_SIZE = 3600;
     static constexpr uint16_t TSM_FILE_COUNT = TS_NUM_RANGE / FILE_CONVERT_SIZE;
     static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
     static constexpr uint16_t POOL_THREAD_NUM = 8;
+    static constexpr uint16_t ROW_CACHE_NUM = 10;
 
     static_assert(TS_NUM_RANGE % FILE_CONVERT_SIZE == 0);
     static_assert(FILE_CONVERT_SIZE % DATA_BLOCK_ITEM_NUMS == 0);

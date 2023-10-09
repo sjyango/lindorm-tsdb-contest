@@ -41,7 +41,11 @@ namespace LindormContest::io {
         if (!input_file.is_open() || !input_file.good()) {
             throw std::runtime_error("open file failed");
         }
-        input_file >> buf;
+        input_file.seekg(0, std::ios::end);
+        auto file_size = input_file.tellg();
+        input_file.seekg(0, std::ios::beg);
+        buf.resize(file_size);
+        input_file.read(buf.data(), file_size);
         input_file.close();
     }
 
@@ -89,6 +93,65 @@ namespace LindormContest::io {
         std::memcpy(file_memory, buf.c_str(), buf_size);
         munmap(file_memory, buf_size);
         close(fd);
+    }
+
+    static void serialize_row(SchemaSPtr schema, const Row &row, bool vin_include, std::string& buf) {
+        if (row.columns.size() != SCHEMA_COLUMN_NUMS) {
+            std::cerr << "Cannot write a non-complete row with columns' num: [" << row.columns.size() << "]. ";
+            std::cerr << "There is [" << SCHEMA_COLUMN_NUMS << "] rows in total" << std::endl;
+            throw std::exception();
+        }
+
+        if (vin_include) {
+            buf.append(row.vin.vin, VIN_LENGTH);
+        }
+
+        buf.append((const char *) &row.timestamp, sizeof(int64_t));
+
+        for (const auto &[column_name, column_type] : schema->columnTypeMap) {
+            const ColumnValue &column_value = row.columns.at(column_name);
+            buf.append(column_value.columnData, column_value.getRawDataSize());
+        }
+    }
+
+    static void deserialize_row(SchemaSPtr schema, const char*& p, bool vin_include, Row& row) {
+        if (vin_include) {
+            std::memcpy(row.vin.vin, p, VIN_LENGTH);
+            p += VIN_LENGTH;
+        }
+
+        row.timestamp = *reinterpret_cast<const int64_t*>(p);
+        p += sizeof(int64_t);
+
+        for (const auto &[column_name, column_type] : schema->columnTypeMap) {
+            switch (column_type) {
+                case COLUMN_TYPE_INTEGER: {
+                    int32_t int_value = *reinterpret_cast<const int32_t*>(p);
+                    p += sizeof(int32_t);
+                    ColumnValue column_value(int_value);
+                    row.columns.emplace(column_name, std::move(column_value));
+                    break;
+                }
+                case COLUMN_TYPE_DOUBLE_FLOAT: {
+                    double_t double_value = *reinterpret_cast<const double_t*>(p);
+                    p += sizeof(double_t);
+                    ColumnValue column_value(double_value);
+                    row.columns.emplace(column_name, std::move(column_value));
+                    break;
+                }
+                case COLUMN_TYPE_STRING: {
+                    int32_t str_length = *reinterpret_cast<const int32_t*>(p);
+                    p += sizeof(int32_t);
+                    ColumnValue column_value(p, str_length);
+                    p += str_length;
+                    row.columns.emplace(column_name, std::move(column_value));
+                    break;
+                }
+                default: {
+                    throw std::runtime_error("Undefined column type, this is not expected");
+                }
+            }
+        }
     }
 
     static void write_row_to_file(std::ofstream &out, SchemaSPtr schema, const Row &row, bool vin_include) {
