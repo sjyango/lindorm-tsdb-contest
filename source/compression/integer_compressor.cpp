@@ -9,7 +9,7 @@ namespace LindormContest::compression {
 uint64_t CompressionSimple8b::compress(const char *source, uint64_t source_size, char *dest, bool isRLE) const{
     size_t length = source_size / data_bytes_size;
     if(isRLE){
-        return tsCompressBoolRLEImp(source, length, dest);
+        return tsCompressRLEImp(source, length, dest);
     }
     return tsCompressINTImp(source, length, dest);
 }
@@ -18,7 +18,7 @@ uint64_t CompressionSimple8b::compress(const char *source, uint64_t source_size,
 void CompressionSimple8b::decompress(const char *source, uint64_t source_size, char *dest, uint64_t uncompressed_size, bool isRLE) const{
     uint64_t length = uncompressed_size / data_bytes_size;
    if(isRLE){
-        tsDecompressBoolRLEImp(source, length, dest);
+        tsDecompressRLEImp(source, length, dest);
    }
    else{
         tsDecompressINTImp(source, length, dest);

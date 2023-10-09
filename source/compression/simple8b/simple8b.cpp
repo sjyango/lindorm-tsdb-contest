@@ -340,7 +340,7 @@ int32_t tsDecompressINTImp(const char *const input, const int32_t nelements, cha
 
 /* Run Length Encoding(RLE) Method */
 /*Format: | value[8B] | repeat_N[8B] | ... |*/
-int32_t tsCompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output) {
+int32_t tsCompressRLEImp(const char *const input, const int32_t nelements, char *const output) {
  int32_t _pos = 0;
 
  for (int32_t i = 0; i < nelements;) {
@@ -365,7 +365,7 @@ int32_t tsCompressBoolRLEImp(const char *const input, const int32_t nelements, c
  return _pos;
 }
 
-int32_t tsDecompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output) {
+int32_t tsDecompressRLEImp(const char *const input, const int32_t nelements, char *const output) {
  int32_t ipos = 0, opos = 0;
  const char *base = input;
  int32_t* output_ = (int32_t*)output;

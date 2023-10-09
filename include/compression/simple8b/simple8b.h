@@ -37,8 +37,8 @@ extern "C" {
 
 int32_t tsCompressINTImp(const char *const input, const int32_t nelements, char *const output);
 int32_t tsDecompressINTImp(const char *const input, const int32_t nelements, char *const output);
-int32_t tsCompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output);
-int32_t tsDecompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output);
+int32_t tsCompressRLEImp(const char *const input, const int32_t nelements, char *const output);
+int32_t tsDecompressRLEImp(const char *const input, const int32_t nelements, char *const output);
 
 #ifdef __cplusplus
 }
