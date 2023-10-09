@@ -14,7 +14,7 @@
 #include "time_range_manager.h"
 #include "aggregate_manager.h"
 #include "downsample_manager.h"
-#include "compaction_manager.h"
+#include "convert_manager.h"
 #include "storage/tsm_writer.h"
 
 namespace LindormContest {
@@ -66,7 +66,7 @@ namespace LindormContest {
         GlobalTimeRangeManagerUPtr _tr_manager;
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
-        GlobalCompactionManagerSPtr _compaction_manager;
+        GlobalConvertManagerSPtr _convert_manager;
     }; // End class TSDBEngineImpl.
 
 }

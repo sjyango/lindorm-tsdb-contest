@@ -31,21 +31,20 @@ namespace LindormContest {
 
         ~IndexManager() = default;
 
-        bool query_indexes(const std::string& file_name, const std::string& column_name,
-                           const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            uint16_t file_index = std::stoi(file_name);
-            return _index_entries[file_index][column_name].get_index_entries(tr, index_entries);
+        void query_indexes(uint16_t file_idx, const std::string& column_name, const TimeRange& file_tr,
+                           std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
+            _index_entries[file_idx][column_name].get_index_entries_and_ranges(file_tr, index_entries, ranges);
         }
 
         void decode_from_file(const Path& vin_dir_path, SchemaSPtr schema) {
             for (const auto& entry: std::filesystem::directory_iterator(vin_dir_path)) {
-                uint32_t file_size, index_offset, footer_offset;
-                TsmFile::get_size_and_offset(entry.path(), file_size, index_offset, footer_offset);
+                uint32_t file_size, index_offset;
+                TsmFile::get_size_and_offset(entry.path(), &file_size, &index_offset);
                 std::string buf;
-                uint32_t index_size = footer_offset - index_offset;
+                uint32_t index_size = file_size - index_offset - sizeof(uint32_t);
                 io::stream_read_string_from_file(entry.path(), index_offset, index_size, buf);
-                uint16_t file_index = std::stoi(entry.path().filename().string());
-                std::unordered_map<std::string, IndexBlock>& index_blocks = _index_entries[file_index];
+                uint16_t file_idx = std::stoi(entry.path().filename().string());
+                std::unordered_map<std::string, IndexBlock>& index_blocks = _index_entries[file_idx];
                 const uint8_t* p = reinterpret_cast<const uint8_t*>(buf.c_str());
 
                 for (const auto &[column_name, column_type]: schema->columnTypeMap) {
@@ -57,7 +56,7 @@ namespace LindormContest {
         }
 
     private:
-        std::unordered_map<std::string, IndexBlock> _index_entries[TS_NUM_RANGE / FILE_FLUSH_SIZE / COMPACTION_FILE_NUM];
+        std::unordered_map<std::string, IndexBlock> _index_entries[TSM_FILE_COUNT];
     };
 
     class GlobalIndexManager;
@@ -70,9 +69,9 @@ namespace LindormContest {
 
         ~GlobalIndexManager() = default;
 
-        bool query_indexes(uint16_t vin_num, const std::string& file_name, const std::string& column_name,
-                           const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            return _index_managers[vin_num].query_indexes(file_name, column_name, tr, index_entries);
+        void query_indexes(uint16_t vin_num, uint16_t file_idx, const std::string& column_name,
+                           const TimeRange& file_tr, std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
+            _index_managers[vin_num].query_indexes(file_idx, column_name, file_tr, index_entries, ranges);
         }
 
         void decode_from_file(const Path& root_path, SchemaSPtr schema) {

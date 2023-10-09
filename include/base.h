@@ -36,6 +36,7 @@ namespace LindormContest {
     static constexpr uint16_t MAX_VIN_NUM = MIN_VIN_NUM + VIN_NUM_RANGE;
     static constexpr uint16_t INVALID_VIN_NUM = std::numeric_limits<uint16_t>::max();
     static constexpr int64_t MIN_TS = 1694043124000;
+    static constexpr int64_t MAX_TS = 1694079123000;
     static constexpr uint16_t TS_NUM_RANGE = 36000;
 
     // 0 ~ 4999
@@ -74,10 +75,14 @@ namespace LindormContest {
     }
 
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
-    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 1200; // 5 data blocks per file
-    static constexpr uint16_t FILE_FLUSH_SIZE = 600;       // 60 files per vin
-    static constexpr uint16_t COMPACTION_FILE_NUM = 10;    // 6 tsm files per vin
+    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 1200;
+    static constexpr uint16_t FILE_CONVERT_SIZE = 3600;
+    static constexpr uint16_t TSM_FILE_COUNT = TS_NUM_RANGE / FILE_CONVERT_SIZE;
+    static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
     static constexpr uint16_t POOL_THREAD_NUM = 8;
+
+    static_assert(TS_NUM_RANGE % FILE_CONVERT_SIZE == 0);
+    static_assert(FILE_CONVERT_SIZE % DATA_BLOCK_ITEM_NUMS == 0);
 
     static const int64_t LONG_DOUBLE_NAN = 0xfff0000000000000L;
     static const double_t DOUBLE_NAN = *(double_t*)(&LONG_DOUBLE_NAN);

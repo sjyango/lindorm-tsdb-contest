@@ -19,9 +19,9 @@ namespace LindormContest {
             : TSDBEngine(dataDirPath) {
         Path compaction_data_path = _get_root_path() / "compaction";
         _finish_compaction = std::filesystem::exists(compaction_data_path);
-        _compaction_manager = std::make_shared<GlobalCompactionManager>(_get_root_path());
+        _convert_manager = std::make_shared<GlobalConvertManager>(_get_root_path());
         if (!_finish_compaction) {
-            _writer_manager = std::make_unique<TsmWriterManager>(_get_root_path(), _compaction_manager);
+            _writer_manager = std::make_unique<TsmWriterManager>(_get_root_path(), _convert_manager);
         }
         _index_manager = std::make_shared<GlobalIndexManager>();
         _latest_manager = std::make_unique<GlobalLatestManager>(_get_root_path(), _finish_compaction);
@@ -39,31 +39,30 @@ namespace LindormContest {
         }
         assert(_finish_compaction);
         _index_manager->decode_from_file(_get_root_path(), _schema);
-        _latest_manager->set_schema(_schema);
+        _latest_manager->init(_schema);
         _latest_manager->load_latest_records_from_file(_get_latest_records_path());
-        _tr_manager->set_schema(_schema);
-        _agg_manager->set_schema(_schema);
-        _ds_manager->set_schema(_schema);
-        _compaction_manager->set_schema(_schema);
+        _tr_manager->init(_schema);
+        _agg_manager->init(_schema);
+        _ds_manager->init(_schema);
+        _convert_manager->init(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
         _schema = std::make_shared<Schema>(schema);
-        _writer_manager->set_schema(_schema);
-        _latest_manager->set_schema(_schema);
-        _tr_manager->set_schema(_schema);
-        _agg_manager->set_schema(_schema);
-        _ds_manager->set_schema(_schema);
-        _compaction_manager->set_schema(_schema);
+        _writer_manager->init(_schema);
+        _latest_manager->init(_schema);
+        _tr_manager->init(_schema);
+        _agg_manager->init(_schema);
+        _ds_manager->init(_schema);
+        _convert_manager->init(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _writer_manager->finalize_close_flush_stream();
-        _compaction_manager->finalize_compaction();
-        _compaction_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
+        _convert_manager->finalize_convert();
+        _convert_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
@@ -84,10 +83,13 @@ namespace LindormContest {
                 continue;
             }
             Row result_row;
-            if (_latest_manager->query_latest(vin_num, pReadReq.requestedColumns, result_row)) {
-                result_row.vin = vin;
-                pReadRes.emplace_back(std::move(result_row));
+            result_row.vin = vin;
+            if (_finish_compaction) {
+                _latest_manager->query_latest(vin_num, pReadReq.requestedColumns, result_row);
+            } else {
+                _latest_manager->query_latest(vin_num, _writer_manager->get_latest_ts(vin_num), pReadReq.requestedColumns, result_row);
             }
+            pReadRes.emplace_back(std::move(result_row));
         }
         return 0;
     }

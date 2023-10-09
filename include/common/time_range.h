@@ -20,32 +20,46 @@
 namespace LindormContest {
 
     struct TimeRange {
-        int64_t _start_time; // inclusive
-        int64_t _end_time;   // exclusive
+        uint16_t _start_idx; // inclusive
+        uint16_t _end_idx;   // inclusive
 
         TimeRange() = default;
 
-        TimeRange(int64_t start_time, int64_t end_time) : _start_time(start_time), _end_time(end_time) {}
+        TimeRange(uint16_t start_idx, uint16_t end_idx) : _start_idx(start_idx), _end_idx(end_idx) {}
+
+        void init(int64_t start_time_inclusive, int64_t end_time_exclusive) {
+            if (start_time_inclusive % 1000 == 0) {
+                _start_idx = decode_ts(start_time_inclusive);
+            } else {
+                _start_idx = decode_ts(start_time_inclusive) + 1;
+            }
+            if (end_time_exclusive % 1000 == 0) {
+                _end_idx = decode_ts(end_time_exclusive) - 1;
+            } else {
+                _end_idx = decode_ts(end_time_exclusive);
+            }
+        }
 
         bool overlap(const TimeRange& other) const {
-            return _start_time < other._end_time && other._start_time < _end_time;
+            return _start_idx <= other._start_idx && other._end_idx <= _end_idx;
         }
 
-        int64_t interval_nums(int64_t interval) const {
-            assert((_end_time - _start_time) % interval == 0);
-            return (_end_time - _start_time) / interval;
+        uint32_t interval_nums(uint32_t interval) const {
+            assert((_end_idx - _start_idx + 1) % interval == 0);
+            return (_end_idx - _start_idx + 1) / interval;
         }
 
-        TimeRange sub_interval(int64_t interval, int64_t index) const {
+        TimeRange sub_interval(uint32_t interval, uint32_t index) const {
             assert(index < interval_nums(interval));
-            return {_start_time + index * interval, _start_time + (index + 1) * interval};
+            return {static_cast<uint16_t>(_start_idx + index * interval),
+                    static_cast<uint16_t>(_start_idx + (index + 1) * interval - 1)};
         }
 
         std::vector<TimeRange> sub_intervals(int64_t interval) const {
             std::vector<TimeRange> trs;
-            int64_t interval_count = interval_nums(interval);
-            for (int64_t i = 0; i < interval_count; ++i) {
-                trs.emplace_back(sub_interval(interval, i));
+            uint32_t interval_count = interval_nums(interval / 1000);
+            for (uint32_t i = 0; i < interval_count; ++i) {
+                trs.emplace_back(sub_interval(interval / 1000, i));
             }
             return trs;
         }
@@ -53,19 +67,11 @@ namespace LindormContest {
 
     struct IndexRange {
         uint16_t _start_index;  // inclusive
-        uint16_t _end_index;    // exclusive
-        uint16_t _block_index;
+        uint16_t _end_index;    // inclusive
 
-        IndexRange(uint16_t start_index, uint16_t end_index, uint16_t block_index)
-        : _start_index(start_index), _end_index(end_index), _block_index(block_index) {}
+        IndexRange(uint16_t start_index, uint16_t end_index) : _start_index(start_index), _end_index(end_index) {}
 
-        uint32_t global_start_index() const {
-            return (uint32_t) _block_index * DATA_BLOCK_ITEM_NUMS + _start_index;
-        }
-
-        uint32_t global_end_index() const {
-            return (uint32_t) _block_index * DATA_BLOCK_ITEM_NUMS + _end_index;
-        }
+        ~IndexRange() = default;
     };
 
 }

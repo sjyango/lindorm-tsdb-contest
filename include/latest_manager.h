@@ -41,73 +41,77 @@ namespace LindormContest {
 
         ~GlobalLatestManager() = default;
 
-        void set_schema(SchemaSPtr schema) {
+        void init(SchemaSPtr schema) {
             _schema = schema;
         }
 
-        bool query_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
-            if (_finish_compaction) {
-                return get_latest(vin_num, requested_columns, result_row);
-            } else {
-                Path vin_dir_path = _root_path / "no-compaction" / std::to_string(vin_num);
-                if (!std::filesystem::exists(vin_dir_path)) {
-                    return false;
-                }
-                std::vector<Path> file_paths;
-                _get_file_paths(vin_dir_path, file_paths);
-                if (file_paths.empty()) {
-                    return false;
-                }
-                Row latest_row;
-
-                for (const auto& file_path: file_paths) {
-                    query_from_one_flush_file(file_path, latest_row);
-                }
-
-                result_row.timestamp = latest_row.timestamp;
-
-                for (const auto& requested_column : requested_columns) {
-                    result_row.columns.emplace(requested_column, latest_row.columns.at(requested_column));
-                }
-
-                return true;
-            }
-        }
-
-        bool get_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
+        void query_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
             result_row.timestamp = _latest_records[vin_num].timestamp;
             for (const auto& requested_column : requested_columns) {
-                result_row.columns[requested_column] = _latest_records[vin_num].columns.at(requested_column);
+                result_row.columns.emplace(requested_column, _latest_records[vin_num].columns[requested_column]);
             }
-            return true;
         }
 
-        void query_from_one_flush_file(const Path& flush_file_path, Row &latest_row) {
-            std::ifstream input_file;
-            input_file.open(flush_file_path, std::ios::in | std::ios::binary);
-            if (!input_file.is_open() || !input_file.good()) {
-                INFO_LOG("%s open failed", flush_file_path.c_str())
-                throw std::runtime_error("time range open file failed");
-            }
+        void query_latest(uint16_t vin_num, uint16_t latest_ts, const std::set<std::string>& requested_columns, Row &result_row) {
+            result_row.timestamp = encode_ts(latest_ts);
+            uint16_t file_idx = latest_ts / FILE_CONVERT_SIZE;
+            uint16_t file_offset = latest_ts % FILE_CONVERT_SIZE;
+            Path flush_dir_path = _root_path / "no-compaction" / std::to_string(vin_num) / std::to_string(file_idx);
 
-            while (!input_file.eof()) {
-                Row row;
-                if (!io::read_row_from_file(input_file, _schema, false, row)) {
-                    break;
-                }
-                if (row.timestamp > latest_row.timestamp) {
-                    latest_row = row;
-                }
-            }
+            for (const auto &requested_column: requested_columns) {
+                Path flush_file_path = flush_dir_path / requested_column;
+                int fd = open(flush_file_path.c_str(), O_RDONLY);
+                assert(fd != -1);
 
-            input_file.close();
-        }
+                switch (_schema->columnTypeMap[requested_column]) {
+                    case COLUMN_TYPE_INTEGER: {
+                        auto res = lseek(fd, file_offset * sizeof(int32_t), SEEK_SET);
+                        assert(res != -1);
+                        int32_t int_value;
+                        auto bytes_read = read(fd, &int_value, sizeof(int32_t));
+                        assert(bytes_read == sizeof(int32_t));
+                        result_row.columns.emplace(requested_column, int_value);
+                        break;
+                    }
+                    case COLUMN_TYPE_DOUBLE_FLOAT: {
+                        auto res = lseek(fd, file_offset * sizeof(double_t), SEEK_SET);
+                        assert(res != -1);
+                        double_t double_value;
+                        auto bytes_read = read(fd, &double_value, sizeof(double_t));
+                        assert(bytes_read == sizeof(double_t));
+                        result_row.columns.emplace(requested_column, double_value);
+                        break;
+                    }
+                    case COLUMN_TYPE_STRING: {
+                        auto file_size = lseek(fd, 0, SEEK_END);
+                        assert(file_size != -1);
+                        std::string str_buf;
+                        str_buf.resize(file_size);
+                        auto res = lseek(fd, 0, SEEK_SET);
+                        assert(res != -1);
+                        auto bytes_read = read(fd, str_buf.data(), file_size);
+                        assert(bytes_read == file_size);
+                        size_t str_offset = 0;
 
-        void _get_file_paths(const Path& vin_dir_path, std::vector<Path>& file_paths) {
-            for (const auto& entry: std::filesystem::directory_iterator(vin_dir_path)) {
-                if (entry.is_regular_file()) {
-                    file_paths.emplace_back(entry.path());
+                        while (str_offset != file_size) {
+                            uint16_t str_idx = *reinterpret_cast<uint16_t*>(str_buf.data() + str_offset);
+                            str_offset += sizeof(uint16_t);
+                            assert(str_idx < FILE_CONVERT_SIZE);
+                            int32_t str_length = *reinterpret_cast<int32_t*>(str_buf.data() + str_offset);
+                            str_offset += sizeof(int32_t);
+                            if (unlikely(str_idx == file_offset)) {
+                                result_row.columns.emplace(requested_column, ColumnValue(str_buf.data() + str_offset, str_length));
+                                break;
+                            }
+                            str_offset += str_length;
+                        }
+                        break;
+                    }
+                    default:
+                        break;
                 }
+
+                close(fd);
             }
         }
 

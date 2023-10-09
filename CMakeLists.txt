@@ -60,4 +60,4 @@ add_subdirectory(test)
 file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
-add_library(DBLib ${sources_c} ${sources_cpp} include/compaction_manager.h include/base.h)
+add_library(DBLib ${sources_c} ${sources_cpp} include/base.h)

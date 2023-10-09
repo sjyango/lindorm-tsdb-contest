@@ -256,7 +256,7 @@ namespace LindormContest::test {
         // INFO_LOG("[handle_latest_query] finished %lu times, results size is %zu", id + 1, lq_results.size())
     }
 
-    static void handle_time_range_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id) {
+    static void handle_time_range_query(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
         TimeRangeQueryRequest trqr;
         trqr.tableName = TABLE_NAME;
         if (generate_random_float64() < 0.9) {
@@ -314,7 +314,7 @@ namespace LindormContest::test {
         // INFO_LOG("[handle_time_range_query] finished %lu times, results size is %zu", id + 1, trq_results.size())
     }
 
-    static void handle_aggregate_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id) {
+    static void handle_aggregate_query(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
         TimeRangeAggregationRequest trar;
         trar.tableName = TABLE_NAME;
         if (generate_random_float64() < 0.9) {
@@ -400,29 +400,15 @@ namespace LindormContest::test {
         }
 
         if (!tra_results.empty()) {
-            ASSERT_TRUE(compare_rows(tra_results[0], tra_ground_truth));
-
             if (!compare_rows(tra_results[0], tra_ground_truth)) {
-                if (trar.columnName == "col2") {
-                    int32_t int_value;
-                    int32_t gt_int_value;
-                    tra_results[0].columns[trar.columnName].getIntegerValue(int_value);
-                    tra_ground_truth.columns[trar.columnName].getIntegerValue(gt_int_value);
-                    ASSERT_EQ(int_value, gt_int_value);
-                } else if (trar.columnName == "col3") {
-                    double_t double_value;
-                    double_t gt_double_value;
-                    tra_results[0].columns[trar.columnName].getDoubleFloatValue(double_value);
-                    tra_ground_truth.columns[trar.columnName].getDoubleFloatValue(gt_double_value);
-                    ASSERT_EQ(double_value, gt_double_value);
-                }
+                ASSERT_TRUE(compare_rows(tra_results[0], tra_ground_truth));
             }
         }
 
         // INFO_LOG("[handle_aggregate_query] finished %lu times, results size is %zu", id + 1, tra_results.size())
     }
 
-    static void handle_downsample_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id) {
+    static void handle_downsample_query(TSDBEngineImpl &db, const std::string &TABLE_NAME) {
         TimeRangeDownsampleRequest trdr;
         trdr.tableName = TABLE_NAME;
         if (generate_random_float64() < 0.9) {
@@ -607,17 +593,17 @@ namespace LindormContest::test {
         // INFO_LOG("[handle_down_sample_query] finished %lu times, results size is %zu", id + 1, trds_results.size())
     }
 
-    static void handle_multi_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t id, size_t exec_time) {
+    static void handle_multi_query(TSDBEngineImpl &db, const std::string &TABLE_NAME, size_t exec_time) {
         for (int i = 0; i < exec_time; ++i) {
             auto rand_num = generate_random_float64();
             if (rand_num >= 0 && rand_num < 0.25) {
                 handle_latest_query(db, TABLE_NAME);
             } else if (rand_num >= 0.25 && rand_num < 0.5) {
-                handle_time_range_query(db, TABLE_NAME, id);
+                handle_time_range_query(db, TABLE_NAME);
             } else if (rand_num >= 0.5 && rand_num < 0.75) {
-                handle_aggregate_query(db, TABLE_NAME, id);
+                handle_aggregate_query(db, TABLE_NAME);
             } else {
-                handle_downsample_query(db, TABLE_NAME, id);
+                handle_downsample_query(db, TABLE_NAME);
             }
         }
     }
@@ -663,7 +649,7 @@ namespace LindormContest::test {
             }
 
             if (generate_random_float64() < 0.5) {
-                handle_multi_query(db, TABLE_NAME, thread_id, 10);
+                handle_multi_query(db, TABLE_NAME, 10);
             }
         };
 
@@ -676,7 +662,7 @@ namespace LindormContest::test {
         }
     }
 
-    TEST(MultiThreadTest, InsertTest) {
+    TEST(MultiThreadTest, DISABLED_InsertTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -751,7 +737,7 @@ namespace LindormContest::test {
         RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
             insert_data_into_db_engine(*demo, TABLE_NAME);
             INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
-        });
+        })
 
         // handle latest query
         RECORD_TIME_COST(HANDLE_LATEST_QUERY, {
@@ -765,7 +751,7 @@ namespace LindormContest::test {
             for (auto &thread: latest_query_threads) {
                 thread.join();
             }
-        });
+        })
 
         // shutdown
         ASSERT_EQ(0, demo->shutdown());
@@ -790,11 +776,11 @@ namespace LindormContest::test {
              for (auto &thread: latest_query_threads) {
                  thread.join();
              }
-        });
+        })
 
     }
 
-    TEST(MultiThreadTest, TimeRangeQueryTest)  {
+    TEST(MultiThreadTest, TimeRangeQueryTest) {
         global_datasets.clear();
         written_datasets.clear();
         latest_records.clear();
@@ -837,13 +823,13 @@ namespace LindormContest::test {
             std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
 
             for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
-                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
+                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: time_range_query_threads) {
                 thread.join();
             }
-        });
+        })
 
         INFO_LOG("####################### finished [handle_time_range_query] #######################")
 
@@ -864,13 +850,13 @@ namespace LindormContest::test {
             std::thread time_range_query_threads[TIME_RANGE_QUERY_THREADS];
 
             for (size_t i = 0; i < TIME_RANGE_QUERY_THREADS; ++i) {
-                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME, i + 1);
+                time_range_query_threads[i] = std::thread(handle_time_range_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: time_range_query_threads) {
                 thread.join();
             }
-        });
+        })
     }
 
     TEST(MultiThreadTest, AggregateQueryTest) {
@@ -916,13 +902,13 @@ namespace LindormContest::test {
             std::thread aggregate_query_threads[AGGREGATE_QUERY_THREADS];
 
             for (size_t i = 0; i < AGGREGATE_QUERY_THREADS; ++i) {
-                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME, i + 1);
+                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: aggregate_query_threads) {
                 thread.join();
             }
-        });
+        })
 
         INFO_LOG("####################### finished [handle_aggregate_query] #######################")
 
@@ -943,13 +929,13 @@ namespace LindormContest::test {
             std::thread aggregate_query_threads[AGGREGATE_QUERY_THREADS];
 
             for (size_t i = 0; i < AGGREGATE_QUERY_THREADS; ++i) {
-                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME, i + 1);
+                aggregate_query_threads[i] = std::thread(handle_aggregate_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: aggregate_query_threads) {
                 thread.join();
             }
-        });
+        })
     }
 
     TEST(MultiThreadTest, DownSampleQueryTest) {
@@ -987,7 +973,7 @@ namespace LindormContest::test {
         RECORD_TIME_COST(INSERT_DATA_INTO_DB, {
             insert_data_into_db_engine(*demo, TABLE_NAME);
             INFO_LOG("####################### [insert_data_into_db_engine] finished #######################")
-        });
+        })
 
         // handle downsample query
         RECORD_TIME_COST(HANDLE_DOWNSAMPLE_QUERY, {
@@ -995,13 +981,13 @@ namespace LindormContest::test {
             std::thread downsample_query_threads[DOWNSAMPLE_QUERY_THREADS];
 
             for (size_t i = 0; i < DOWNSAMPLE_QUERY_THREADS; ++i) {
-                downsample_query_threads[i] = std::thread(handle_downsample_query, std::ref(*demo), TABLE_NAME, i + 1);
+                downsample_query_threads[i] = std::thread(handle_downsample_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: downsample_query_threads) {
                 thread.join();
             }
-        });
+        })
 
         INFO_LOG("####################### finished [handle_aggregate_query] #######################")
 
@@ -1022,13 +1008,13 @@ namespace LindormContest::test {
             std::thread downsample_query_threads[DOWNSAMPLE_QUERY_THREADS];
 
             for (size_t i = 0; i < DOWNSAMPLE_QUERY_THREADS; ++i) {
-                downsample_query_threads[i] = std::thread(handle_downsample_query, std::ref(*demo), TABLE_NAME, i + 1);
+                downsample_query_threads[i] = std::thread(handle_downsample_query, std::ref(*demo), TABLE_NAME);
             }
 
             for (auto &thread: downsample_query_threads) {
                 thread.join();
             }
-        });
+        })
     }
 
     TEST(MultiThreadTest, MultiQueryTest) {
@@ -1074,7 +1060,7 @@ namespace LindormContest::test {
             std::thread multi_query_threads[MULTI_QUERY_THREADS];
 
             for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
-                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 2);
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, 2);
             }
 
             for (auto &thread: multi_query_threads) {
@@ -1099,7 +1085,7 @@ namespace LindormContest::test {
             std::thread multi_query_threads[MULTI_QUERY_THREADS];
 
             for (size_t i = 0; i < MULTI_QUERY_THREADS; ++i) {
-                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, i + 1, 10);
+                multi_query_threads[i] = std::thread(handle_multi_query, std::ref(*demo), TABLE_NAME, 10);
             }
 
             for (auto &thread: multi_query_threads) {

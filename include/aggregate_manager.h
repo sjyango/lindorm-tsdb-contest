@@ -41,25 +41,28 @@ namespace LindormContest {
 
         ~AggregateManager() = default;
 
-        void set_schema(SchemaSPtr schema) {
+        void init(SchemaSPtr schema) {
             _schema = schema;
         }
 
         template<typename T>
-        void query_time_range_max_aggregate(const Vin& vin, const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
-            ColumnType type = _schema->columnTypeMap[column_name];
+        void query_time_range_max_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
             T max_value = std::numeric_limits<T>::lowest();
 
-            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
+            for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
+                TimeRange file_tr (
+                        std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
+                        std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
+                );
+
                 T file_max_value = std::numeric_limits<T>::lowest();
+
                 if (_finish_compaction) {
-                    _query_max_from_one_tsm_file<T>(entry.path(), tr, column_name, type, file_max_value);
+                    _query_max_from_one_tsm_file<T>(file_idx, file_tr, column_name, file_max_value);
                 } else {
-                    _query_max_from_one_flush_file<T>(entry.path(), tr, column_name, file_max_value);
+                    _query_max_from_one_flush_file<T>(file_idx, file_tr, column_name, file_max_value);
                 }
-                if (file_max_value == std::numeric_limits<T>::lowest()) {
-                    continue;
-                }
+
                 max_value = std::max(max_value, file_max_value);
             }
 
@@ -69,222 +72,185 @@ namespace LindormContest {
 
             ColumnValue max_column_value(max_value);
             Row result_row;
-            result_row.vin = vin;
-            result_row.timestamp = tr._start_time;
             result_row.columns.emplace(column_name, std::move(max_column_value));
             aggregationRes.emplace_back(std::move(result_row));
         }
 
         template <typename T>
-        void query_time_range_avg_aggregate(const Vin& vin, const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
-            ColumnType type = _schema->columnTypeMap[column_name];
+        void query_time_range_avg_aggregate(const TimeRange& tr, const std::string& column_name, std::vector<Row> &aggregationRes) {
             T sum_value = 0;
             size_t sum_count = 0;
 
-            for (const auto& entry: std::filesystem::directory_iterator(_vin_dir_path)) {
+            for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
+                TimeRange file_tr (
+                        std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
+                        std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
+                );
+
                 if (_finish_compaction) {
-                    _query_avg_from_one_tsm_file<T>(entry.path(), tr, column_name, type, sum_value, sum_count);
+                    _query_avg_from_one_tsm_file<T>(file_idx, file_tr, column_name, sum_value);
                 } else {
-                    _query_avg_from_one_flush_file<T>(entry.path(), tr, column_name, sum_value, sum_count);
+                    _query_avg_from_one_flush_file<T>(file_idx, file_tr, column_name, sum_value);
                 }
+
+                sum_count += (file_tr._end_idx - file_tr._start_idx + 1);
             }
+
 
             if (unlikely(sum_count == 0)) {
                 return;
             }
 
-            double_t avg_value = sum_value * 1.0 / sum_count;
-            ColumnValue avg_column_value(avg_value);
+            ColumnValue avg_column_value(sum_value * 1.0 / sum_count);
             Row result_row;
-            result_row.vin = vin;
-            result_row.timestamp = tr._start_time;
             result_row.columns.emplace(column_name, std::move(avg_column_value));
             aggregationRes.emplace_back(std::move(result_row));
         }
 
     private:
         template <typename T>
-        void _query_max_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
-                                          const std::string& column_name, ColumnType type, T& max_value) {
-            Footer footer;
-            TsmFile::get_footer(tsm_file_path, footer);
+        void _query_max_from_one_tsm_file(uint16_t file_idx, const TimeRange& file_tr,
+                                          const std::string& column_name, T& file_max_value) {
             std::vector<IndexEntry> index_entries;
-            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
-
-            if (!existed || index_entries.empty()) {
-                return;
-            }
-
+            std::vector<IndexRange> ranges;
+            _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
             uint32_t global_offset = index_entries.front()._offset;
             uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            Path tsm_file_path = _vin_dir_path / std::to_string(file_idx);
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
-            std::vector<IndexRange> ranges;
-            _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 uint32_t local_offset = index_entries[i]._offset - global_offset;
-                max_value = std::max(max_value, _get_max_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
-                                                                         type, index_entries[i], ranges[i]));
+                file_max_value = std::max(file_max_value, _get_max_column_value<T>(buf.c_str() + local_offset, index_entries[i], ranges[i]));
             }
         }
 
         template <typename T>
-        void _query_max_from_one_flush_file(const Path& flush_file_path, const TimeRange& tr,
-                                            const std::string& column_name, T& max_value) {
-            std::ifstream input_file;
-            input_file.open(flush_file_path, std::ios::in | std::ios::binary);
-            if (!input_file.is_open() || !input_file.good()) {
-                INFO_LOG("%s open failed", flush_file_path.c_str())
-                throw std::runtime_error("aggregate open file failed");
+        void _query_max_from_one_flush_file(uint16_t file_idx, const TimeRange& file_tr, const std::string& column_name, T& max_value) {
+            uint16_t row_nums = file_tr._end_idx - file_tr._start_idx + 1;
+            Path flush_file_path = _vin_dir_path / std::to_string(file_idx) / column_name;
+            int fd = open(flush_file_path.c_str(), O_RDONLY);
+            assert(fd != -1);
+
+            if constexpr (std::is_same_v<T, int32_t>) {
+                auto res = lseek(fd, file_tr._start_idx * sizeof(int32_t), SEEK_SET);
+                assert(res != -1);
+                std::unique_ptr<int32_t[]> int_values = std::make_unique<int32_t[]>(row_nums);
+                auto bytes_read = read(fd, int_values.get(), row_nums * sizeof(int32_t));
+                assert(bytes_read == row_nums * sizeof(int32_t));
+                for (uint16_t i = 0; i < row_nums; ++i) {
+                    max_value = std::max(max_value, int_values[i]);
+                }
+            } else if constexpr (std::is_same_v<T, double_t>) {
+                auto res = lseek(fd, file_tr._start_idx * sizeof(double_t), SEEK_SET);
+                assert(res != -1);
+                std::unique_ptr<double_t[]> double_values = std::make_unique<double_t[]>(row_nums);
+                auto bytes_read = read(fd, double_values.get(), row_nums * sizeof(double_t));
+                assert(bytes_read == row_nums * sizeof(double_t));
+                for (uint16_t i = 0; i < row_nums; ++i) {
+                    max_value = std::max(max_value, double_values[i]);
+                }
             }
 
-            while (!input_file.eof()) {
-                Row row;
-                if (!io::read_row_from_file(input_file, _schema, false, row)) {
-                    break;
-                }
-                if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
-                    T row_value;
-                    if constexpr (std::is_same_v<T, int32_t>) {
-                        row.columns.at(column_name).getIntegerValue(row_value);
-                    } else if constexpr (std::is_same_v<T, double_t>) {
-                        row.columns.at(column_name).getDoubleFloatValue(row_value);
-                    }
-                    max_value = std::max(max_value, row_value);
-                }
-            }
-
-            input_file.close();
+            close(fd);
         }
 
         template <typename T>
-        void _query_avg_from_one_tsm_file(const Path& tsm_file_path, const TimeRange& tr,
-                                          const std::string& column_name, ColumnType type, T& sum_value, size_t& sum_count) {
-            Footer footer;
-            TsmFile::get_footer(tsm_file_path, footer);
+        void _query_avg_from_one_tsm_file(uint16_t file_idx, const TimeRange& file_tr,
+                                          const std::string& column_name, T& sum_value) {
             std::vector<IndexEntry> index_entries;
-            bool existed = _index_manager->query_indexes(_vin_num, tsm_file_path.filename(), column_name, tr, index_entries);
-
-            if (!existed || index_entries.empty()) {
-                return;
-            }
-
+            std::vector<IndexRange> ranges;
+            _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
             uint32_t global_offset = index_entries.front()._offset;
             uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
+            Path tsm_file_path = _vin_dir_path / std::to_string(file_idx);
             std::string buf;
             io::stream_read_string_from_file(tsm_file_path, global_offset, global_size, buf);
-            std::vector<IndexRange> ranges;
-            _get_value_ranges(footer._tss, tr, index_entries, ranges);
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 uint32_t local_offset = index_entries[i]._offset - global_offset;
-                sum_value += _get_sum_column_value<T>(tsm_file_path, buf.c_str() + local_offset,
-                                                      type, index_entries[i], ranges[i]);
+                _get_sum_column_value<T>(buf.c_str() + local_offset, index_entries[i], ranges[i], sum_value);
             }
-
-            sum_count += (ranges.back().global_end_index() - ranges.front().global_start_index());
         }
 
         template <typename T>
-        void _query_avg_from_one_flush_file(const Path& flush_file_path, const TimeRange& tr,
-                                          const std::string& column_name, T& sum_value, size_t& sum_count) {
-            std::ifstream input_file;
-            input_file.open(flush_file_path, std::ios::in | std::ios::binary);
-            assert(input_file.is_open() && input_file.good());
+        void _query_avg_from_one_flush_file(uint16_t file_idx, const TimeRange& file_tr,
+                                          const std::string& column_name, T& sum_value) {
+            uint16_t row_nums = file_tr._end_idx - file_tr._start_idx + 1;
+            Path flush_file_path = _vin_dir_path / std::to_string(file_idx) / column_name;
+            int fd = open(flush_file_path.c_str(), O_RDONLY);
+            assert(fd != -1);
 
-            for (uint16_t i = 0; i < FILE_FLUSH_SIZE && !input_file.eof(); ++i) {
-                Row row;
-                io::read_row_from_file(input_file, _schema, false, row);
-                if (row.timestamp >= tr._start_time && row.timestamp < tr._end_time) {
-                    if constexpr (std::is_same_v<T, int64_t>) {
-                        int32_t row_value;
-                        row.columns.at(column_name).getIntegerValue(row_value);
-                        sum_value += (int64_t) row_value;
-                    } else if constexpr (std::is_same_v<T, double_t>) {
-                        double_t row_value;
-                        row.columns.at(column_name).getDoubleFloatValue(row_value);
-                        sum_value += row_value;
-                    }
-                    sum_count++;
+            if constexpr (std::is_same_v<T, int64_t>) {
+                auto res = lseek(fd, file_tr._start_idx * sizeof(int32_t), SEEK_SET);
+                assert(res != -1);
+                std::unique_ptr<int32_t[]> int_values = std::make_unique<int32_t[]>(row_nums);
+                auto bytes_read = read(fd, int_values.get(), row_nums * sizeof(int32_t));
+                assert(bytes_read == row_nums * sizeof(int32_t));
+                for (uint16_t i = 0; i < row_nums; ++i) {
+                    sum_value += int_values[i];
+                }
+            } else if constexpr (std::is_same_v<T, double_t>) {
+                auto res = lseek(fd, file_tr._start_idx * sizeof(double_t), SEEK_SET);
+                assert(res != -1);
+                std::unique_ptr<double_t[]> double_values = std::make_unique<double_t[]>(row_nums);
+                auto bytes_read = read(fd, double_values.get(), row_nums * sizeof(double_t));
+                assert(bytes_read == row_nums * sizeof(double_t));
+                for (uint16_t i = 0; i < row_nums; ++i) {
+                    sum_value += double_values[i];
                 }
             }
 
-            input_file.close();
-        }
-
-        IndexRange _get_value_range(const std::vector<int64_t>& tss, const TimeRange& tr, const IndexEntry& index_entry) {
-            uint16_t start = index_entry._min_time_index; // inclusive
-            uint16_t end = index_entry._max_time_index; // inclusive
-
-            while (tss[start] < tr._start_time) { start++; }
-            while (tss[end] >= tr._end_time) { end--; }
-
-            return {static_cast<uint16_t>(start % DATA_BLOCK_ITEM_NUMS),
-                    static_cast<uint16_t>(end % DATA_BLOCK_ITEM_NUMS + 1),
-                    static_cast<uint16_t>(start / DATA_BLOCK_ITEM_NUMS)};
-        }
-
-        void _get_value_ranges(const std::vector<int64_t>& tss, const TimeRange& tr,
-                               const std::vector<IndexEntry>& index_entries,
-                               std::vector<IndexRange>& ranges) {
-            for (const auto &index_entry: index_entries) {
-                ranges.emplace_back(_get_value_range(tss, tr, index_entry));
-            }
+            close(fd);
         }
 
         template <typename T>
-        T _get_max_column_value(const Path& tsm_file_path, const char* buf, ColumnType type,
-                                const IndexEntry& index_entry, const IndexRange& range) {
-            DataBlock data_block;
-            data_block.decode_from_decompress(buf, type, index_entry._count);
-
-            if ((range._end_index - range._start_index) == index_entry._count) {
+        T _get_max_column_value(const char* buf, const IndexEntry& index_entry, const IndexRange& range) {
+            if ((range._end_index - range._start_index + 1) == DATA_BLOCK_ITEM_NUMS) {
                 return index_entry.get_max<T>();
             }
 
-            // TODO(SIMD opt)
             T max_value = std::numeric_limits<T>::lowest();
-            std::for_each(data_block._column_values.begin() + range._start_index,
-                          data_block._column_values.begin() + range._end_index,
-                          [&max_value] (const ColumnValue& cv) {
-                T val;
-                if constexpr (std::is_same_v<T, int32_t>) {
-                    cv.getIntegerValue(val);
-                } else if constexpr (std::is_same_v<T, double_t>) {
-                    cv.getDoubleFloatValue(val);
+
+            if constexpr (std::is_same_v<T, int32_t>) {
+                IntDataBlock int_data_block;
+                int_data_block.decode_from_decompress(buf);
+                for (uint16_t start = range._start_index; start <= range._end_index; ++start) {
+                    max_value = std::max(max_value, int_data_block._column_values[start]);
                 }
-                max_value = std::max(max_value, val);
-            });
+            } else if constexpr (std::is_same_v<T, double_t>) {
+                DoubleDataBlock double_data_block;
+                double_data_block.decode_from_decompress(buf);
+                for (uint16_t start = range._start_index; start <= range._end_index; ++start) {
+                    max_value = std::max(max_value, double_data_block._column_values[start]);
+                }
+            }
+
             return max_value;
         }
 
         template <typename T>
-        T _get_sum_column_value(const Path& tsm_file_path, const char* buf, ColumnType type,
-                                const IndexEntry& index_entry, const IndexRange& range) {
-            DataBlock data_block;
-            data_block.decode_from_decompress(buf, type, index_entry._count);
-
-            if ((range._end_index - range._start_index) == index_entry._count) {
-                return index_entry.get_sum<T>();
+        void _get_sum_column_value(const char* buf, const IndexEntry& index_entry,
+                                const IndexRange& range, T& sum_value) {
+            if ((range._end_index - range._start_index + 1) == DATA_BLOCK_ITEM_NUMS) {
+                sum_value += index_entry.get_sum<T>();
+                return;
             }
 
-            // TODO(SIMD opt)
-            T sum_value = 0;
-            std::for_each(data_block._column_values.begin() + range._start_index,
-                          data_block._column_values.begin() + range._end_index,
-                          [&sum_value] (const ColumnValue& cv) {
-                if constexpr (std::is_same_v<T, int64_t>) {
-                  int32_t val;
-                  cv.getIntegerValue(val);
-                  sum_value += (int64_t) val;
-                } else if constexpr (std::is_same_v<T, double_t>) {
-                  double_t val;
-                  cv.getDoubleFloatValue(val);
-                  sum_value += val;
+            if constexpr (std::is_same_v<T, int64_t>) {
+                IntDataBlock int_data_block;
+                int_data_block.decode_from_decompress(buf);
+                for (uint16_t start = range._start_index; start <= range._end_index; ++start) {
+                    sum_value += int_data_block._column_values[start];
                 }
-            });
-            return sum_value;
+            } else if constexpr (std::is_same_v<T, double_t>) {
+                DoubleDataBlock double_data_block;
+                double_data_block.decode_from_decompress(buf);
+                for (uint16_t start = range._start_index; start <= range._end_index; ++start) {
+                    sum_value += double_data_block._column_values[start];
+                }
+            }
         }
 
         uint16_t _vin_num;
@@ -306,37 +272,42 @@ namespace LindormContest {
                 Path vin_dir_path = finish_compaction ?
                                     root_path / "compaction" / std::to_string(vin_num)
                                     : root_path / "no-compaction" / std::to_string(vin_num);
-                _agg_managers[vin_num] = std::make_unique<AggregateManager>(vin_num, vin_dir_path,
-                                                                            finish_compaction, index_manager);
+                _agg_managers[vin_num] = std::make_unique<AggregateManager>(vin_num, vin_dir_path, finish_compaction, index_manager);
             }
         }
 
         ~GlobalAggregateManager() = default;
 
-        void set_schema(SchemaSPtr schema) {
+        void init(SchemaSPtr schema) {
             _schema = schema;
             for (auto &agg_manager: _agg_managers) {
-                agg_manager->set_schema(_schema);
+                agg_manager->init(_schema);
             }
         }
 
         void query_aggregate(uint16_t vin_num, const Vin& vin, int64_t time_lower_inclusive, int64_t time_upper_exclusive,
                              const std::string& column_name, Aggregator aggregator, std::vector<Row>& aggregationRes) {
-            TimeRange tr = {time_lower_inclusive, time_upper_exclusive};
+            TimeRange tr;
+            tr.init(time_lower_inclusive, time_upper_exclusive);
+            if (unlikely(tr._end_idx >= TS_NUM_RANGE)) {
+                return;
+            }
             ColumnType type = _schema->columnTypeMap[column_name];
             if (type == COLUMN_TYPE_INTEGER) {
                 if (aggregator == MAX) {
-                    _agg_managers[vin_num]->query_time_range_max_aggregate<int32_t>(vin, tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_max_aggregate<int32_t>(tr, column_name, aggregationRes);
                 } else if (aggregator == AVG) {
-                    _agg_managers[vin_num]->query_time_range_avg_aggregate<int64_t>(vin, tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_avg_aggregate<int64_t>(tr, column_name, aggregationRes);
                 }
             } else if (type == COLUMN_TYPE_DOUBLE_FLOAT) {
                 if (aggregator == MAX) {
-                    _agg_managers[vin_num]->query_time_range_max_aggregate<double_t>(vin, tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_max_aggregate<double_t>(tr, column_name, aggregationRes);
                 } else if (aggregator == AVG) {
-                    _agg_managers[vin_num]->query_time_range_avg_aggregate<double_t>(vin, tr, column_name, aggregationRes);
+                    _agg_managers[vin_num]->query_time_range_avg_aggregate<double_t>(tr, column_name, aggregationRes);
                 }
             }
+            aggregationRes[0].vin = vin;
+            aggregationRes[0].timestamp = time_lower_inclusive;
         }
 
     private:

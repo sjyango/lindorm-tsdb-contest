@@ -15,9 +15,6 @@
 
 #pragma once
 
-#include <variant>
-#include <optional>
-
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
@@ -27,16 +24,9 @@
 
 namespace LindormContest {
 
-    // one index entry corresponds to one data block
-    // an index block has a batch of index entry
     struct IndexEntry {
-        uint16_t _min_time_index; // inclusive
-        uint16_t _max_time_index; // inclusive
-        int64_t _min_time; // inclusive
-        int64_t _max_time; // inclusive
-        char _sum[8]; // int64_t or double_t
-        char _max[8]; // int32_t or double_t
-        uint16_t _count;
+        char _sum[8];        // int64_t or double_t
+        char _max[8];        // int32_t or double_t
         uint32_t _offset;
         uint32_t _size;
 
@@ -60,32 +50,18 @@ namespace LindormContest {
             *reinterpret_cast<T*>(_max) = max;
         }
 
-        TimeRange get_time_range() const {
-            return {_min_time, _max_time + 1};
-        }
-
-        void encode_to(std::string *buf, ColumnType type) const {
-            put_fixed(buf, _min_time_index);
-            put_fixed(buf, _max_time_index);
-            put_fixed(buf, _min_time);
-            put_fixed(buf, _max_time);
+        void encode_to(std::string *buf) const {
             buf->append(_sum, 8);
             buf->append(_max, 8);
-            put_fixed(buf, _count);
             put_fixed(buf, _offset);
             put_fixed(buf, _size);
         }
 
-        void decode_from(const uint8_t *&buf, ColumnType type) {
-            _min_time_index = decode_fixed<uint16_t>(buf);
-            _max_time_index = decode_fixed<uint16_t>(buf);
-            _min_time = decode_fixed<int64_t>(buf);
-            _max_time = decode_fixed<int64_t>(buf);
+        void decode_from(const uint8_t *&buf) {
             std::memcpy(_sum, buf, 8);
             buf += 8;
             std::memcpy(_max, buf, 8);
             buf += 8;
-            _count = decode_fixed<uint16_t>(buf);
             _offset = decode_fixed<uint32_t>(buf);
             _size = decode_fixed<uint32_t>(buf);
         }
@@ -150,33 +126,18 @@ namespace LindormContest {
             _index_meta._count++;
         }
 
-        bool get_index_entries(const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            size_t start = std::numeric_limits<size_t>::max(), end = _index_entries.size();
-            // find lower index (inclusive)
-            for (size_t i = 0; i < _index_entries.size(); ++i) {
-                if (tr.overlap(_index_entries[i].get_time_range())) {
-                    start = i;
-                    break;
-                }
+        void get_index_entries_and_ranges(const TimeRange& file_tr, std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
+            for (uint16_t i = file_tr._start_idx / DATA_BLOCK_ITEM_NUMS; i <= file_tr._end_idx / DATA_BLOCK_ITEM_NUMS; ++i) {
+                index_entries.emplace_back(_index_entries[i]);
+                ranges.emplace_back(std::max(file_tr._start_idx, (uint16_t) (i * DATA_BLOCK_ITEM_NUMS)) % DATA_BLOCK_ITEM_NUMS,
+                                    std::min(file_tr._end_idx, (uint16_t) ((i + 1) * DATA_BLOCK_ITEM_NUMS - 1)) % DATA_BLOCK_ITEM_NUMS);
             }
-            if (start == std::numeric_limits<size_t>::max()) {
-                return false;
-            }
-            // find upper index (exclusive)
-            for (size_t i = start + 1; i < _index_entries.size(); ++i) {
-                if (!tr.overlap(_index_entries[i].get_time_range())) {
-                    end = i;
-                    break;
-                }
-            }
-            index_entries.assign(_index_entries.begin() + start, _index_entries.begin() + end);
-            return true;
         }
 
         void encode_to(std::string *buf) const {
             _index_meta.encode_to(buf);
             for (const auto &entry: _index_entries) {
-                entry.encode_to(buf, _index_meta._type);
+                entry.encode_to(buf);
             }
         }
 
@@ -184,27 +145,88 @@ namespace LindormContest {
             _index_meta.decode_from(buf);
             for (uint16_t i = 0; i < _index_meta._count; ++i) {
                 IndexEntry index_entry;
-                index_entry.decode_from(buf, _index_meta._type);
+                index_entry.decode_from(buf);
                 _index_entries.emplace_back(index_entry);
             }
         }
     };
 
-    // one data block contains a part of column data
     struct DataBlock {
-        std::vector<ColumnValue> _column_values;
-
         DataBlock() = default;
 
-        DataBlock(const std::vector<ColumnValue>::iterator &start,
-                  const std::vector<ColumnValue>::iterator &end)
-                : _column_values(start, end) {}
+        virtual ~DataBlock() = default;
 
-        DataBlock(DataBlock &&other) : _column_values(std::move(other._column_values)) {}
+        virtual void encode_to_compress(std::string *buf) const = 0;
 
-        ~DataBlock() = default;
+        virtual void decode_from_decompress(const char* buf) = 0;
+    };
 
-        void encode_to_compress(ColumnType type, std::string *buf) const {
+    struct IntDataBlock : public DataBlock {
+        int32_t _column_values[DATA_BLOCK_ITEM_NUMS];
+
+        IntDataBlock() = default;
+
+        ~IntDataBlock() override = default;
+
+        void encode_to_compress(std::string *buf) const override {
+            const char* uncompress_data = reinterpret_cast<const char*>(_column_values);
+            uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(int32_t);
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_int32(uncompress_data, uncompress_size, compress_data.get());
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+        }
+
+        void decode_from_decompress(const char* buf) override {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_int32(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values, src, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+        }
+    };
+
+    struct DoubleDataBlock : public DataBlock {
+        double_t _column_values[DATA_BLOCK_ITEM_NUMS];
+
+        DoubleDataBlock() = default;
+
+        ~DoubleDataBlock() override = default;
+
+        void encode_to_compress(std::string *buf) const override {
+            const char* uncompress_data = reinterpret_cast<const char*>(_column_values);
+            uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_float(uncompress_data, uncompress_size, compress_data.get());
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+        }
+
+        void decode_from_decompress(const char* buf) override {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_float(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values, src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+    };
+
+    struct StringDataBlock : public DataBlock {
+        ColumnValue _column_values[DATA_BLOCK_ITEM_NUMS];
+
+        StringDataBlock() = default;
+
+        ~StringDataBlock() override = default;
+
+        void encode_to_compress(std::string *buf) const override {
             std::string uncompress_buf;
 
             for (const auto &column_value: _column_values) {
@@ -214,180 +236,81 @@ namespace LindormContest {
             const char* uncompress_data = uncompress_buf.c_str();
             uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
-            uint32_t compress_size;
-
-            switch (type) {
-                case COLUMN_TYPE_INTEGER:
-                    compress_size = compression::compress_int32(uncompress_data, uncompress_size, compress_data.get());
-                    break;
-                case COLUMN_TYPE_DOUBLE_FLOAT:
-                    compress_size = compression::compress_float(uncompress_data, uncompress_size, compress_data.get());
-                    break;
-                case COLUMN_TYPE_STRING:
-                    compress_size = compression::compress_string(uncompress_data, uncompress_size, compress_data.get());
-                    break;
-                default:
-                    break;
-            }
-
+            uint32_t compress_size = compression::compress_string(uncompress_data, uncompress_size, compress_data.get());
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
         }
 
-        void decode_from_decompress(const char* buf, ColumnType type, uint16_t count) {
+        void decode_from_decompress(const char* buf) override {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            size_t str_offset = 0;
+            uint16_t str_count = 0;
 
-            switch (type) {
-                case COLUMN_TYPE_INTEGER: {
-                    assert(uncompress_size / sizeof(int32_t) == count);
-                    char* start_ptr = compression::decompress_int32(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
-                    int32_t* int_ptr = reinterpret_cast<int32_t*>(start_ptr);
-                    for (uint16_t i = 0; i < count; ++i) {
-                        _column_values.emplace_back(int_ptr[i]);
-                    }
-                    break;
-                }
-                case COLUMN_TYPE_DOUBLE_FLOAT: {
-                    assert(uncompress_size / sizeof(double_t) == count);
-                    char* start_ptr = compression::decompress_float(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
-                    double_t* double_ptr = reinterpret_cast<double_t*>(start_ptr);
-                    for (uint16_t i = 0; i < count; ++i) {
-                        _column_values.emplace_back(double_ptr[i]);
-                    }
-                    break;
-                }
-                case COLUMN_TYPE_STRING: {
-                    compression::decompress_string(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
-                    size_t str_offset = 0;
-                    uint16_t str_count = 0;
-                    while (str_offset != uncompress_size) {
-                        int32_t str_length = *reinterpret_cast<int32_t*>(uncompress_data.get() + str_offset);
-                        str_offset += sizeof(int32_t);
-                        _column_values.emplace_back(uncompress_data.get() + str_offset, str_length);
-                        str_offset += str_length;
-                        str_count++;
-                    }
-                    assert(str_offset == uncompress_size);
-                    assert(str_count == count);
-                    break;
-                }
-                default:
-                    break;
-            }
-        }
-    };
-
-    // footer contains all timestamps data
-    struct Footer {
-        std::vector<int64_t> _tss;
-        uint32_t _index_offset;
-        uint32_t _footer_offset;
-
-        Footer() = default;
-
-        ~Footer() = default;
-
-        void encode_to_compress(std::string *buf) const {
-            uint16_t ts_count = _tss.size();
-            std::vector<uint16_t> tss(ts_count);
-
-            for (size_t i = 0; i < ts_count; ++i) {
-                tss[i] = decode_ts(_tss[i]);
+            while (str_offset != uncompress_size) {
+                int32_t str_length = *reinterpret_cast<int32_t*>(uncompress_data.get() + str_offset);
+                str_offset += sizeof(int32_t);
+                _column_values[str_count] = ColumnValue(uncompress_data.get() + str_offset, str_length);
+                str_offset += str_length;
+                str_count++;
             }
 
-            uint32_t uncompress_size = ts_count * sizeof(uint16_t);
-            const char* uncompress_data = reinterpret_cast<const char*>(tss.data());
-            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
-            uint32_t compress_size = compression::compress_int16(uncompress_data, uncompress_size, compress_data.get());
-            buf->append((const char*) &ts_count, sizeof(uint16_t));
-            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
-            buf->append((const char*) &compress_size, sizeof(uint32_t));
-            buf->append(compress_data.get(), compress_size);
-            put_fixed(buf, _index_offset);
-            put_fixed(buf, _footer_offset);
-        }
-
-        void decode_from_decompress(const char* buf) {
-            uint16_t ts_count = *reinterpret_cast<const uint16_t*>(buf);
-            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint16_t));
-            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t) + sizeof(uint16_t));
-            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
-            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
-            std::memcpy(compress_data.get(), buf + sizeof(uint16_t) + 2 * sizeof(uint32_t), compress_size);
-            assert(uncompress_size / sizeof(uint16_t) == ts_count);
-            char* start_ptr = compression::decompress_int16(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
-            const uint16_t * tss = reinterpret_cast<const uint16_t*>(start_ptr);
-            _tss.resize(ts_count);
-
-            for (uint16_t i = 0; i < ts_count; ++i) {
-                _tss[i] = encode_ts(tss[i]);
-            }
-
-            const uint8_t* p = reinterpret_cast<const uint8_t*>(buf + sizeof(uint16_t) + 2 * sizeof(uint32_t) + compress_size);
-            _index_offset = decode_fixed<uint32_t>(p);
-            _footer_offset = decode_fixed<uint32_t>(p);
+            assert(str_offset == uncompress_size);
+            assert(str_count == DATA_BLOCK_ITEM_NUMS);
         }
     };
 
     // tsm file representation in memory
     struct TsmFile {
-        struct ColumnIterator {
-            std::vector<DataBlock>::const_iterator _block_iter;
-            std::vector<ColumnValue>::const_iterator _value_iter;
-
-            ColumnIterator(std::vector<DataBlock>::const_iterator block_iter,
-                           std::vector<ColumnValue>::const_iterator value_iter)
-                    : _block_iter(block_iter), _value_iter(value_iter) {}
-
-            ColumnIterator &operator++() {
-                ++_value_iter;
-                return *this;
-            }
-
-            const ColumnValue &operator*() {
-                if (_value_iter == (*_block_iter)._column_values.cend()) {
-                    ++_block_iter;
-                    _value_iter = (*_block_iter)._column_values.cbegin();
-                }
-                return *_value_iter;
-            }
-
-            bool operator==(const ColumnIterator &other) const {
-                return _block_iter == other._block_iter && _value_iter == other._value_iter;
-            }
-
-            bool operator!=(const ColumnIterator &other) const {
-                return !(*this == other);
-            }
-        };
-
-        std::vector<DataBlock> _data_blocks;
+        std::vector<std::unique_ptr<DataBlock>> _data_blocks;
         std::vector<IndexBlock> _index_blocks;
-        Footer _footer;
+        uint32_t _index_offset;
 
         TsmFile() = default;
 
-        TsmFile(TsmFile &&other) : _data_blocks(std::move(other._data_blocks)),
-                                   _index_blocks(std::move(other._index_blocks)),
-                                   _footer(other._footer) {}
-
         ~TsmFile() = default;
 
-        ColumnIterator column_begin(const std::string &column_name) const;
+        void encode_to(std::string *buf) {
+            size_t index_entry_count = 0;
 
-        ColumnIterator column_end(const std::string &column_name) const;
+            for (auto &index_block: _index_blocks) {
+                for (auto &index_entry: index_block._index_entries) {
+                    index_entry._offset = buf->size();
+                    _data_blocks[index_entry_count++]->encode_to_compress(buf);
+                    index_entry._size = buf->size() - index_entry._offset;
+                }
+            }
 
-        void encode_to(std::string *buf);
+            assert(index_entry_count == _data_blocks.size());
+            _index_offset = buf->size();
 
-        void write_to_file(const Path &tsm_file_path);
+            for (const auto &block: _index_blocks) {
+                block.encode_to(buf);
+            }
 
-        static void get_size_and_offset(const Path& tsm_file_path, uint32_t& file_size, uint32_t& index_offset, uint32_t& footer_offset);
+            buf->append(reinterpret_cast<const char*>(&_index_offset), sizeof(uint32_t));
+        }
 
-        static void get_footer(const Path& tsm_file_path, Footer& footer);
+        void write_to_file(const Path &tsm_file_path) {
+            std::string buf;
+            encode_to(&buf);
+            io::stream_write_string_to_file(tsm_file_path, buf);
+        }
+
+        static void get_size_and_offset(const Path& tsm_file_path, uint32_t* file_size, uint32_t* index_offset) {
+            std::ifstream input_file(tsm_file_path, std::ios::binary | std::ios::ate);
+            if (!input_file.is_open() || !input_file.good()) {
+                throw std::runtime_error("failed to open the file");
+            }
+            *file_size = input_file.tellg();
+            input_file.seekg(-sizeof(uint32_t), std::ios::end);
+            input_file.read(reinterpret_cast<char*>(index_offset), sizeof(uint32_t));
+            input_file.close();
+        }
     };
 }
