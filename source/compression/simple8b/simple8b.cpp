@@ -339,33 +339,27 @@ int32_t tsDecompressINTImp(const char *const input, const int32_t nelements, cha
 * ---------------------------------------------- */
 
 /* Run Length Encoding(RLE) Method */
+/*Format: | value[8B] | repeat_N[8B] | ... |*/
 int32_t tsCompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output) {
  int32_t _pos = 0;
 
  for (int32_t i = 0; i < nelements;) {
-   unsigned char counter = 1;
-   char          num = input[i];
+       uint64_t counter = 1;
+       int32_t  num = *((int32_t *)input + i);
 
    for (++i; i < nelements; i++) {
-     if (input[i] == num) {
+     if ((*((int32_t *)input + i)) == num) {
        counter++;
-       if (counter == INT8MASK(7)) {
-         i++;
-         break;
-       }
      } else {
        break;
      }
    }
-
    // Encode the data.
-   if (num == 1) {
-     output[_pos++] = INT8MASK(1) | (counter << 1);
-   } else if (num == 0) {
-     output[_pos++] = (counter << 1) | INT8MASK(0);
-   } else {
-     throw std::runtime_error("Invalid compress bool value");
-   }
+   int64_t value = int64_t(num);
+   memcpy(output + _pos, &value, sizeof(int64_t));
+   memcpy(output + _pos + sizeof(int64_t), &counter, sizeof(uint64_t));
+   _pos += sizeof(int64_t) + sizeof(uint64_t);
+
  }
 
  return _pos;
@@ -373,15 +367,22 @@ int32_t tsCompressBoolRLEImp(const char *const input, const int32_t nelements, c
 
 int32_t tsDecompressBoolRLEImp(const char *const input, const int32_t nelements, char *const output) {
  int32_t ipos = 0, opos = 0;
- while (true) {
-   char     encode = input[ipos++];
-   unsigned counter = (encode >> 1) & INT8MASK(7);
-   char     value = encode & INT8MASK(1);
+ const char *base = input;
+ int32_t* output_ = (int32_t*)output;
 
-   memset(output + opos, value, counter);
+ while (true) {
+   int64_t value = 0;
+   memcpy(&value, base + ipos, 8);
+   int32_t num = int32_t(value);
+
+   uint64_t counter = 0;
+   memcpy(&counter, base + ipos + 8, 8);
+
+   std::fill(output_ + opos,output_ + opos + counter, num);
    opos += counter;
    if (opos >= nelements) {
      return nelements;
    }
+   ipos += 16;
  }
 }
