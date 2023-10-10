@@ -648,9 +648,9 @@ namespace LindormContest::test {
                 time_range_records[key].push_back(row);
             }
 
-            // if (generate_random_float64() < 0.5) {
-            //     handle_multi_query(db, TABLE_NAME, 10);
-            // }
+            if (generate_random_float64() < 0.5) {
+                handle_multi_query(db, TABLE_NAME, 5);
+            }
         };
 
         for (size_t i = 0; i < INSERT_DATA_THREADS; ++i) {
