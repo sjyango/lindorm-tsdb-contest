@@ -104,10 +104,12 @@ namespace LindormContest {
                 IndexEntry index_entry;
                 int64_t int_sum = 0;
                 int32_t int_max = std::numeric_limits<int32_t>::lowest();
+                int32_t int_min = std::numeric_limits<int32_t>::max();
 
                 for (auto v: data_block->_column_values) {
                     int_sum += v;
                     int_max = std::max(int_max, v);
+                    int_min = std::min(int_min, v);
                 }
 
                 index_entry.set_sum(int_sum);
