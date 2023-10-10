@@ -2,6 +2,7 @@
 
 #include "compression/float_compression.h"
 #include "compression/string_compressor.h"
+#include "compression/integer_compression.h"
 
 namespace LindormContest::compression {
 
@@ -26,13 +27,14 @@ namespace LindormContest::compression {
     }
 
     static uint32_t compress_int32(const char *source, uint32_t source_size, char *dest) {
-        static CompressionCodecGorilla compressionCodecGorilla(4);
-        return compressionCodecGorilla.compress(source, source_size, dest);
+        static CompressionSimple8b compressionCodecSimple8b(4);
+        return compressionCodecSimple8b.compress(source, source_size, dest);
     }
 
     static char * decompress_int32(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
-        static CompressionCodecGorilla compressionCodecGorilla(4);
-        return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
+        static CompressionSimple8b compressionCodecSimple8b(4);
+        compressionCodecSimple8b.decompress(source, source_size, dest, uncompressed_size);
+        return dest;
     }
 
     static uint32_t compress_int64(const char *source, uint32_t source_size, char *dest) {
