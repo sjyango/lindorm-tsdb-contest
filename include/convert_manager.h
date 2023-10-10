@@ -100,7 +100,7 @@ namespace LindormContest {
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<IntDataBlock> data_block = std::make_unique<IntDataBlock>();
-                std::memcpy(data_block->_column_values, src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+                std::memcpy(data_block->_column_values.data(), src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
                 IndexEntry index_entry;
                 int64_t int_sum = 0;
                 int32_t int_max = std::numeric_limits<int32_t>::lowest();
@@ -110,6 +110,11 @@ namespace LindormContest {
                     int_sum += v;
                     int_max = std::max(int_max, v);
                     int_min = std::min(int_min, v);
+                }
+
+                if (int_max == int_min) {
+                    INFO_LOG("column: %s, encode to same", column_name.c_str())
+                    data_block->_is_same = true;
                 }
 
                 index_entry.set_sum(int_sum);
@@ -137,14 +142,21 @@ namespace LindormContest {
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<DoubleDataBlock> data_block = std::make_unique<DoubleDataBlock>();
-                std::memcpy(data_block->_column_values, src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+                std::memcpy(data_block->_column_values.data(), src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
                 IndexEntry index_entry;
                 double_t double_sum = 0;
                 double_t double_max = std::numeric_limits<double_t>::lowest();
+                double_t double_min = std::numeric_limits<double_t>::max();
 
                 for (auto v: data_block->_column_values) {
                     double_sum += v;
                     double_max = std::max(double_max, v);
+                    double_min = std::min(double_min, v);
+                }
+
+                if (double_max == double_min) {
+                    INFO_LOG("column: %s, encode to same", column_name.c_str())
+                    data_block->_is_same = true;
                 }
 
                 index_entry.set_sum(double_sum);

@@ -231,7 +231,7 @@ namespace LindormContest {
             return true;
         }
 
-        bool decode_from_simple8B(const char* buf) {
+        void decode_from_simple8B(const char* buf) {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
@@ -242,12 +242,12 @@ namespace LindormContest {
             std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
 
-        bool encode_to_plain(std::string* buf) const {
+        void encode_to_plain(std::string* buf) const {
             put_fixed(buf, static_cast<uint8_t>(CompressCodec::PLAIN));
             buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
 
-        bool decode_from_plain(const char* buf) {
+        void decode_from_plain(const char* buf) {
             std::memcpy(_column_values.data(), buf, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
     };
@@ -315,7 +315,7 @@ namespace LindormContest {
             return true;
         }
 
-        bool decode_from_simple8B(const char* buf) {
+        void decode_from_simple8B(const char* buf) {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
@@ -326,12 +326,12 @@ namespace LindormContest {
             std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
         }
 
-        bool encode_to_plain(std::string* buf) const {
+        void encode_to_plain(std::string* buf) const {
             put_fixed(buf, static_cast<uint8_t>(CompressCodec::PLAIN));
             buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
         }
 
-        bool decode_from_plain(const char* buf) {
+        void decode_from_plain(const char* buf) {
             std::memcpy(_column_values.data(), buf, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
         }
     };
