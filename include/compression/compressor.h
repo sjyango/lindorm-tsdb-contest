@@ -58,12 +58,12 @@ namespace LindormContest::compression {
         return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
     }
 
-    static uint32_t compress_string(const char *source, uint32_t source_size, char *dest) {
+    static uint32_t compress_string_zstd(const char *source, uint32_t source_size, char *dest) {
         static CompressionCodecZSTD compressionCodecZstd(3);
         return compressionCodecZstd.compress(source, source_size, dest);
     }
 
-    static void decompress_string(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+    static void decompress_string_zstd(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
         static CompressionCodecZSTD compressionCodecZstd(3);
         compressionCodecZstd.decompress(source, source_size, dest, uncompressed_size);
     }
