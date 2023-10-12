@@ -3,78 +3,106 @@
 #include "compression/integer_compression.h"
 #include <random>
 
+extern "C" {
+#include "../source/bitpacking/include/simdbitpacking.h"
+}
+
 namespace LindormContest::test {
 
-template<typename T>
-void verifyResult(std::vector<T>& input, const char* result){
-    auto length = input.size();
-    auto* base = reinterpret_cast<T*>(const_cast<char *>(result));
-    for(auto i = 0 ;i < length;++i){
-        assert(input[i] == *base);
+    template<typename T>
+    void verifyResult(std::vector<T> &input, const char *result) {
+        auto length = input.size();
+        auto *base = reinterpret_cast<T *>(const_cast<char *>(result));
+        for (auto i = 0; i < length; ++i) {
+            assert(input[i] == *base);
 //                GTEST_LOG_(INFO) << input[i] << " " <<  *base;
-        if(i != length - 1)base++;
+            if (i != length - 1)base++;
+        }
     }
-}
 
-TEST(Compression, simple8b_int_test) {
-    static constexpr size_t BIG_INT = 100000;
-    std::vector<int> input;
-    for(auto i = 0 ;i < 20'000;++i){
-        auto num = rand() % 1000 - 500;
-        //        GTEST_LOG_(INFO) << num;
-        input.emplace_back(num);
+    TEST(Compression, simple8b_int_test) {
+        static constexpr size_t BIG_INT = 100000;
+        std::vector<int> input;
+        for (auto i = 0; i < 20'000; ++i) {
+            auto num = rand() % 1000 - 500;
+            //        GTEST_LOG_(INFO) << num;
+            input.emplace_back(num);
+        }
+        auto length = input.size();
+        uint32_t uncompressSize = length * sizeof(int);
+
+        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
+        // pre-allocate a large size
+        char *origin = reinterpret_cast<char *>(input.data());
+        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
+
+        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
+
+        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+
+        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
+
+        verifyResult<int>(input, recover);
+
+        free(recover);
+        free(compress);
+        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
+        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
     }
-    auto length = input.size();
-    uint32_t uncompressSize = length * sizeof(int);
 
-    LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
-    // pre-allocate a large size
-    char* origin = reinterpret_cast<char *>(input.data());
-    char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
+    TEST(Compression, rle_int_test) {
+        static constexpr size_t BIG_INT = 100000;
+        std::vector<int> input;
+        for (auto i = 0; i < 20'000; ++i) {
+            auto num = 10;
+            //        GTEST_LOG_(INFO) << num;
+            input.emplace_back(num);
+        }
+        auto length = input.size();
+        uint32_t uncompressSize = length * sizeof(int);
 
-    uint64_t compress_size = compressionSimple8B.compress(origin,uncompressSize,compress);
+        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
+        // pre-allocate a large size
+        char *origin = reinterpret_cast<char *>(input.data());
+        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
 
-    char *recover = reinterpret_cast<char*>(malloc(BIG_INT));
+        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
 
-    compressionSimple8B.decompress(compress,compress_size,recover,uncompressSize);
+        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
 
-    verifyResult<int>(input,recover);
+        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
 
-    free(recover);
-    free(compress);
-    GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
-    GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
-}
+        verifyResult<int>(input, recover);
 
-TEST(Compression, rle_int_test) {
-    static constexpr size_t BIG_INT = 100000;
-    std::vector<int> input;
-    for(auto i = 0 ;i < 20'000;++i){
-        auto num = 10;
-        //        GTEST_LOG_(INFO) << num;
-        input.emplace_back(num);
+        free(recover);
+        free(compress);
+        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
+        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
     }
-    auto length = input.size();
-    uint32_t uncompressSize = length * sizeof(int);
 
-    LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
-    // pre-allocate a large size
-    char* origin = reinterpret_cast<char *>(input.data());
-    char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
+    TEST(Compression, BitPackingTest) {
+        size_t k, N = 9999;
+        __m128i * endofbuf;
+        uint32_t * datain = static_cast<uint32_t *>(std::malloc(N * sizeof(uint32_t)));
+        uint8_t * buffer;
+        uint32_t * backbuffer = static_cast<uint32_t *>(malloc(N * sizeof(uint32_t)));
+        uint32_t b;
 
-    uint64_t compress_size = compressionSimple8B.compress(origin,uncompressSize,compress, true);
+        for (k = 0; k < N; ++k) {        /* start with k=0, not k=1! */
+            datain[k] = k;
+        }
 
-    char *recover = reinterpret_cast<char*>(malloc(BIG_INT));
+        b = maxbits_length(datain, N);
+        buffer = static_cast<uint8_t *>(malloc(simdpack_compressedbytes(N, b))); // allocate just enough memory
+        endofbuf = simdpack_length(datain, N, (__m128i *)buffer, b);
+        /* compressed data is stored between buffer and endofbuf using (endofbuf-buffer)*sizeof(__m128i) bytes */
+        /* would be safe to do : buffer = realloc(buffer,(endofbuf-(__m128i *)buffer)*sizeof(__m128i)); */
+        simdunpack_length((const __m128i *)buffer, N, backbuffer, b);
 
-    compressionSimple8B.decompress(compress,compress_size,recover,uncompressSize, true);
-
-    verifyResult<int>(input,recover);
-
-    free(recover);
-    free(compress);
-    GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
-    GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
-}
+        for (k = 0; k < N; ++k) {
+            ASSERT_EQ(datain[k], backbuffer[k]);
+        }
+    }
 
 //TEST(Compression, gorilla_int_test) {
 //    static constexpr size_t BIG_INT = 100;

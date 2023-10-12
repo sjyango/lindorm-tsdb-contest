@@ -81,12 +81,17 @@ namespace LindormContest {
         std::swap(lhs.columns, rhs.columns);
     }
 
+    inline uint32_t get_next_power_of_two(uint32_t n) {
+        return std::ceil(std::log2(n));
+    }
+
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
-    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 600;
-    static constexpr uint16_t FILE_CONVERT_SIZE = 6000;
+    static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 1800;
+    static constexpr uint16_t FILE_CONVERT_SIZE = 9000;
     static constexpr uint16_t TSM_FILE_COUNT = TS_NUM_RANGE / FILE_CONVERT_SIZE;
     static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
     static constexpr uint16_t POOL_THREAD_NUM = 8;
+    static constexpr uint32_t BITPACKING_RANGE_NUM = 1 << 10;
 
     static_assert(TS_NUM_RANGE % FILE_CONVERT_SIZE == 0);
     static_assert(FILE_CONVERT_SIZE % DATA_BLOCK_ITEM_NUMS == 0);

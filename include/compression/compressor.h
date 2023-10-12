@@ -6,12 +6,12 @@
 
 namespace LindormContest::compression {
 
-    static uint32_t compress_float(const char *source, uint32_t source_size, char *dest) {
+    static uint32_t compress_double(const char *source, uint32_t source_size, char *dest) {
         static CompressionCodecGorilla compressionCodecGorilla(8);
         return compressionCodecGorilla.compress(source, source_size, dest);
     }
 
-    static char * decompress_float(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+    static char * decompress_double(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
         static CompressionCodecGorilla compressionCodecGorilla(8);
         return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
     }
@@ -26,14 +26,25 @@ namespace LindormContest::compression {
         return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
     }
 
-    static uint32_t compress_int32(const char *source, uint32_t source_size, char *dest) {
+    static uint32_t compress_int32_simple8b(const char *source, uint32_t source_size, char *dest) {
         static CompressionSimple8b compressionCodecSimple8b(4);
         return compressionCodecSimple8b.compress(source, source_size, dest);
     }
 
-    static char * decompress_int32(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+    static char * decompress_int32_simple8b(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
         static CompressionSimple8b compressionCodecSimple8b(4);
         compressionCodecSimple8b.decompress(source, source_size, dest, uncompressed_size);
+        return dest;
+    }
+
+    static uint32_t compress_int32_rle(const char *source, uint32_t source_size, char *dest) {
+        static CompressionRLE compressionCodecRLE(4);
+        return compressionCodecRLE.compress(source, source_size, dest);
+    }
+
+    static char * decompress_int32_rle(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+        static CompressionRLE compressionCodecRLE(4);
+        compressionCodecRLE.decompress(source, source_size, dest, uncompressed_size);
         return dest;
     }
 

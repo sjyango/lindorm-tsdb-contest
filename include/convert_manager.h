@@ -112,9 +112,16 @@ namespace LindormContest {
                     int_min = std::min(int_min, v);
                 }
 
-                if (int_max == int_min) {
-                    INFO_LOG("column: %s, encode to same", column_name.c_str())
-                    data_block->_is_same = true;
+                uint32_t range_width = int_max - int_min + 1;
+
+                if (range_width == 1) {
+                    data_block->_type = IntCompressType::SAME;
+                } else if (range_width <= BITPACKING_RANGE_NUM) {
+                    data_block->_type = IntCompressType::BITPACKING;
+                    data_block->_required_bits = get_next_power_of_two(range_width);
+                    data_block->_int_min = int_min;
+                } else {
+                    data_block->_type = IntCompressType::SIMPLE8B;
                 }
 
                 index_entry.set_sum(int_sum);
@@ -155,8 +162,9 @@ namespace LindormContest {
                 }
 
                 if (double_max == double_min) {
-                    INFO_LOG("column: %s, encode to same", column_name.c_str())
-                    data_block->_is_same = true;
+                    data_block->_type = DoubleCompressType::SAME;
+                } else {
+                    data_block->_type = DoubleCompressType::GORILLA;
                 }
 
                 index_entry.set_sum(double_sum);
@@ -188,6 +196,18 @@ namespace LindormContest {
                 for (uint16_t j = 0; j < DATA_BLOCK_ITEM_NUMS; ++j) {
                     std::swap(data_block->_column_values[j], src_values[i * DATA_BLOCK_ITEM_NUMS + j]);
                 }
+
+                // if (column_name == "LIYD") {
+                //     data_block->_type = StringCompressType::LIYD;
+                // } else if (column_name == "SCHU") {
+                //     data_block->_type = StringCompressType::SCHU;
+                // } else if (column_name == "ZEBY") {
+                //     data_block->_type = StringCompressType::ZEBY;
+                // } else if (column_name == "UFPI") {
+                //     data_block->_type = StringCompressType::UFPI;
+                // } else {
+                //     data_block->_type = StringCompressType::ZSTD;
+                // }
 
                 IndexEntry index_entry;
                 data_blocks.emplace_back(std::move(data_block));

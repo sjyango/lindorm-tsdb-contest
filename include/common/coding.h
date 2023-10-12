@@ -38,4 +38,47 @@ namespace LindormContest {
         encode_fixed(buf, val);
         dst->append((char*)buf, sizeof(buf));
     }
+
+    static uint32_t bit_packing_encoding(uint8_t required_bits, int32_t int_min, const int32_t* uncompress_data, size_t uncompress_size, char* compress_data) {
+        uint32_t compress_size = 0;
+        uint16_t current_byte = 0;
+        uint8_t bits_in_current_byte = 0;
+
+        for (size_t i = 0; i < uncompress_size; ++i) {
+            uint16_t delta_value = uncompress_data[i] - int_min;
+            current_byte |= (delta_value << bits_in_current_byte);
+            bits_in_current_byte += required_bits;
+
+            if (bits_in_current_byte >= 8) {
+                compress_data[compress_size++] = current_byte & 0xFF;
+                current_byte >>= 8;
+                bits_in_current_byte -= 8;
+            }
+        }
+
+        if (bits_in_current_byte > 0) {
+            compress_data[compress_size++] = current_byte & 0xFF;
+        }
+
+        return compress_size;
+    }
+
+    static void bit_packing_decoding(uint8_t required_bits, int32_t int_min, const char* compress_data, int32_t* uncompress_data, size_t uncompress_size) {
+        uint8_t MASK = (1 << required_bits) - 1;
+        size_t uncompress_count = 0;
+        size_t current_index = 0;
+        int8_t current_bit = 0;
+        uint16_t current_byte = *reinterpret_cast<const uint16_t*>(compress_data + current_index++);
+
+        while (uncompress_count < uncompress_size) {
+            uint8_t compress_value = (current_byte >> current_bit) & MASK;
+            uncompress_data[uncompress_count++] = int_min + compress_value;
+            current_bit += required_bits;
+
+            if (current_bit >= 8) {
+                current_byte = *reinterpret_cast<const uint16_t*>(compress_data + current_index++);
+                current_bit -= 8;
+            }
+        }
+    }
 }

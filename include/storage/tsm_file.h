@@ -15,6 +15,10 @@
 
 #pragma once
 
+extern "C" {
+#include "../source/bitpacking/include/simdbitpacking.h"
+}
+
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
@@ -151,10 +155,25 @@ namespace LindormContest {
         }
     };
 
-    enum class CompressCodec : uint8_t {
+    enum class IntCompressType : uint8_t {
         SAME,
-        RLE,
+        BITPACKING,
         SIMPLE8B,
+        PLAIN
+    };
+
+    enum class DoubleCompressType : uint8_t {
+        SAME,
+        GORILLA,
+        PLAIN
+    };
+
+    enum class StringCompressType : uint8_t {
+        LIYD, // x
+        SCHU, //
+        ZEBY, // SUCCESS
+        UFPI, // RIGHT
+        ZSTD,
         PLAIN
     };
 
@@ -170,44 +189,48 @@ namespace LindormContest {
 
     struct IntDataBlock : public DataBlock {
         std::array<int32_t, DATA_BLOCK_ITEM_NUMS> _column_values;
-        bool _is_same = false;
+        IntCompressType _type = IntCompressType::SIMPLE8B;
+        uint8_t _required_bits; // just for bitpacking
+        int32_t _int_min;       // just for bitpacking
 
         IntDataBlock() = default;
 
         ~IntDataBlock() override = default;
 
         void encode_to_compress(std::string *buf) const override {
-            if (_is_same) {
+            if (_type == IntCompressType::SAME) {
                 encode_to_same(buf);
-                return;
+            } else if (_type == IntCompressType::BITPACKING) {
+                encode_to_bitpacking(buf);
+            } else if (_type == IntCompressType::SIMPLE8B) {
+                if (!encode_to_simple8b(buf)) {
+                    encode_to_plain(buf);
+                }
             }
-            if (encode_to_simple8b(buf)) {
-                return;
-            }
-            encode_to_plain(buf);
         }
 
         void decode_from_decompress(const char* buf) override {
-            CompressCodec codec_type = static_cast<CompressCodec>(*reinterpret_cast<const uint8_t*>(buf));
+            IntCompressType type = static_cast<IntCompressType>(*reinterpret_cast<const uint8_t*>(buf));
             buf += sizeof(uint8_t);
 
-            switch (codec_type) {
-                case CompressCodec::SAME:
+            switch (type) {
+                case IntCompressType::SAME:
                     decode_from_same(buf);
                     break;
-                case CompressCodec::SIMPLE8B:
-                    decode_from_simple8B(buf);
+                case IntCompressType::SIMPLE8B:
+                    decode_from_simple8b(buf);
                     break;
-                case CompressCodec::PLAIN:
+                case IntCompressType::PLAIN:
                     decode_from_plain(buf);
                     break;
-                case CompressCodec::RLE:
+                case IntCompressType::BITPACKING:
+                    decode_from_bitpacking(buf);
                     break;
             }
         }
 
         void encode_to_same(std::string *buf) const {
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::SAME));
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::SAME));
             put_fixed(buf, _column_values[0]);
         }
 
@@ -219,31 +242,66 @@ namespace LindormContest {
         bool encode_to_simple8b(std::string* buf) const {
             const char* uncompress_data = reinterpret_cast<const char*>(_column_values.data());
             uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(int32_t);
-            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 2);
-            uint32_t compress_size = compression::compress_int32(uncompress_data, uncompress_size, compress_data.get());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 4);
+            uint32_t compress_size = compression::compress_int32_simple8b(uncompress_data, uncompress_size, compress_data.get());
             if (compress_size >= uncompress_size) {
+                // INFO_LOG("encode_to_simple8b, compress_size >= uncompress_size")
                 return false;
             }
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::SIMPLE8B));
+            // INFO_LOG("encode_to_simple8b, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
             return true;
         }
 
-        void decode_from_simple8B(const char* buf) {
+        void decode_from_simple8b(const char* buf) {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
             assert(uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
-            char* src = compression::decompress_int32(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            char* src = compression::decompress_int32_simple8b(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
             std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
 
+        void encode_to_bitpacking(std::string* buf) const {
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                uncompress_data[i] = _column_values[i] - _int_min;
+            }
+
+            uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t);
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size);
+            __m128i* end_buf = simdpack_length(uncompress_data.data(), DATA_BLOCK_ITEM_NUMS, (__m128i*) compress_data.get(), _required_bits);
+            uint32_t compress_size = (end_buf - (__m128i *) compress_data.get()) * sizeof(__m128i);
+            // INFO_LOG("encode_to_bitpacking, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACKING));
+            put_fixed(buf, _required_bits);
+            put_fixed(buf, _int_min);
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+        }
+
+        void decode_from_bitpacking(const char* buf) {
+            _required_bits = *reinterpret_cast<const uint8_t*>(buf);
+            _int_min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::memcpy(compress_data.get(), buf + sizeof(uint8_t) + sizeof(int32_t) + sizeof(uint32_t), compress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
+            simdunpack_length((const __m128i*) compress_data.get(), DATA_BLOCK_ITEM_NUMS, uncompress_data.data(), _required_bits);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = uncompress_data[i] + _int_min;
+            }
+        }
+
         void encode_to_plain(std::string* buf) const {
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::PLAIN));
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::PLAIN));
             buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
 
@@ -254,44 +312,41 @@ namespace LindormContest {
 
     struct DoubleDataBlock : public DataBlock {
         std::array<double_t, DATA_BLOCK_ITEM_NUMS> _column_values;
-        bool _is_same = false;
+        DoubleCompressType _type = DoubleCompressType::GORILLA;
 
         DoubleDataBlock() = default;
 
         ~DoubleDataBlock() override = default;
 
         void encode_to_compress(std::string *buf) const override {
-            if (_is_same) {
+            if (_type == DoubleCompressType::SAME) {
                 encode_to_same(buf);
-                return;
+            } else if (_type == DoubleCompressType::GORILLA) {
+                if (!encode_to_gorilla(buf)) {
+                    encode_to_plain(buf);
+                }
             }
-            if (encode_to_simple8b(buf)) {
-                return;
-            }
-            encode_to_plain(buf);
         }
 
         void decode_from_decompress(const char* buf) override {
-            CompressCodec codec_type = static_cast<CompressCodec>(*reinterpret_cast<const uint8_t*>(buf));
+            DoubleCompressType type = static_cast<DoubleCompressType>(*reinterpret_cast<const uint8_t*>(buf));
             buf += sizeof(uint8_t);
 
-            switch (codec_type) {
-                case CompressCodec::SAME:
+            switch (type) {
+                case DoubleCompressType::SAME:
                     decode_from_same(buf);
                     break;
-                case CompressCodec::SIMPLE8B:
-                    decode_from_simple8B(buf);
+                case DoubleCompressType::GORILLA:
+                    decode_from_gorilla(buf);
                     break;
-                case CompressCodec::PLAIN:
+                case DoubleCompressType::PLAIN:
                     decode_from_plain(buf);
-                    break;
-                case CompressCodec::RLE:
                     break;
             }
         }
 
         void encode_to_same(std::string *buf) const {
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::SAME));
+            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::SAME));
             put_fixed(buf, _column_values[0]);
         }
 
@@ -300,34 +355,36 @@ namespace LindormContest {
             std::fill(_column_values.begin(), _column_values.end(), same_value);
         }
 
-        bool encode_to_simple8b(std::string* buf) const {
+        bool encode_to_gorilla(std::string* buf) const {
             const char* uncompress_data = reinterpret_cast<const char*>(_column_values.data());
             uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
-            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 2);
-            uint32_t compress_size = compression::compress_float(uncompress_data, uncompress_size, compress_data.get());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 4);
+            uint32_t compress_size = compression::compress_double(uncompress_data, uncompress_size, compress_data.get());
             if (compress_size >= uncompress_size) {
+                // INFO_LOG("encode_to_gorilla, compress_size >= uncompress_size")
                 return false;
             }
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::SIMPLE8B));
+            // INFO_LOG("encode_to_gorilla, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
             return true;
         }
 
-        void decode_from_simple8B(const char* buf) {
+        void decode_from_gorilla(const char* buf) {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
             assert(uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
-            char* src = compression::decompress_float(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            char* src = compression::decompress_double(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
             std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
         }
 
         void encode_to_plain(std::string* buf) const {
-            put_fixed(buf, static_cast<uint8_t>(CompressCodec::PLAIN));
+            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::PLAIN));
             buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
         }
 
@@ -337,29 +394,123 @@ namespace LindormContest {
     };
 
     struct StringDataBlock : public DataBlock {
-        ColumnValue _column_values[DATA_BLOCK_ITEM_NUMS];
+        std::array<ColumnValue, DATA_BLOCK_ITEM_NUMS> _column_values;
+        StringCompressType _type = StringCompressType::ZSTD;
 
         StringDataBlock() = default;
 
         ~StringDataBlock() override = default;
 
         void encode_to_compress(std::string *buf) const override {
-            std::string uncompress_buf;
+            switch (_type) {
+                case StringCompressType::LIYD:
+                    encode_to_same(buf, _type);
+                    break;
+                case StringCompressType::SCHU:
+                    encode_to_same(buf, _type);
+                    break;
+                case StringCompressType::ZEBY:
+                    encode_to_same(buf, _type);
+                    break;
+                case StringCompressType::UFPI:
+                    encode_to_same(buf, _type);
+                    break;
+                case StringCompressType::ZSTD: {
+                    std::string uncompress_buf;
+                    if (!encode_to_zstd(buf, uncompress_buf)) {
+                        encode_to_plain(uncompress_buf, buf);
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
 
+        void decode_from_decompress(const char* buf) override {
+            StringCompressType type = static_cast<StringCompressType>(*reinterpret_cast<const uint8_t*>(buf));
+            buf += sizeof(uint8_t);
+
+            switch (type) {
+                case StringCompressType::LIYD:
+                case StringCompressType::SCHU:
+                case StringCompressType::ZEBY:
+                case StringCompressType::UFPI:
+                    decode_from_same(type);
+                    break;
+                case StringCompressType::ZSTD:
+                    decode_from_zstd(buf);
+                    break;
+                case StringCompressType::PLAIN:
+                    decode_from_plain(buf);
+                    break;
+            }
+        }
+
+        void encode_to_same(std::string* buf, StringCompressType type) const {
+            put_fixed(buf, static_cast<uint8_t>(type));
+        }
+
+        void decode_from_same(StringCompressType type) {
+            switch (type) {
+                case StringCompressType::LIYD: {
+                    std::string LIYD = "x";
+                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                        _column_values[i] = ColumnValue(LIYD);
+                    }
+                    break;
+                }
+                case StringCompressType::SCHU: {
+                    std::string SCHU = "";
+                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                        _column_values[i] = ColumnValue(SCHU);
+                    }
+                    break;
+                }
+                case StringCompressType::ZEBY: {
+                    std::string ZEBY = "SUCCESS";
+                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                        _column_values[i] = ColumnValue(ZEBY);
+                    }
+                    break;
+                }
+                case StringCompressType::UFPI: {
+                    std::string UFPI = "RIGHT";
+                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                        _column_values[i] = ColumnValue(UFPI);
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+
+        }
+
+        bool encode_to_zstd(std::string *buf, std::string& uncompress_buf) const {
             for (const auto &column_value: _column_values) {
-                uncompress_buf.append(column_value.columnData, column_value.getRawDataSize());
+                uint8_t str_length = static_cast<uint8_t>(*reinterpret_cast<int32_t*>(column_value.columnData));
+                uncompress_buf.append((const char*) &str_length, sizeof(uint8_t));
+                uncompress_buf.append(column_value.columnData + sizeof(int32_t), column_value.getRawDataSize() - sizeof(int32_t));
             }
 
             const char* uncompress_data = uncompress_buf.c_str();
             uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
             uint32_t compress_size = compression::compress_string(uncompress_data, uncompress_size, compress_data.get());
+            if (compress_size >= uncompress_size) {
+                INFO_LOG("encode_to_zstd, compress_size >= uncompress_size")
+                return false;
+            }
+            INFO_LOG("encode_to_zstd, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
+            return true;
         }
 
-        void decode_from_decompress(const char* buf) override {
+        void decode_from_zstd(const char* buf) {
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
@@ -370,9 +521,36 @@ namespace LindormContest {
             uint16_t str_count = 0;
 
             while (str_offset != uncompress_size) {
-                int32_t str_length = *reinterpret_cast<int32_t*>(uncompress_data.get() + str_offset);
-                str_offset += sizeof(int32_t);
+                uint8_t str_length = *reinterpret_cast<uint8_t*>(uncompress_data.get() + str_offset);
+                str_offset += sizeof(uint8_t);
                 _column_values[str_count] = ColumnValue(uncompress_data.get() + str_offset, str_length);
+                str_offset += str_length;
+                str_count++;
+            }
+
+            assert(str_offset == uncompress_size);
+            assert(str_count == DATA_BLOCK_ITEM_NUMS);
+        }
+
+        void encode_to_plain(const std::string& uncompress_buf, std::string* buf) const {
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::PLAIN));
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append(uncompress_buf.c_str(), uncompress_size);
+        }
+
+        void decode_from_plain(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            std::string uncompress_buf;
+            uncompress_buf.resize(uncompress_size);
+            std::memcpy(uncompress_buf.data(), buf + sizeof(uint32_t), uncompress_size);
+            size_t str_offset = 0;
+            uint16_t str_count = 0;
+
+            while (str_offset != uncompress_size) {
+                uint8_t str_length = *reinterpret_cast<uint8_t*>(uncompress_buf.data() + str_offset);
+                str_offset += sizeof(uint8_t);
+                _column_values[str_count] = ColumnValue(uncompress_buf.data() + str_offset, str_length);
                 str_offset += str_length;
                 str_count++;
             }
