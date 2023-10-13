@@ -74,8 +74,8 @@ namespace LindormContest {
     public:
         explicit ThreadPool(const int thread_nums)
                 : _threads(std::vector<std::thread>(thread_nums)), _shutdown(false) {
-            for (auto & _thread : _threads) {
-                _thread = std::thread(ThreadWorker(this));
+            for (int i = 0; i < thread_nums; ++i) {
+                _threads[i] = std::thread(ThreadWorker(this));
             }
         }
 

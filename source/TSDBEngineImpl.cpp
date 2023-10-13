@@ -62,7 +62,7 @@ namespace LindormContest {
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
         _convert_manager->finalize_convert();
-        _convert_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
+        _convert_manager->save_latest_records_to_file(_get_latest_records_path());
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }

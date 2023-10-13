@@ -36,8 +36,7 @@ namespace LindormContest {
 
     class GlobalLatestManager {
     public:
-        GlobalLatestManager(const Path& root_path, bool finish_compaction)
-        : _root_path(root_path), _finish_compaction(finish_compaction) {}
+        GlobalLatestManager(const Path& root_path, bool finish_compaction) : _root_path(root_path) {}
 
         ~GlobalLatestManager() = default;
 
@@ -99,10 +98,17 @@ namespace LindormContest {
                 INFO_LOG("latest_records file doesn't exist")
                 return;
             }
+            std::string buf;
+            input_file.seekg(0, std::ios::end);
+            auto file_size = input_file.tellg();
+            input_file.seekg(0, std::ios::beg);
+            buf.resize(file_size);
+            input_file.read(buf.data(), file_size);
+            const char* p = buf.c_str();
 
             for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
                 Row row;
-                io::read_row_from_file(input_file, _schema, true, row);
+                io::deserialize_row(_schema, p, true, row);
                 uint16_t vin_num = decode_vin(row.vin);
                 _latest_records[vin_num] = row;
             }
@@ -112,7 +118,6 @@ namespace LindormContest {
 
     private:
         Path _root_path;
-        bool _finish_compaction;
         SchemaSPtr _schema;
         Row _latest_records[VIN_NUM_RANGE];
     };

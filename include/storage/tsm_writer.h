@@ -48,11 +48,10 @@ namespace LindormContest {
 
         void append(const Row& row) {
             uint16_t file_idx = decode_ts(row.timestamp) / FILE_CONVERT_SIZE;
-            std::string buf;
-            io::serialize_row(_schema, row, false, buf);
             {
                 std::lock_guard<std::mutex> l(_mutexes[file_idx]);
-                _streams[file_idx].write(buf.c_str(), buf.size());
+                uint32_t row_length = io::serialize_row(row, _buf);
+                _streams[file_idx].write(_buf, row_length);
                 if (unlikely(++_write_nums[file_idx] == FILE_CONVERT_SIZE)) {
                     _streams[file_idx].close();
                     _convert_manager->convert_async(_vin_num, file_idx);
@@ -71,6 +70,7 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _flush_dir_path;
         SchemaSPtr _schema;
+        char _buf[2048];
         uint16_t _write_nums[TSM_FILE_COUNT];
         std::mutex _mutexes[TSM_FILE_COUNT];
         std::ofstream _streams[TSM_FILE_COUNT];

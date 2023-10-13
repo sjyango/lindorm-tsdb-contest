@@ -96,7 +96,7 @@ namespace LindormContest {
                 _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
             }
 
-            IndexBlock index_block(column_name, COLUMN_TYPE_INTEGER);
+            IndexBlock index_block;
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<IntDataBlock> data_block = std::make_unique<IntDataBlock>();
@@ -145,7 +145,7 @@ namespace LindormContest {
                 _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
             }
 
-            IndexBlock index_block(column_name, COLUMN_TYPE_DOUBLE_FLOAT);
+            IndexBlock index_block;
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<DoubleDataBlock> data_block = std::make_unique<DoubleDataBlock>();
@@ -188,7 +188,7 @@ namespace LindormContest {
                 _latest_row.columns[column_name] = src_values[FILE_CONVERT_SIZE - 1];
             }
 
-            IndexBlock index_block(column_name, COLUMN_TYPE_STRING);
+            IndexBlock index_block;
 
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 std::unique_ptr<StringDataBlock> data_block = std::make_unique<StringDataBlock>();
@@ -196,18 +196,6 @@ namespace LindormContest {
                 for (uint16_t j = 0; j < DATA_BLOCK_ITEM_NUMS; ++j) {
                     std::swap(data_block->_column_values[j], src_values[i * DATA_BLOCK_ITEM_NUMS + j]);
                 }
-
-                // if (column_name == "LIYD") {
-                //     data_block->_type = StringCompressType::LIYD;
-                // } else if (column_name == "SCHU") {
-                //     data_block->_type = StringCompressType::SCHU;
-                // } else if (column_name == "ZEBY") {
-                //     data_block->_type = StringCompressType::ZEBY;
-                // } else if (column_name == "UFPI") {
-                //     data_block->_type = StringCompressType::UFPI;
-                // } else {
-                //     data_block->_type = StringCompressType::ZSTD;
-                // }
 
                 IndexEntry index_entry;
                 data_blocks.emplace_back(std::move(data_block));
@@ -261,17 +249,18 @@ namespace LindormContest {
             assert(_thread_pool->empty());
         }
 
-        void save_latest_records_to_file(const Path& latest_records_path, SchemaSPtr schema) const {
+        void save_latest_records_to_file(const Path& latest_records_path) const {
             std::ofstream output_file(latest_records_path, std::ios::out | std::ios::binary);
             if (!output_file.is_open()) {
                 throw std::runtime_error("Failed to open file for writing.");
             }
+            std::string buf;
 
             for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
-                io::write_row_to_file(output_file, schema, _convert_managers[i]->get_latest_row(), true);
+                io::serialize_row(_convert_managers[i]->get_latest_row(), buf);
             }
 
-            output_file.flush();
+            output_file.write(buf.c_str(), buf.size());
             output_file.close();
         }
 

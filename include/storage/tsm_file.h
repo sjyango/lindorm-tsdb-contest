@@ -109,25 +109,20 @@ namespace LindormContest {
 
     // one entry corresponds to one column
     struct IndexBlock {
-        IndexBlockMeta _index_meta;
         std::vector<IndexEntry> _index_entries;
 
         IndexBlock() = default;
-
-        IndexBlock(const std::string &column_name, ColumnType type) : _index_meta(column_name, type) {}
 
         IndexBlock(const IndexBlock& other) = default;
 
         IndexBlock& operator=(const IndexBlock& other) = default;
 
-        IndexBlock(IndexBlock &&other) noexcept
-                : _index_meta(std::move(other._index_meta)), _index_entries(std::move(other._index_entries)) {}
+        IndexBlock(IndexBlock &&other) noexcept : _index_entries(std::move(other._index_entries)) {}
 
         ~IndexBlock() = default;
 
         void add_entry(const IndexEntry &entry) {
             _index_entries.emplace_back(entry);
-            _index_meta._count++;
         }
 
         void get_index_entries_and_ranges(const TimeRange& file_tr, std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
@@ -139,15 +134,13 @@ namespace LindormContest {
         }
 
         void encode_to(std::string *buf) const {
-            _index_meta.encode_to(buf);
             for (const auto &entry: _index_entries) {
                 entry.encode_to(buf);
             }
         }
 
         void decode_from(const uint8_t *&buf) {
-            _index_meta.decode_from(buf);
-            for (uint16_t i = 0; i < _index_meta._count; ++i) {
+            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                 IndexEntry index_entry;
                 index_entry.decode_from(buf);
                 _index_entries.emplace_back(index_entry);
