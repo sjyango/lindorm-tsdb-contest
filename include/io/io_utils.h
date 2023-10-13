@@ -31,8 +31,7 @@ namespace LindormContest::io {
         if (!output_file.is_open() || !output_file.good()) {
             throw std::runtime_error("open file failed");
         }
-        output_file << buf;
-        output_file.flush();
+        output_file.write(buf.data(), buf.size());
         output_file.close();
     }
 

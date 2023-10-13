@@ -601,6 +601,7 @@ namespace LindormContest {
 
         void write_to_file(const Path &tsm_file_path) {
             std::string buf;
+            buf.reserve(10 * 1024 * 1024);
             encode_to(&buf);
             io::stream_write_string_to_file(tsm_file_path, buf);
         }
