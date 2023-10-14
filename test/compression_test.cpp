@@ -2,6 +2,7 @@
 #include "compression/compressor.h"
 #include "compression/integer_compression.h"
 #include <random>
+#include "../source/fastp/simdfastpfor.h"
 
 extern "C" {
 #include "../source/bitpacking/include/simdbitpacking.h"
@@ -80,28 +81,64 @@ namespace LindormContest::test {
         GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
     }
 
-    TEST(Compression, BitPackingTest) {
-        size_t k, N = 9999;
-        __m128i * endofbuf;
-        uint32_t * datain = static_cast<uint32_t *>(std::malloc(N * sizeof(uint32_t)));
-        uint8_t * buffer;
-        uint32_t * backbuffer = static_cast<uint32_t *>(malloc(N * sizeof(uint32_t)));
-        uint32_t b;
+//    TEST(Compression, BitPackingTest) {
+//        size_t k, N = 9999;
+//        __m128i * endofbuf;
+//        uint32_t * datain = static_cast<uint32_t *>(std::malloc(N * sizeof(uint32_t)));
+//        uint8_t * buffer;
+//        uint32_t * backbuffer = static_cast<uint32_t *>(malloc(N * sizeof(uint32_t)));
+//        uint32_t b;
+//
+//        for (k = 0; k < N; ++k) {        /* start with k=0, not k=1! */
+//            datain[k] = k;
+//        }
+//
+//        b = maxbits_length(datain, N);
+//        buffer = static_cast<uint8_t *>(malloc(simdpack_compressedbytes(N, b))); // allocate just enough memory
+//        endofbuf = simdpack_length(datain, N, (__m128i *)buffer, b);
+//        /* compressed data is stored between buffer and endofbuf using (endofbuf-buffer)*sizeof(__m128i) bytes */
+//        /* would be safe to do : buffer = realloc(buffer,(endofbuf-(__m128i *)buffer)*sizeof(__m128i)); */
+//        simdunpack_length((const __m128i *)buffer, N, backbuffer, b);
+//
+//        for (k = 0; k < N; ++k) {
+//            ASSERT_EQ(datain[k], backbuffer[k]);
+//        }
+//    }
+//
 
-        for (k = 0; k < N; ++k) {        /* start with k=0, not k=1! */
-            datain[k] = k;
+    TEST(Compression, FastPTest) {
+        FastPForLib::SIMDFastPFor simdFastPFor = FastPForLib::SIMDFastPFor();
+        static constexpr size_t BIG_INT = 100000;
+        std::vector<int> input;
+        for (auto i = 0; i < 20'000; ++i) {
+            auto num = 10;
+            //        GTEST_LOG_(INFO) << num;
+            input.emplace_back(num);
         }
+        auto length = input.size();
+        size_t uncompressSize = length * sizeof(int);
+        size_t recoverLength;
 
-        b = maxbits_length(datain, N);
-        buffer = static_cast<uint8_t *>(malloc(simdpack_compressedbytes(N, b))); // allocate just enough memory
-        endofbuf = simdpack_length(datain, N, (__m128i *)buffer, b);
-        /* compressed data is stored between buffer and endofbuf using (endofbuf-buffer)*sizeof(__m128i) bytes */
-        /* would be safe to do : buffer = realloc(buffer,(endofbuf-(__m128i *)buffer)*sizeof(__m128i)); */
-        simdunpack_length((const __m128i *)buffer, N, backbuffer, b);
+        // pre-allocate a large size
+        char *origin = reinterpret_cast<char *>(input.data());
+        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
 
-        for (k = 0; k < N; ++k) {
-            ASSERT_EQ(datain[k], backbuffer[k]);
-        }
+        size_t compress_length;
+        simdFastPFor.encodeArray(reinterpret_cast<uint32_t*>(origin), length,
+                                 reinterpret_cast<uint32_t*>(compress), compress_length);
+
+        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+
+        simdFastPFor.decodeArray(reinterpret_cast<uint32_t*>(compress), compress_length,
+                                 reinterpret_cast<uint32_t*>(recover), recoverLength);
+
+        assert(recoverLength == length);
+        verifyResult<int>(input, recover);
+
+        free(recover);
+        free(compress);
+        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_length * sizeof(uint32_t);
+        GTEST_LOG_(INFO) << "compress ratio: " << compress_length * sizeof(uint32_t) * 1.0 / uncompressSize;
     }
 
 //TEST(Compression, gorilla_int_test) {
