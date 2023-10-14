@@ -2,11 +2,6 @@
 #include "compression/compressor.h"
 #include "compression/integer_compression.h"
 #include <random>
-#include "../source/fastp/simdfastpfor.h"
-
-extern "C" {
-#include "../source/bitpacking/include/simdbitpacking.h"
-}
 
 namespace LindormContest::test {
 
@@ -105,41 +100,6 @@ namespace LindormContest::test {
 //        }
 //    }
 //
-
-    TEST(Compression, FastPTest) {
-        FastPForLib::SIMDFastPFor simdFastPFor = FastPForLib::SIMDFastPFor();
-        static constexpr size_t BIG_INT = 100000;
-        std::vector<int> input;
-        for (auto i = 0; i < 20'000; ++i) {
-            auto num = 10;
-            //        GTEST_LOG_(INFO) << num;
-            input.emplace_back(num);
-        }
-        auto length = input.size();
-        size_t uncompressSize = length * sizeof(int);
-        size_t recoverLength;
-
-        // pre-allocate a large size
-        char *origin = reinterpret_cast<char *>(input.data());
-        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
-
-        size_t compress_length;
-        simdFastPFor.encodeArray(reinterpret_cast<uint32_t*>(origin), length,
-                                 reinterpret_cast<uint32_t*>(compress), compress_length);
-
-        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
-
-        simdFastPFor.decodeArray(reinterpret_cast<uint32_t*>(compress), compress_length,
-                                 reinterpret_cast<uint32_t*>(recover), recoverLength);
-
-        assert(recoverLength == length);
-        verifyResult<int>(input, recover);
-
-        free(recover);
-        free(compress);
-        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_length * sizeof(uint32_t);
-        GTEST_LOG_(INFO) << "compress ratio: " << compress_length * sizeof(uint32_t) * 1.0 / uncompressSize;
-    }
 
 //TEST(Compression, gorilla_int_test) {
 //    static constexpr size_t BIG_INT = 100;

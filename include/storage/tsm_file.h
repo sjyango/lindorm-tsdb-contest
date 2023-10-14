@@ -239,7 +239,7 @@ namespace LindormContest {
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
-            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get(), 1);
             put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B));
             buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
@@ -255,7 +255,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
             std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
-            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size, 1);
             std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
             assert(stage_one_uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
             const char* stage_one_compress_data = stage_two_uncompress_data.get();
@@ -365,7 +365,7 @@ namespace LindormContest {
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
-            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get(), 1);
             put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA));
             buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
@@ -381,7 +381,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
             std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
-            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size, 1);
             std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
             assert(stage_one_uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
             const char* stage_one_compress_data = stage_two_uncompress_data.get();
@@ -439,7 +439,7 @@ namespace LindormContest {
             const char* uncompress_data = uncompress_buf.c_str();
             uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
-            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get(), 1);
             if (compress_size >= uncompress_size) {
                 return false;
             }
@@ -456,7 +456,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
-            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size, 1);
             size_t str_offset = 0;
             uint16_t str_count = 0;
 

@@ -60,6 +60,7 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::shutdown() {
+        _print_schema();
         _save_schema_to_file();
         _convert_manager->finalize_convert();
         _convert_manager->save_latest_records_to_file(_get_latest_records_path());
@@ -179,5 +180,27 @@ namespace LindormContest {
         }
 
         _schema = std::make_shared<Schema>(std::move(column_type_map));
+    }
+
+    void TSDBEngineImpl::_print_schema() {
+        std::stringstream ss;
+
+        for (const auto& pair : _schema->columnTypeMap) {
+            switch (pair.second) {
+                case COLUMN_TYPE_INTEGER:
+                    ss << pair.first << ": { type: int }" << std::endl;
+                    break;
+                case COLUMN_TYPE_DOUBLE_FLOAT:
+                    ss << pair.first << ": { type: double }" << std::endl;
+                    break;
+                case COLUMN_TYPE_STRING:
+                    ss << pair.first << ": { type: string }" << std::endl;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        INFO_LOG("schema:\n%s", ss.str().c_str())
     }
 }

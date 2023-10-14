@@ -58,6 +58,8 @@ namespace LindormContest {
 
         void _load_schema_from_file();
 
+        void _print_schema();
+
         bool _finish_compaction;
         SchemaSPtr _schema;
         TsmWriterManagerUPtr _writer_manager;
