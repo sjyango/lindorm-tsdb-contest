@@ -162,10 +162,6 @@ namespace LindormContest {
     };
 
     enum class StringCompressType : uint8_t {
-        LIYD, // x
-        SCHU, //
-        ZEBY, // SUCCESS
-        UFPI, // RIGHT
         ZSTD,
         PLAIN
     };
@@ -361,9 +357,11 @@ namespace LindormContest {
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
             std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 4);
             uint32_t stage_one_compress_size = compression::compress_double(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
+
             if (stage_one_compress_size >= stage_one_uncompress_size) {
                 return false;
             }
+
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
@@ -411,28 +409,9 @@ namespace LindormContest {
         ~StringDataBlock() override = default;
 
         void encode_to_compress(std::string *buf) const override {
-            switch (_type) {
-                case StringCompressType::LIYD:
-                    encode_to_same(buf, _type);
-                    break;
-                case StringCompressType::SCHU:
-                    encode_to_same(buf, _type);
-                    break;
-                case StringCompressType::ZEBY:
-                    encode_to_same(buf, _type);
-                    break;
-                case StringCompressType::UFPI:
-                    encode_to_same(buf, _type);
-                    break;
-                case StringCompressType::ZSTD: {
-                    std::string uncompress_buf;
-                    if (!encode_to_zstd(buf, uncompress_buf)) {
-                        encode_to_plain(uncompress_buf, buf);
-                    }
-                    break;
-                }
-                default:
-                    break;
+            std::string uncompress_buf;
+            if (!encode_to_zstd(buf, uncompress_buf)) {
+                encode_to_plain(uncompress_buf, buf);
             }
         }
 
@@ -441,12 +420,6 @@ namespace LindormContest {
             buf += sizeof(uint8_t);
 
             switch (type) {
-                case StringCompressType::LIYD:
-                case StringCompressType::SCHU:
-                case StringCompressType::ZEBY:
-                case StringCompressType::UFPI:
-                    decode_from_same(type);
-                    break;
                 case StringCompressType::ZSTD:
                     decode_from_zstd(buf);
                     break;
@@ -454,46 +427,6 @@ namespace LindormContest {
                     decode_from_plain(buf);
                     break;
             }
-        }
-
-        void encode_to_same(std::string* buf, StringCompressType type) const {
-            put_fixed(buf, static_cast<uint8_t>(type));
-        }
-
-        void decode_from_same(StringCompressType type) {
-            switch (type) {
-                case StringCompressType::LIYD: {
-                    std::string LIYD = "x";
-                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                        _column_values[i] = ColumnValue(LIYD);
-                    }
-                    break;
-                }
-                case StringCompressType::SCHU: {
-                    std::string SCHU = "";
-                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                        _column_values[i] = ColumnValue(SCHU);
-                    }
-                    break;
-                }
-                case StringCompressType::ZEBY: {
-                    std::string ZEBY = "SUCCESS";
-                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                        _column_values[i] = ColumnValue(ZEBY);
-                    }
-                    break;
-                }
-                case StringCompressType::UFPI: {
-                    std::string UFPI = "RIGHT";
-                    for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                        _column_values[i] = ColumnValue(UFPI);
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
-
         }
 
         bool encode_to_zstd(std::string *buf, std::string& uncompress_buf) const {
@@ -508,7 +441,6 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
             uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
             if (compress_size >= uncompress_size) {
-                INFO_LOG("encode_to_zstd, compress_size >= uncompress_size")
                 return false;
             }
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD));
