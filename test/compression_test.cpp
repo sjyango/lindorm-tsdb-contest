@@ -2,6 +2,8 @@
 #include "compression/compressor.h"
 #include "compression/integer_compression.h"
 #include <random>
+#include "../source/chimp/include/chimp_compress.hpp"
+#include "../source/chimp/include/chimp_scan.hpp"
 
 namespace LindormContest::test {
 
