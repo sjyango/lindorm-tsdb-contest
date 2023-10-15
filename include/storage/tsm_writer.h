@@ -42,6 +42,7 @@ namespace LindormContest {
                 Path flush_file_path = _flush_dir_path / std::to_string(file_idx);
                 _streams[file_idx].open(flush_file_path, std::ios::out | std::ios::binary);
                 assert(_streams[file_idx].is_open() && _streams[file_idx].good());
+                _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
                 _write_nums[file_idx] = 0;
             }
         }
@@ -50,9 +51,18 @@ namespace LindormContest {
             uint16_t file_idx = decode_ts(row.timestamp) / FILE_CONVERT_SIZE;
             {
                 std::lock_guard<std::mutex> l(_mutexes[file_idx]);
-                uint32_t row_length = io::serialize_row(row, _buf);
-                _streams[file_idx].write(_buf, row_length);
+                io::serialize_row(row, false, _cache[file_idx]);
+                if (unlikely(_cache[file_idx].size() >= ROW_CACHE_SIZE)) {
+                    _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                    _cache[file_idx].clear();
+                    _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
+                }
                 if (unlikely(++_write_nums[file_idx] == FILE_CONVERT_SIZE)) {
+                    if (!_cache[file_idx].empty()) {
+                        _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                        _cache[file_idx].clear();
+                        _cache[file_idx].shrink_to_fit();
+                    }
                     _streams[file_idx].close();
                     _convert_manager->convert_async(_vin_num, file_idx);
                 }
@@ -62,6 +72,11 @@ namespace LindormContest {
         void flush() {
             for (uint16_t file_idx = 0; file_idx < TSM_FILE_COUNT; ++file_idx) {
                 std::lock_guard<std::mutex> l(_mutexes[file_idx]);
+                if (!_cache[file_idx].empty()) {
+                    _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                    _cache[file_idx].clear();
+                    _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
+                }
                 _streams[file_idx].flush();
             }
         }
@@ -70,7 +85,7 @@ namespace LindormContest {
         uint16_t _vin_num;
         Path _flush_dir_path;
         SchemaSPtr _schema;
-        char _buf[2048];
+        std::string _cache[TSM_FILE_COUNT];
         uint16_t _write_nums[TSM_FILE_COUNT];
         std::mutex _mutexes[TSM_FILE_COUNT];
         std::ofstream _streams[TSM_FILE_COUNT];

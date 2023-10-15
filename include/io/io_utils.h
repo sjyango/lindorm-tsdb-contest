@@ -74,9 +74,12 @@ namespace LindormContest::io {
         return row_length;
     }
 
-    static void serialize_row(const Row &row, std::string &buf) {
-        buf.append(row.vin.vin, VIN_LENGTH);
-        buf.append((const char *) &row.timestamp, sizeof(int64_t));
+    static void serialize_row(const Row &row, bool vin_include, std::string &buf) {
+        if (vin_include) {
+            buf.append(row.vin.vin, VIN_LENGTH);
+        }
+        uint16_t ts_num = decode_ts(row.timestamp);
+        buf.append((const char *) &ts_num, sizeof(uint16_t));
 
         for (const auto &item: row.columns) {
             buf.append(item.second.columnData, item.second.getRawDataSize());
@@ -89,8 +92,8 @@ namespace LindormContest::io {
             p += VIN_LENGTH;
         }
 
-        row.timestamp = *reinterpret_cast<const int64_t *>(p);
-        p += sizeof(int64_t);
+        row.timestamp = encode_ts(*reinterpret_cast<const uint16_t *>(p));
+        p += sizeof(uint16_t);
 
         for (const auto &[column_name, column_type]: schema->columnTypeMap) {
             switch (column_type) {

@@ -92,6 +92,7 @@ namespace LindormContest {
     static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
     static constexpr uint16_t POOL_THREAD_NUM = 8;
     static constexpr uint32_t BITPACKING_RANGE_NUM = 1 << 6;
+    static constexpr uint32_t ROW_CACHE_SIZE = 16 * 1024; // 16KB
 
     static_assert(TS_NUM_RANGE % FILE_CONVERT_SIZE == 0);
     static_assert(FILE_CONVERT_SIZE % DATA_BLOCK_ITEM_NUMS == 0);

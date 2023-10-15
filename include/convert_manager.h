@@ -257,7 +257,7 @@ namespace LindormContest {
             std::string buf;
 
             for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
-                io::serialize_row(_convert_managers[i]->get_latest_row(), buf);
+                io::serialize_row(_convert_managers[i]->get_latest_row(), true, buf);
             }
 
             output_file.write(buf.c_str(), buf.size());

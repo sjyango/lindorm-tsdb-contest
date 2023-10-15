@@ -60,7 +60,7 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::shutdown() {
-        _print_schema();
+        // _print_schema();
         _save_schema_to_file();
         _convert_manager->finalize_convert();
         _convert_manager->save_latest_records_to_file(_get_latest_records_path());

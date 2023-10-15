@@ -231,7 +231,7 @@ namespace LindormContest {
         bool encode_to_simple8b(std::string* buf) const {
             const char* stage_one_uncompress_data = reinterpret_cast<const char*>(_column_values.data());
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(int32_t);
-            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 4);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
             uint32_t stage_one_compress_size = compression::compress_int32_simple8b(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
             if (stage_one_compress_size >= stage_one_uncompress_size) {
                 return false;
@@ -355,7 +355,7 @@ namespace LindormContest {
         bool encode_to_gorilla(std::string* buf) const {
             const char* stage_one_uncompress_data = reinterpret_cast<const char*>(_column_values.data());
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
-            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 4);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
             uint32_t stage_one_compress_size = compression::compress_double(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
 
             if (stage_one_compress_size >= stage_one_uncompress_size) {
