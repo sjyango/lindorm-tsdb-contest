@@ -71,45 +71,9 @@ namespace LindormContest {
         }
     };
 
-    // one index block meta corresponds to one index block, and corresponds to one column
-    struct IndexBlockMeta {
-        uint16_t _count;
-        ColumnType _type;
-        std::string _column_name;
-
-        IndexBlockMeta() = default;
-
-        IndexBlockMeta(const std::string &column_name, ColumnType type)
-                : _column_name(column_name), _type(type), _count(0) {}
-
-        IndexBlockMeta(const IndexBlockMeta& other) = default;
-
-        IndexBlockMeta& operator=(const IndexBlockMeta& other) = default;
-
-        IndexBlockMeta(IndexBlockMeta &&other) noexcept
-                : _column_name(std::move(other._column_name)), _type(other._type), _count(other._count) {}
-
-        ~IndexBlockMeta() = default;
-
-        void encode_to(std::string *buf) const {
-            put_fixed(buf, _count);
-            put_fixed(buf, (uint8_t) _type);
-            put_fixed(buf, (uint8_t) _column_name.size());
-            buf->append(_column_name);
-        }
-
-        void decode_from(const uint8_t *&buf) {
-            _count = decode_fixed<uint16_t>(buf);
-            _type = (ColumnType) decode_fixed<uint8_t>(buf);
-            uint8_t column_name_size = decode_fixed<uint8_t>(buf);
-            _column_name.assign(reinterpret_cast<const char *>(buf), column_name_size);
-            buf += column_name_size;
-        }
-    };
-
     // one entry corresponds to one column
     struct IndexBlock {
-        std::vector<IndexEntry> _index_entries;
+        std::array<IndexEntry, DATA_BLOCK_COUNT> _index_entries;
 
         IndexBlock() = default;
 
@@ -117,13 +81,9 @@ namespace LindormContest {
 
         IndexBlock& operator=(const IndexBlock& other) = default;
 
-        IndexBlock(IndexBlock &&other) noexcept : _index_entries(std::move(other._index_entries)) {}
+        IndexBlock(IndexBlock &&other) noexcept : _index_entries(other._index_entries) {}
 
         ~IndexBlock() = default;
-
-        void add_entry(const IndexEntry &entry) {
-            _index_entries.emplace_back(entry);
-        }
 
         void get_index_entries_and_ranges(const TimeRange& file_tr, std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
             for (uint16_t i = file_tr._start_idx / DATA_BLOCK_ITEM_NUMS; i <= file_tr._end_idx / DATA_BLOCK_ITEM_NUMS; ++i) {
@@ -134,16 +94,14 @@ namespace LindormContest {
         }
 
         void encode_to(std::string *buf) const {
-            for (const auto &entry: _index_entries) {
-                entry.encode_to(buf);
+            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                _index_entries[i].encode_to(buf);
             }
         }
 
         void decode_from(const uint8_t *&buf) {
             for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                IndexEntry index_entry;
-                index_entry.decode_from(buf);
-                _index_entries.emplace_back(index_entry);
+                _index_entries[i].decode_from(buf);
             }
         }
     };
@@ -152,12 +110,15 @@ namespace LindormContest {
         SAME,
         BITPACKING,
         SIMPLE8B,
+        SIMPLE8B_ZSTD,
+        ZSTD,
         PLAIN
     };
 
     enum class DoubleCompressType : uint8_t {
         SAME,
         GORILLA,
+        GORILLA_ZSTD,
         PLAIN
     };
 
@@ -179,8 +140,10 @@ namespace LindormContest {
     struct IntDataBlock : public DataBlock {
         std::array<int32_t, DATA_BLOCK_ITEM_NUMS> _column_values;
         IntCompressType _type = IntCompressType::SIMPLE8B;
+        int64_t _sum = 0;
+        int32_t _min = std::numeric_limits<int32_t>::max();
+        int32_t _max = std::numeric_limits<int32_t>::lowest();
         uint8_t _required_bits; // just for bitpacking
-        int32_t _int_min;       // just for bitpacking
 
         IntDataBlock() = default;
 
@@ -193,7 +156,9 @@ namespace LindormContest {
                 encode_to_bitpacking(buf);
             } else if (_type == IntCompressType::SIMPLE8B) {
                 if (!encode_to_simple8b(buf)) {
-                    encode_to_plain(buf);
+                    if (!encode_to_zstd(buf)) {
+                        encode_to_plain(buf);
+                    }
                 }
             }
         }
@@ -209,11 +174,17 @@ namespace LindormContest {
                 case IntCompressType::SIMPLE8B:
                     decode_from_simple8b(buf);
                     break;
-                case IntCompressType::PLAIN:
-                    decode_from_plain(buf);
+                case IntCompressType::SIMPLE8B_ZSTD:
+                    decode_from_simple8b_zstd(buf);
+                    break;
+                case IntCompressType::ZSTD:
+                    decode_from_zstd(buf);
                     break;
                 case IntCompressType::BITPACKING:
                     decode_from_bitpacking(buf);
+                    break;
+                case IntCompressType::PLAIN:
+                    decode_from_plain(buf);
                     break;
             }
         }
@@ -239,23 +210,41 @@ namespace LindormContest {
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
-            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get(), 1);
-            put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B));
-            buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
-            buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
-            buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
-            buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B_ZSTD));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
             return true;
         }
 
         void decode_from_simple8b(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_int32_simple8b(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values.data(), src, uncompress_size);
+        }
+
+        void decode_from_simple8b_zstd(const char* buf) {
             uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
             std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
-            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size, 1);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
             std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
             assert(stage_one_uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
             const char* stage_one_compress_data = stage_two_uncompress_data.get();
@@ -268,7 +257,7 @@ namespace LindormContest {
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
 
             for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                uncompress_data[i] = _column_values[i] - _int_min;
+                uncompress_data[i] = _column_values[i] - _min;
             }
 
             uint32_t uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t);
@@ -278,14 +267,14 @@ namespace LindormContest {
             // INFO_LOG("encode_to_bitpacking, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
             put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACKING));
             put_fixed(buf, _required_bits);
-            put_fixed(buf, _int_min);
+            put_fixed(buf, _min);
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
         }
 
         void decode_from_bitpacking(const char* buf) {
             _required_bits = *reinterpret_cast<const uint8_t*>(buf);
-            _int_min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
+            _min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::memcpy(compress_data.get(), buf + sizeof(uint8_t) + sizeof(int32_t) + sizeof(uint32_t), compress_size);
@@ -293,8 +282,35 @@ namespace LindormContest {
             simdunpack_length((const __m128i*) compress_data.get(), DATA_BLOCK_ITEM_NUMS, uncompress_data.data(), _required_bits);
 
             for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-                _column_values[i] = uncompress_data[i] + _int_min;
+                _column_values[i] = uncompress_data[i] + _min;
             }
+        }
+
+        bool encode_to_zstd(std::string* buf) const {
+            const char* uncompress_data = reinterpret_cast<const char *>(_column_values.data());
+            uint32_t uncompress_size = static_cast<uint32_t>(DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
+            if (compress_size >= uncompress_size) {
+                INFO_LOG("int encode_to_zstd, compress_size >= uncompress_size")
+                return false;
+            }
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::ZSTD));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_zstd(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            assert(uncompress_size == DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+            std::memcpy(_column_values.data(), uncompress_data.get(), uncompress_size);
         }
 
         void encode_to_plain(std::string* buf) const {
@@ -310,6 +326,9 @@ namespace LindormContest {
     struct DoubleDataBlock : public DataBlock {
         std::array<double_t, DATA_BLOCK_ITEM_NUMS> _column_values;
         DoubleCompressType _type = DoubleCompressType::GORILLA;
+        double_t _sum = 0.0;
+        double_t _min = std::numeric_limits<double_t>::max();
+        double_t _max = std::numeric_limits<double_t>::lowest();
 
         DoubleDataBlock() = default;
 
@@ -336,6 +355,9 @@ namespace LindormContest {
                 case DoubleCompressType::GORILLA:
                     decode_from_gorilla(buf);
                     break;
+                case DoubleCompressType::GORILLA_ZSTD:
+                    decode_from_gorilla_zstd(buf);
+                    break;
                 case DoubleCompressType::PLAIN:
                     decode_from_plain(buf);
                     break;
@@ -357,31 +379,47 @@ namespace LindormContest {
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
             std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
             uint32_t stage_one_compress_size = compression::compress_double(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
-
             if (stage_one_compress_size >= stage_one_uncompress_size) {
                 return false;
             }
-
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
-            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get(), 1);
-            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA));
-            buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
-            buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
-            buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
-            buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA_ZSTD));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
             return true;
         }
 
         void decode_from_gorilla(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_double(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values.data(), src, uncompress_size);
+        }
+
+        void decode_from_gorilla_zstd(const char* buf) {
             uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
             uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
             std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
-            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size, 1);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
             std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
             assert(stage_one_uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
             const char* stage_one_compress_data = stage_two_uncompress_data.get();
@@ -439,8 +477,9 @@ namespace LindormContest {
             const char* uncompress_data = uncompress_buf.c_str();
             uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
-            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get(), 1);
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
             if (compress_size >= uncompress_size) {
+                INFO_LOG("encode_to_zstd, compress_size >= uncompress_size")
                 return false;
             }
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD));
@@ -456,7 +495,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
-            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size, 1);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
             size_t str_offset = 0;
             uint16_t str_count = 0;
 

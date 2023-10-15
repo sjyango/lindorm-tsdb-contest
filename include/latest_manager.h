@@ -88,33 +88,37 @@ namespace LindormContest {
             }
         }
 
-        void load_latest_records_from_file(const Path& latest_records_path) {
-            if (!std::filesystem::exists(latest_records_path)) {
-                INFO_LOG("latest_records file doesn't exist")
-                return;
-            }
-            std::ifstream input_file(latest_records_path, std::ios::in | std::ios::binary);
-            if (!input_file.is_open()) {
-                INFO_LOG("latest_records file doesn't exist")
-                return;
-            }
-            std::string buf;
-            input_file.seekg(0, std::ios::end);
-            auto file_size = input_file.tellg();
-            input_file.seekg(0, std::ios::beg);
-            buf.resize(file_size);
-            input_file.read(buf.data(), file_size);
-            const char* p = buf.c_str();
-
-            for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
-                Row row;
-                io::deserialize_row(_schema, p, true, row);
-                uint16_t vin_num = decode_vin(row.vin);
-                _latest_records[vin_num] = row;
-            }
-
-            input_file.close();
+        void set_latest_row(uint16_t vin_num, const Row& latest_row) {
+            _latest_records[vin_num] = latest_row;
         }
+
+        // void load_latest_records_from_file(const Path& latest_records_path) {
+        //     if (!std::filesystem::exists(latest_records_path)) {
+        //         INFO_LOG("latest_records file doesn't exist")
+        //         return;
+        //     }
+        //     std::ifstream input_file(latest_records_path, std::ios::in | std::ios::binary);
+        //     if (!input_file.is_open()) {
+        //         INFO_LOG("latest_records file doesn't exist")
+        //         return;
+        //     }
+        //     std::string buf;
+        //     input_file.seekg(0, std::ios::end);
+        //     auto file_size = input_file.tellg();
+        //     input_file.seekg(0, std::ios::beg);
+        //     buf.resize(file_size);
+        //     input_file.read(buf.data(), file_size);
+        //     const char* p = buf.c_str();
+        //
+        //     for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
+        //         Row row;
+        //         io::deserialize_row(_schema, p, true, row);
+        //         uint16_t vin_num = decode_vin(row.vin);
+        //         _latest_records[vin_num] = row;
+        //     }
+        //
+        //     input_file.close();
+        // }
 
     private:
         Path _root_path;

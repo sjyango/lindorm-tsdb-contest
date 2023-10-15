@@ -27,6 +27,8 @@
 
 namespace LindormContest {
 
+    using VariantType = std::variant<std::array<int32_t, FILE_CONVERT_SIZE>, std::array<double_t, FILE_CONVERT_SIZE>, std::array<ColumnValue, FILE_CONVERT_SIZE>>;
+
     // multi thread safe
     class ConvertManager {
     public:
@@ -36,8 +38,6 @@ namespace LindormContest {
             _no_compaction_path = root_path / "no-compaction" / std::to_string(_vin_num);
             _compaction_path = root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(_compaction_path);
-            _latest_row.vin = encode_vin(_vin_num);
-            _latest_row.timestamp = MAX_TS;
         }
 
         ConvertManager(ConvertManager &&other) = default;
@@ -53,168 +53,226 @@ namespace LindormContest {
             Path flush_file_path = _no_compaction_path / std::to_string(file_idx);
             std::string buf;
             io::stream_read_string_from_file(flush_file_path, buf);
-            std::array<Row, FILE_CONVERT_SIZE> sorted_rows;
+            std::map<std::string, std::vector<std::unique_ptr<DataBlock>>> sorted_columns;
+
+            for (const auto &[column_name, column_type]: _schema->columnTypeMap) {
+                switch (column_type) {
+                    case COLUMN_TYPE_INTEGER: {
+                        std::vector<std::unique_ptr<DataBlock>> data_blocks;
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            data_blocks.emplace_back(std::make_unique<IntDataBlock>());
+                        }
+                        sorted_columns.emplace(column_name, std::move(data_blocks));
+                        break;
+                    }
+                    case COLUMN_TYPE_DOUBLE_FLOAT: {
+                        std::vector<std::unique_ptr<DataBlock>> data_blocks;
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            data_blocks.emplace_back(std::make_unique<DoubleDataBlock>());
+                        }
+                        sorted_columns.emplace(column_name, std::move(data_blocks));
+                        break;
+                    }
+                    case COLUMN_TYPE_STRING: {
+                        std::vector<std::unique_ptr<DataBlock>> data_blocks;
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            data_blocks.emplace_back(std::make_unique<StringDataBlock>());
+                        }
+                        sorted_columns.emplace(column_name, std::move(data_blocks));
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+
             const char* start = buf.c_str();
             const char* end = start + buf.size();
 
             while (start < end) {
-                Row row;
-                io::deserialize_row(_schema, start, false, row);
-                uint16_t ts_num = decode_ts(row.timestamp) % FILE_CONVERT_SIZE;
-                swap_row(sorted_rows[ts_num], row);
+                deserialize_row(start, sorted_columns);
             }
 
-            for (const auto& [column_name, column_type] : _schema->columnTypeMap) {
-                switch (column_type) {
-                    case COLUMN_TYPE_INTEGER:
-                        convert_int_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+            assert(start == end);
+
+            for (auto &[column_name, data_blocks]: sorted_columns) {
+                IndexBlock index_block;
+
+                switch (_schema->columnTypeMap[column_name]) {
+                    case COLUMN_TYPE_INTEGER: {
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            IntDataBlock& int_data_block = dynamic_cast<IntDataBlock&>(*data_blocks[i]);
+                            uint32_t range_width = int_data_block._max - int_data_block._min + 1;
+
+                            if (range_width == 1) {
+                                int_data_block._type = IntCompressType::SAME;
+                            } else if (range_width <= BITPACKING_RANGE_NUM) {
+                                int_data_block._type = IntCompressType::BITPACKING;
+                                int_data_block._required_bits = get_next_power_of_two(range_width);
+                            } else {
+                                int_data_block._type = IntCompressType::SIMPLE8B;
+                            }
+
+                            index_block._index_entries[i].set_sum(int_data_block._sum);
+                            index_block._index_entries[i].set_max(int_data_block._max);
+                            output_tsm_file._data_blocks.emplace_back(std::move(data_blocks[i]));
+                        }
                         break;
-                    case COLUMN_TYPE_DOUBLE_FLOAT:
-                        convert_double_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+                    }
+                    case COLUMN_TYPE_DOUBLE_FLOAT: {
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            DoubleDataBlock& double_data_block = dynamic_cast<DoubleDataBlock&>(*data_blocks[i]);
+
+                            if (double_data_block._max == double_data_block._min) {
+                                double_data_block._type = DoubleCompressType::SAME;
+                            } else {
+                                double_data_block._type = DoubleCompressType::GORILLA;
+                            }
+
+                            index_block._index_entries[i].set_sum(double_data_block._sum);
+                            index_block._index_entries[i].set_max(double_data_block._max);
+                            output_tsm_file._data_blocks.emplace_back(std::move(data_blocks[i]));
+                        }
                         break;
-                    case COLUMN_TYPE_STRING:
-                        convert_string_column(file_idx, sorted_rows, column_name, output_tsm_file._data_blocks, output_tsm_file._index_blocks);
+                    }
+                    case COLUMN_TYPE_STRING: {
+                        for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                            output_tsm_file._data_blocks.emplace_back(std::move(data_blocks[i]));
+                        }
                         break;
+                    }
                     default:
                         break;
                 }
+
+                output_tsm_file._index_blocks.emplace_back(std::move(index_block));
             }
 
             Path output_tsm_file_path = _compaction_path / std::to_string(file_idx);
             output_tsm_file.write_to_file(output_tsm_file_path);
         }
 
-        void convert_int_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
-                                std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
-            int32_t src_values[FILE_CONVERT_SIZE];
+        inline void deserialize_row(const char*& p, std::map<std::string, std::vector<std::unique_ptr<DataBlock>>>& sorted_columns) {
+            uint16_t ts_num = decode_ts(*reinterpret_cast<const int64_t *>(p)) % FILE_CONVERT_SIZE;
+            p += sizeof(int64_t);
+            uint16_t block_index = ts_num / DATA_BLOCK_ITEM_NUMS;
+            uint16_t block_offset = ts_num % DATA_BLOCK_ITEM_NUMS;
 
-            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
-                rows[i].columns[column_name].getIntegerValue(src_values[i]);
-            }
-
-            if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
-                _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
-            }
-
-            IndexBlock index_block;
-
-            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                std::unique_ptr<IntDataBlock> data_block = std::make_unique<IntDataBlock>();
-                std::memcpy(data_block->_column_values.data(), src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
-                IndexEntry index_entry;
-                int64_t int_sum = 0;
-                int32_t int_max = std::numeric_limits<int32_t>::lowest();
-                int32_t int_min = std::numeric_limits<int32_t>::max();
-
-                for (auto v: data_block->_column_values) {
-                    int_sum += v;
-                    int_max = std::max(int_max, v);
-                    int_min = std::min(int_min, v);
+            for (auto &[column_name, column_blocks]: sorted_columns) {
+                switch (_schema->columnTypeMap[column_name]) {
+                    case COLUMN_TYPE_INTEGER: {
+                        IntDataBlock& int_data_block = dynamic_cast<IntDataBlock&>(*column_blocks[block_index]);
+                        int32_t int_value = *reinterpret_cast<const int32_t *>(p);
+                        p += sizeof(int32_t);
+                        int_data_block._column_values[block_offset] = int_value;
+                        int_data_block._sum += int_value;
+                        int_data_block._min = std::min(int_data_block._min, int_value);
+                        int_data_block._max = std::max(int_data_block._max, int_value);
+                        break;
+                    }
+                    case COLUMN_TYPE_DOUBLE_FLOAT: {
+                        DoubleDataBlock& double_data_block = dynamic_cast<DoubleDataBlock&>(*column_blocks[block_index]);
+                        double_t double_value = *reinterpret_cast<const double_t *>(p);
+                        p += sizeof(double_t);
+                        double_data_block._column_values[block_offset] = double_value;
+                        double_data_block._sum += double_value;
+                        double_data_block._min = std::min(double_data_block._min, double_value);
+                        double_data_block._max = std::max(double_data_block._max, double_value);
+                        break;
+                    }
+                    case COLUMN_TYPE_STRING: {
+                        StringDataBlock& string_data_block = dynamic_cast<StringDataBlock&>(*column_blocks[block_index]);
+                        int32_t str_length = *reinterpret_cast<const int32_t *>(p);
+                        p += sizeof(int32_t);
+                        ColumnValue column_value(p, str_length);
+                        p += str_length;
+                        string_data_block._column_values[block_offset] = column_value;
+                        break;
+                    }
+                    default:
+                        break;
                 }
-
-                uint32_t range_width = int_max - int_min + 1;
-
-                if (range_width == 1) {
-                    data_block->_type = IntCompressType::SAME;
-                } else if (range_width <= BITPACKING_RANGE_NUM) {
-                    data_block->_type = IntCompressType::BITPACKING;
-                    data_block->_required_bits = get_next_power_of_two(range_width);
-                    data_block->_int_min = int_min;
-                } else {
-                    data_block->_type = IntCompressType::SIMPLE8B;
-                }
-
-                index_entry.set_sum(int_sum);
-                index_entry.set_max(int_max);
-                data_blocks.emplace_back(std::move(data_block));
-                index_block.add_entry(index_entry);
             }
-
-            index_blocks.emplace_back(std::move(index_block));
         }
 
-        void convert_double_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
-                                std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
-            double_t src_values[FILE_CONVERT_SIZE];
 
-            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
-                rows[i].columns[column_name].getDoubleFloatValue(src_values[i]);
-            }
-
-            if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
-                _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
-            }
-
-            IndexBlock index_block;
-
-            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                std::unique_ptr<DoubleDataBlock> data_block = std::make_unique<DoubleDataBlock>();
-                std::memcpy(data_block->_column_values.data(), src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
-                IndexEntry index_entry;
-                double_t double_sum = 0;
-                double_t double_max = std::numeric_limits<double_t>::lowest();
-                double_t double_min = std::numeric_limits<double_t>::max();
-
-                for (auto v: data_block->_column_values) {
-                    double_sum += v;
-                    double_max = std::max(double_max, v);
-                    double_min = std::min(double_min, v);
-                }
-
-                if (double_max == double_min) {
-                    data_block->_type = DoubleCompressType::SAME;
-                } else {
-                    data_block->_type = DoubleCompressType::GORILLA;
-                }
-
-                index_entry.set_sum(double_sum);
-                index_entry.set_max(double_max);
-                data_blocks.emplace_back(std::move(data_block));
-                index_block.add_entry(index_entry);
-            }
-
-            index_blocks.emplace_back(std::move(index_block));
-        }
-
-        void convert_string_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
-                                  std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
-            ColumnValue src_values[FILE_CONVERT_SIZE];
-
-            for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
-                src_values[i] = rows[i].columns[column_name];
-            }
-
-            if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
-                _latest_row.columns[column_name] = src_values[FILE_CONVERT_SIZE - 1];
-            }
-
-            IndexBlock index_block;
-
-            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                std::unique_ptr<StringDataBlock> data_block = std::make_unique<StringDataBlock>();
-
-                for (uint16_t j = 0; j < DATA_BLOCK_ITEM_NUMS; ++j) {
-                    std::swap(data_block->_column_values[j], src_values[i * DATA_BLOCK_ITEM_NUMS + j]);
-                }
-
-                IndexEntry index_entry;
-                data_blocks.emplace_back(std::move(data_block));
-                index_block.add_entry(index_entry);
-            }
-
-            index_blocks.emplace_back(std::move(index_block));
-        }
-
-        Row get_latest_row() const {
-            return _latest_row;
-        }
+        // void convert_double_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
+        //                         std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
+        //     double_t src_values[FILE_CONVERT_SIZE];
+        //
+        //     for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
+        //         rows[i].columns[column_name].getDoubleFloatValue(src_values[i]);
+        //     }
+        //
+        //     if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
+        //         _latest_row.columns[column_name] = ColumnValue(src_values[FILE_CONVERT_SIZE - 1]);
+        //     }
+        //
+        //     IndexBlock index_block;
+        //
+        //     for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+        //         std::unique_ptr<DoubleDataBlock> data_block = std::make_unique<DoubleDataBlock>();
+        //         std::memcpy(data_block->_column_values.data(), src_values + i * DATA_BLOCK_ITEM_NUMS, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        //         IndexEntry index_entry;
+        //         double_t double_sum = 0;
+        //         double_t double_max = std::numeric_limits<double_t>::lowest();
+        //         double_t double_min = std::numeric_limits<double_t>::max();
+        //
+        //         for (auto v: data_block->_column_values) {
+        //             double_sum += v;
+        //             double_max = std::max(double_max, v);
+        //             double_min = std::min(double_min, v);
+        //         }
+        //
+        //         if (double_max == double_min) {
+        //             data_block->_type = DoubleCompressType::SAME;
+        //         } else {
+        //             data_block->_type = DoubleCompressType::GORILLA;
+        //         }
+        //
+        //         index_entry.set_sum(double_sum);
+        //         index_entry.set_max(double_max);
+        //         data_blocks.emplace_back(std::move(data_block));
+        //         index_block.add_entry(index_entry);
+        //     }
+        //
+        //     index_blocks.emplace_back(std::move(index_block));
+        // }
+        //
+        // void convert_string_column(uint16_t file_idx, std::array<Row, FILE_CONVERT_SIZE>& rows, const std::string& column_name,
+        //                           std::vector<std::unique_ptr<DataBlock>>& data_blocks, std::vector<IndexBlock>& index_blocks) {
+        //     ColumnValue src_values[FILE_CONVERT_SIZE];
+        //
+        //     for (uint16_t i = 0; i < FILE_CONVERT_SIZE; ++i) {
+        //         src_values[i] = rows[i].columns[column_name];
+        //     }
+        //
+        //     if (unlikely(file_idx == TSM_FILE_COUNT - 1)) {
+        //         _latest_row.columns[column_name] = src_values[FILE_CONVERT_SIZE - 1];
+        //     }
+        //
+        //     IndexBlock index_block;
+        //
+        //     for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+        //         std::unique_ptr<StringDataBlock> data_block = std::make_unique<StringDataBlock>();
+        //
+        //         for (uint16_t j = 0; j < DATA_BLOCK_ITEM_NUMS; ++j) {
+        //             std::swap(data_block->_column_values[j], src_values[i * DATA_BLOCK_ITEM_NUMS + j]);
+        //         }
+        //
+        //         IndexEntry index_entry;
+        //         data_blocks.emplace_back(std::move(data_block));
+        //         index_block.add_entry(index_entry);
+        //     }
+        //
+        //     index_blocks.emplace_back(std::move(index_block));
+        // }
 
     private:
         uint16_t _vin_num;
         Path _no_compaction_path;
         Path _compaction_path;
         SchemaSPtr _schema;
-        Row _latest_row;
     };
 
     class GlobalConvertManager;
@@ -249,20 +307,20 @@ namespace LindormContest {
             assert(_thread_pool->empty());
         }
 
-        void save_latest_records_to_file(const Path& latest_records_path) const {
-            std::ofstream output_file(latest_records_path, std::ios::out | std::ios::binary);
-            if (!output_file.is_open()) {
-                throw std::runtime_error("Failed to open file for writing.");
-            }
-            std::string buf;
-
-            for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
-                io::serialize_row(_convert_managers[i]->get_latest_row(), true, buf);
-            }
-
-            output_file.write(buf.c_str(), buf.size());
-            output_file.close();
-        }
+        // void save_latest_records_to_file(const Path& latest_records_path) const {
+        //     std::ofstream output_file(latest_records_path, std::ios::out | std::ios::binary);
+        //     if (!output_file.is_open()) {
+        //         throw std::runtime_error("Failed to open file for writing.");
+        //     }
+        //     std::string buf;
+        //
+        //     for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
+        //         io::serialize_row(_convert_managers[i]->get_latest_row(), true, buf);
+        //     }
+        //
+        //     output_file.write(buf.c_str(), buf.size());
+        //     output_file.close();
+        // }
 
     private:
         ThreadPoolUPtr _thread_pool;

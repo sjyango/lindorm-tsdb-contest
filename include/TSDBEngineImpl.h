@@ -52,7 +52,7 @@ namespace LindormContest {
 
         Path _get_schema_path() const { return _get_root_path() / "schema.txt"; }
 
-        Path _get_latest_records_path() const { return _get_root_path() / "latest_records.dat"; }
+        void _get_latest_records();
 
         void _save_schema_to_file();
 

@@ -40,11 +40,11 @@ namespace LindormContest {
         assert(_finish_compaction);
         _index_manager->decode_from_file(_get_root_path(), _schema);
         _latest_manager->init(_schema);
-        _latest_manager->load_latest_records_from_file(_get_latest_records_path());
         _tr_manager->init(_schema);
         _agg_manager->init(_schema);
         _ds_manager->init(_schema);
         _convert_manager->init(_schema);
+        _get_latest_records();
         return 0;
     }
 
@@ -60,10 +60,8 @@ namespace LindormContest {
     }
 
     int TSDBEngineImpl::shutdown() {
-        // _print_schema();
         _save_schema_to_file();
         _convert_manager->finalize_convert();
-        _convert_manager->save_latest_records_to_file(_get_latest_records_path());
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
@@ -180,6 +178,21 @@ namespace LindormContest {
         }
 
         _schema = std::make_shared<Schema>(std::move(column_type_map));
+    }
+
+    void TSDBEngineImpl::_get_latest_records() {
+        std::set<std::string> column_names;
+
+        for (const auto &item: _schema->columnTypeMap) {
+            column_names.insert(item.first);
+        }
+
+        for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
+            std::vector<Row> latest_row;
+            _tr_manager->query_time_range<true>(i, encode_vin(i), MAX_TS, MAX_TS + 1, column_names, latest_row);
+            assert(latest_row.size() == 1);
+            _latest_manager->set_latest_row(i, latest_row[0]);
+        }
     }
 
     void TSDBEngineImpl::_print_schema() {
