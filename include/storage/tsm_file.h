@@ -16,7 +16,7 @@
 #pragma once
 
 extern "C" {
-#include "../source/bitpacking/include/simdbitpacking.h"
+#include "../source/bitpacking/include/simdbitpack.h"
 }
 
 #include "struct/Schema.h"
@@ -25,6 +25,7 @@ extern "C" {
 #include "common/time_range.h"
 #include "compression/compressor.h"
 #include "io/io_utils.h"
+#include "../source/pfor/deltautil.h"
 
 namespace LindormContest {
 
@@ -108,9 +109,11 @@ namespace LindormContest {
 
     enum class IntCompressType : uint8_t {
         SAME,
-        BITPACKING,
+        BITPACK,
         SIMPLE8B,
         SIMPLE8B_ZSTD,
+        FASTPFOR,
+        FASTPFOR_ZSTD,
         ZSTD,
         PLAIN
     };
@@ -139,11 +142,11 @@ namespace LindormContest {
 
     struct IntDataBlock : public DataBlock {
         std::array<int32_t, DATA_BLOCK_ITEM_NUMS> _column_values;
-        IntCompressType _type = IntCompressType::SIMPLE8B;
+        IntCompressType _type = IntCompressType::FASTPFOR;
         int64_t _sum = 0;
         int32_t _min = std::numeric_limits<int32_t>::max();
         int32_t _max = std::numeric_limits<int32_t>::lowest();
-        uint8_t _required_bits; // just for bitpacking
+        uint8_t _required_bits; // just for BITPACK
 
         IntDataBlock() = default;
 
@@ -152,10 +155,16 @@ namespace LindormContest {
         void encode_to_compress(std::string *buf) const override {
             if (_type == IntCompressType::SAME) {
                 encode_to_same(buf);
-            } else if (_type == IntCompressType::BITPACKING) {
-                encode_to_bitpacking(buf);
+            } else if (_type == IntCompressType::BITPACK) {
+                encode_to_bitpack(buf);
             } else if (_type == IntCompressType::SIMPLE8B) {
                 if (!encode_to_simple8b(buf)) {
+                    if (!encode_to_zstd(buf)) {
+                        encode_to_plain(buf);
+                    }
+                }
+            } else if (_type == IntCompressType::FASTPFOR) {
+                if (!encode_to_fastpfor(buf)) {
                     if (!encode_to_zstd(buf)) {
                         encode_to_plain(buf);
                     }
@@ -177,11 +186,17 @@ namespace LindormContest {
                 case IntCompressType::SIMPLE8B_ZSTD:
                     decode_from_simple8b_zstd(buf);
                     break;
+                case IntCompressType::FASTPFOR:
+                    decode_from_fastpfor(buf);
+                    break;
+                case IntCompressType::FASTPFOR_ZSTD:
+                    decode_from_fastpfor_zstd(buf);
+                    break;
                 case IntCompressType::ZSTD:
                     decode_from_zstd(buf);
                     break;
-                case IntCompressType::BITPACKING:
-                    decode_from_bitpacking(buf);
+                case IntCompressType::BITPACK:
+                    decode_from_bitpack(buf);
                     break;
                 case IntCompressType::PLAIN:
                     decode_from_plain(buf);
@@ -253,7 +268,85 @@ namespace LindormContest {
             std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
 
-        void encode_to_bitpacking(std::string* buf) const {
+        bool encode_to_fastpfor(std::string* buf) const {
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> column_values;
+
+            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+            //     column_values[i] = _column_values[i] - _min;
+            // }
+            // FastPForLib::Delta::deltaSIMD(column_values.data(), column_values.size());
+
+            delta_and_zigzag_encode(_column_values.data(), column_values.data(), DATA_BLOCK_ITEM_NUMS);
+
+            const uint32_t * stage_one_uncompress_data = column_values.data();
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS;
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS * 2> stage_one_compress_data;
+            uint32_t stage_one_compress_size = compression::compress_int32_fastpfor(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.data());
+
+            if (stage_one_compress_size >= stage_one_uncompress_size) {
+                return false;
+            }
+
+            INFO_LOG("encode_to_fastpfor, range: %d, uncompress_size: %lu, compress_size: %lu", _max - _min, DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t), stage_one_compress_size * sizeof(uint32_t))
+            const char* stage_two_uncompress_data = reinterpret_cast<const char *>(stage_one_compress_data.data());
+            uint32_t stage_two_uncompress_size = stage_one_compress_size * sizeof(uint32_t);
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR));
+                buf->append((const char*) &_min, sizeof(int32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_two_uncompress_data, stage_two_uncompress_size);
+            } else {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR_ZSTD));
+                buf->append((const char*) &_min, sizeof(int32_t));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+            return true;
+        }
+
+        void decode_from_fastpfor(const char* buf) {
+            _min = *reinterpret_cast<const int32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(int32_t));
+            std::vector<uint32_t> compress_data(compress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
+            std::memcpy(compress_data.data(), buf + 2 * sizeof(uint32_t), compress_size * sizeof(uint32_t));
+            uint32_t decompress_size = compression::decompress_int32_fastpfor(compress_data.data(), compress_size, uncompress_data.data());
+            assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
+
+            delta_and_zigzag_decode(uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
+
+            // FastPForLib::Delta::inverseDeltaSIMD(uncompress_data.data(), uncompress_data.size());
+            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+            //     _column_values[i] = _min + uncompress_data[i];
+            // }
+        }
+
+        void decode_from_fastpfor_zstd(const char* buf) {
+            _min = *reinterpret_cast<const int32_t*>(buf);
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(int32_t));
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+            const uint32_t * stage_one_compress_data = reinterpret_cast<const uint32_t *>(stage_two_uncompress_data.get());
+            uint32_t stage_one_compress_size = stage_two_uncompress_size / sizeof(uint32_t);
+            uint32_t decompress_size = compression::decompress_int32_fastpfor(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.data());
+            assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
+
+            delta_and_zigzag_decode(stage_one_uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
+
+            // FastPForLib::Delta::inverseDeltaSIMD(stage_one_uncompress_data.data(), stage_one_uncompress_data.size());
+            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+            //     _column_values[i] = _min + stage_one_uncompress_data[i];
+            // }
+        }
+
+        void encode_to_bitpack(std::string* buf) const {
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
 
             for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
@@ -264,15 +357,15 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size);
             __m128i* end_buf = simdpack_length(uncompress_data.data(), DATA_BLOCK_ITEM_NUMS, (__m128i*) compress_data.get(), _required_bits);
             uint32_t compress_size = (end_buf - (__m128i *) compress_data.get()) * sizeof(__m128i);
-            // INFO_LOG("encode_to_bitpacking, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
-            put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACKING));
+            // INFO_LOG("encode_to_BITPACK, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACK));
             put_fixed(buf, _required_bits);
             put_fixed(buf, _min);
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
         }
 
-        void decode_from_bitpacking(const char* buf) {
+        void decode_from_bitpack(const char* buf) {
             _required_bits = *reinterpret_cast<const uint8_t*>(buf);
             _min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));

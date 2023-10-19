@@ -5,6 +5,8 @@
 // the interface semantics correctly.
 //
 
+#include <omp.h>
+
 #include "TSDBEngineImpl.h"
 #include <fstream>
 
@@ -187,6 +189,7 @@ namespace LindormContest {
             column_names.insert(item.first);
         }
 
+#pragma omp parallel for num_threads(8)
         for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
             std::vector<Row> latest_row;
             _tr_manager->query_time_range<true>(i, encode_vin(i), MAX_TS, MAX_TS + 1, column_names, latest_row);

@@ -39,6 +39,34 @@ namespace LindormContest {
         dst->append((char*)buf, sizeof(buf));
     }
 
+    inline uint32_t zigzag_encode(int32_t value) {
+        return (value << 1) ^ (value >> 31);
+    }
+
+    inline int32_t zigzag_decode(uint32_t value) {
+        return (value >> 1) ^ (-(value & 1));
+    }
+
+    inline void delta_and_zigzag_encode(const int32_t* src, uint32_t * dst, size_t length) {
+        int32_t prev_value = 0;
+
+        for (size_t i = 0; i < length; ++i) {
+            int32_t delta = src[i] - prev_value;
+            prev_value = src[i];
+            dst[i] = zigzag_encode(delta);
+        }
+    }
+
+    inline void delta_and_zigzag_decode(const uint32_t* src, int32_t * dst, size_t length) {
+        uint32_t prev_value = 0;
+
+        for (size_t i = 0; i < length; ++i) {
+            int32_t delta = zigzag_decode(src[i]);
+            dst[i] = delta + prev_value;
+            prev_value = dst[i];
+        }
+    }
+
     static uint32_t bit_packing_encoding(uint8_t required_bits, int32_t int_min, const int32_t* uncompress_data, size_t uncompress_size, char* compress_data) {
         uint32_t compress_size = 0;
         uint16_t current_byte = 0;

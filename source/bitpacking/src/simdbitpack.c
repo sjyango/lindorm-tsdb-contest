@@ -1,7 +1,7 @@
 /**
  * This code is released under a BSD License.
  */
-#include "../include/simdbitpacking.h"
+#include "../include/simdbitpack.h"
 
 static void SIMD_nullunpacker32(const __m128i *_in, uint32_t *out) {
   (void)_in;

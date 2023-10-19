@@ -1,8 +1,8 @@
 /**
  * This code is released under a BSD License.
  */
-#ifndef SIMDBITPACKING_H_
-#define SIMDBITPACKING_H_
+#ifndef SIMDBITPACK_H_
+#define SIMDBITPACK_H_
 
 #include "portability.h"
 
@@ -72,4 +72,4 @@ const __m128i *simdunpack_shortlength(const __m128i *in, int length,
  * "index" to "value" */
 void simdfastset(__m128i *in128, uint32_t b, uint32_t value, size_t index);
 
-#endif /* SIMDBITPACKING_H_ */
+#endif /* SIMDBITPACK_H_ */

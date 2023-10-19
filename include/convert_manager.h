@@ -27,8 +27,6 @@
 
 namespace LindormContest {
 
-    using VariantType = std::variant<std::array<int32_t, FILE_CONVERT_SIZE>, std::array<double_t, FILE_CONVERT_SIZE>, std::array<ColumnValue, FILE_CONVERT_SIZE>>;
-
     // multi thread safe
     class ConvertManager {
     public:
@@ -107,10 +105,10 @@ namespace LindormContest {
                             if (range_width == 1) {
                                 int_data_block._type = IntCompressType::SAME;
                             } else if (range_width <= BITPACKING_RANGE_NUM) {
-                                int_data_block._type = IntCompressType::BITPACKING;
+                                int_data_block._type = IntCompressType::BITPACK;
                                 int_data_block._required_bits = get_next_power_of_two(range_width);
                             } else {
-                                int_data_block._type = IntCompressType::SIMPLE8B;
+                                int_data_block._type = IntCompressType::FASTPFOR;
                             }
 
                             index_block._index_entries[i].set_sum(int_data_block._sum);

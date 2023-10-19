@@ -10,7 +10,7 @@
 /* SSE2 is required */
 #include <emmintrin.h>
 
-#include "simdbitpacking.h"
+#include "simdbitpack.h"
 #include "simdcomputil.h"
 
 #ifdef __cplusplus

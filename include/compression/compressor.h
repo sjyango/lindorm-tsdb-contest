@@ -37,6 +37,16 @@ namespace LindormContest::compression {
         return dest;
     }
 
+    static uint32_t compress_int32_fastpfor(const uint32_t* source, uint32_t source_size, uint32_t* dest) {
+        CompressionFastPFor compressionFastPFor;
+        return compressionFastPFor.compress(source, source_size, dest);
+    }
+
+    static uint32_t decompress_int32_fastpfor(const uint32_t *source, size_t source_size, uint32_t *dest) {
+        CompressionFastPFor compressionFastPFor;
+        return compressionFastPFor.decompress(source, source_size, dest);
+    }
+
     static uint32_t compress_int32_rle(const char *source, uint32_t source_size, char *dest) {
         static CompressionRLE compressionCodecRLE(4);
         return compressionCodecRLE.compress(source, source_size, dest);

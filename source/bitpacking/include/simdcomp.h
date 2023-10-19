@@ -11,7 +11,7 @@ extern "C" {
 
 #include "avx512bitpacking.h"
 #include "avxbitpacking.h"
-#include "simdbitpacking.h"
+#include "simdbitpack.h"
 #include "simdcomputil.h"
 #include "simdfor.h"
 #include "simdintegratedbitpacking.h"
