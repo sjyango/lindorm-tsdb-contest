@@ -26,18 +26,45 @@
 
 namespace duckdb {
 
+class CompressionChimp {
+public:
+    explicit CompressionChimp(uint8_t data_bytes) : data_bytes_size(data_bytes) {};
+
+    virtual ~CompressionChimp() = default;
+
+    uint64_t compress(const char *source, uint64_t source_size, char *dest) const;
+
+    void decompress(const char *source, uint64_t source_size, char *dest, uint64_t uncompressed_size) const;
+
+private:
+    const uint8_t data_bytes_size;
+};
+
+template <class T>
+static inline const T *GetData(const char* data) {
+    return reinterpret_cast<const T *>(data);
+}
+
 template <class T>
 struct ChimpCompressionState {
 public:
 	using CHIMP_TYPE = typename ChimpType<T>::type;
 
-	explicit ChimpCompressionState() {
+	explicit ChimpCompressionState(uint8_t * dest) {
 		// These buffers are recycled for every group, so they only have to be set once
 		state.AssignLeadingZeroBuffer((uint8_t *)leading_zero_blocks);
 		state.AssignFlagBuffer((uint8_t *)flags);
 		state.AssignPackedDataBuffer((uint16_t *)packed_data_blocks);
+
+                base_ptr = dest;
+                segment_data = base_ptr + ChimpPrimitives::HEADER_SIZE;
+                metadata_ptr = base_ptr + BLOCK_SIZE - sizeof(uint64_t);
+                state.AssignDataBuffer(segment_data);
+
+                state.chimp.Reset();
 	}
 
+        static constexpr int BLOCK_SIZE = 5000;
 //	unique_ptr<ColumnSegment> current_segment;
 //	BufferHandle handle;
 	idx_t group_idx = 0;
@@ -46,8 +73,10 @@ public:
 	uint16_t packed_data_blocks[ChimpPrimitives::CHIMP_SEQUENCE_SIZE];
 
 	// Ptr to next free spot in segment;
-	char* segment_data;
-        char* metadata_ptr;
+        uint8_t* segment_data;
+        uint8_t * metadata_ptr;
+        uint8_t * base_ptr;
+
 	uint32_t next_group_byte_index_start = ChimpPrimitives::HEADER_SIZE;
 	// The total size of metadata in the current segment
 	idx_t metadata_byte_size = 0;
@@ -55,50 +84,21 @@ public:
 	ChimpState<T, false> state;
 
 public:
-	idx_t RequiredSpace() const {
-		idx_t required_space = ChimpPrimitives::MAX_BYTES_PER_VALUE;
-		// Any value could be the last,
-		// so the cost of flushing metadata should be factored into the cost
-
-		// byte offset of data
-		required_space += sizeof(byte_index_t);
-		// amount of leading zero blocks
-		required_space += sizeof(uint8_t);
-		// first leading zero block
-		required_space += 3;
-		// amount of flag bytes
-		required_space += sizeof(uint8_t);
-		// first flag byte
-		required_space += 1;
-		return required_space;
-	}
-
 	// How many bytes the data occupies for the current segment
 	idx_t UsedSpace() const {
 		return state.chimp.output.BytesWritten();
 	}
 
-	idx_t CurrentGroupMetadataSize() const {
-		idx_t metadata_size = 0;
 
-		metadata_size += 3 * state.chimp.leading_zero_buffer.BlockCount();
-		metadata_size += state.chimp.flag_buffer.BytesUsed();
-		metadata_size += 2 * state.chimp.packed_data_buffer.index;
-		return metadata_size;
-	}
-
-
-	void Append(const CHIMP_TYPE* data, idx_t count) {
+	void Append(const char * data, idx_t count) {
+                const CHIMP_TYPE* data_ = GetData<CHIMP_TYPE>(data);
 		for (idx_t i = 0; i < count; i++) {
-			WriteValue(data[i]);
+			WriteValue(data_[i]);
 		}
 	}
 
-	void WriteValue(CHIMP_TYPE value) {
+        void WriteValue(CHIMP_TYPE value) {
 //		current_segment->count++;
-
-                T floating_point_value = Load<T>(const_data_ptr_cast(&value));
-
 		Chimp128Compression<CHIMP_TYPE, false>::Store(value, state.chimp);
 		group_idx++;
 		if (group_idx == ChimpPrimitives::CHIMP_SEQUENCE_SIZE) {
@@ -171,27 +171,19 @@ public:
 			// Only call this when the group actually has data that needs to be flushed
 			FlushGroup();
 		}
-//		state.chimp.output.Flush();
-//		auto dataptr = handle.Ptr();
-//
-//		// Compact the segment by moving the metadata next to the data.
-//		idx_t bytes_used_by_data = ChimpPrimitives::HEADER_SIZE + UsedSpace();
-//		idx_t metadata_offset = AlignValue(bytes_used_by_data);
-//		// Verify that the metadata_ptr does not cross this threshold
-//		D_ASSERT(dataptr + metadata_offset <= metadata_ptr);
-//		idx_t metadata_size = dataptr + Storage::BLOCK_SIZE - metadata_ptr;
-//		idx_t total_segment_size = metadata_offset + metadata_size;
-//#ifdef DEBUG
-//		uint32_t verify_bytes;
-//		memcpy((void *)&verify_bytes, metadata_ptr, 4);
-//#endif
-//		memmove(dataptr + metadata_offset, metadata_ptr, metadata_size);
-//#ifdef DEBUG
-//		D_ASSERT(verify_bytes == *(uint32_t *)(dataptr + metadata_offset));
-//#endif
-//		//  Store the offset of the metadata of the first group (which is at the highest address).
-//		Store<uint32_t>(metadata_offset + metadata_size, dataptr);
-//		handle.Destroy();
+		state.chimp.output.Flush();
+		auto dataptr = base_ptr;
+
+		// Compact the segment by moving the metadata next to the data.
+		idx_t bytes_used_by_data = ChimpPrimitives::HEADER_SIZE + UsedSpace();
+		idx_t metadata_offset = AlignValue(bytes_used_by_data);
+		// Verify that the metadata_ptr does not cross this threshold
+		assert(dataptr + metadata_offset <= metadata_ptr);
+		idx_t metadata_size = dataptr + BLOCK_SIZE - metadata_ptr;
+		idx_t total_segment_size = metadata_offset + metadata_size;
+		memmove(dataptr + metadata_offset, metadata_ptr, metadata_size);
+		//  Store the offset of the metadata of the first group (which is at the highest address).
+		Store<uint32_t>(metadata_offset + metadata_size, dataptr);
 	}
 
 	void Finalize() {
@@ -203,12 +195,12 @@ public:
 // Compression Functions
 
 template <class T>
-std::unique_ptr<ChimpCompressionState<T>> ChimpInitCompression() {
-	return std::make_unique<ChimpCompressionState<T>>();
+std::unique_ptr<ChimpCompressionState<T>> ChimpInitCompression(uint8_t* dest) {
+	return std::make_unique<ChimpCompressionState<T>>(dest);
 }
 
 template <class T>
-void ChimpCompress(ChimpCompressionState<T> &state, const typename ChimpType<T>::type* data, idx_t count) {
+void ChimpCompress(ChimpCompressionState<T> &state, const char* data, idx_t count) {
 	state.Append(data, count);
 }
 

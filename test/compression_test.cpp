@@ -78,6 +78,38 @@ namespace LindormContest::test {
         GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
     }
 
+    
+    static constexpr size_t BIG_INT = 100000;
+    using CHIMP_TYPE = typename duckdb::ChimpType<double>::type;
+    std::vector<double> input = {1.3, 2.9, 3.1, 5.9};
+    
+    auto length = input.size();
+    uint32_t uncompressSize = length * sizeof(CHIMP_TYPE);
+
+    // pre-allocate a large size
+    char *origin = reinterpret_cast<char *>(input.data());
+    uint8_t *compress = reinterpret_cast<uint8_t *>(malloc(uncompressSize));
+    std::unique_ptr<duckdb::ChimpCompressionState<double>> chimpCompressor = duckdb::ChimpInitCompression<double>(compress);
+    chimpCompressor->Append(origin,length);
+    chimpCompressor->Finalize();
+    auto compressSize = chimpCompressor->UsedSpace();
+    GTEST_LOG_(INFO) << "compress size: " << compressSize;
+
+    uint8_t *recover = reinterpret_cast<uint8_t *>(malloc(BIG_INT));
+
+    std::unique_ptr<duckdb::ChimpScanState<double>> chimpDecompressor = duckdb::ChimpInitScan<double>(compress);
+    duckdb::ChimpScan<double>(reinterpret_cast<duckdb::ChimpScanState<double>&>(*chimpCompressor),compressSize,recover);
+
+    //        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
+    //
+    verifyResult<double>(input, reinterpret_cast<const char*>(recover));
+    //
+    free(recover);
+    free(compress);
+    //        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
+    //        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
+    }
+    
 //    TEST(Compression, BitPackingTest) {
 //        size_t k, N = 9999;
 //        __m128i * endofbuf;

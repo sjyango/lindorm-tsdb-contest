@@ -76,14 +76,14 @@ T SignValue(T a) {
 }
 
 template <typename T>
-const T Load(const char *ptr) {
+const T Load(const uint8_t *ptr) {
 	T ret;
 	memcpy(&ret, ptr, sizeof(ret));
 	return ret;
 }
 
 template <typename T>
-void Store(const T &val, char* ptr) {
+void Store(const T &val, uint8_t * ptr) {
 	memcpy(ptr, (void *)&val, sizeof(val));
 }
 
