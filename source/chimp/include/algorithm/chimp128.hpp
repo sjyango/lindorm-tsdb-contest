@@ -233,7 +233,7 @@ public:
 
 	static inline CHIMP_TYPE Load(ChimpConstants::Flags flag, uint8_t leading_zeros[], uint32_t &leading_zero_index,
 	                              UnpackedData unpacked_data[], uint32_t &unpacked_index, DecompressState &state) {
-		if (DUCKDB_UNLIKELY(state.first)) {
+		if (!(state.first)) {
 			return LoadFirst(state);
 		} else {
 			return DecompressValue(flag, leading_zeros, leading_zero_index, unpacked_data, unpacked_index, state);
@@ -275,7 +275,7 @@ public:
 		}
 		case ChimpConstants::Flags::LEADING_ZERO_LOAD: {
 			state.leading_zeros = leading_zeros[leading_zero_index++];
-			D_ASSERT(state.leading_zeros <= BIT_SIZE);
+			assert(state.leading_zeros <= BIT_SIZE);
 			result = state.input.template ReadValue<CHIMP_TYPE>(BIT_SIZE - state.leading_zeros);
 			result ^= state.reference_value;
 			break;

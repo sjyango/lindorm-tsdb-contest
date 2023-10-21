@@ -138,18 +138,17 @@ struct ChimpScanState {
 public:
 	using CHIMP_TYPE = typename ChimpType<T>::type;
 
-	explicit ChimpScanState(char* data) {
-		auto dataptr = data;
+	explicit ChimpScanState(uint8_t* data) {
 		// ScanStates never exceed the boundaries of a Segment,
 		// but are not guaranteed to start at the beginning of the Block
-		auto start_of_data_segment = dataptr  + ChimpPrimitives::HEADER_SIZE;
+		auto start_of_data_segment = data  + ChimpPrimitives::HEADER_SIZE;
 		group_state.Init(start_of_data_segment);
-		auto metadata_offset = Load<uint32_t>(dataptr);
-		metadata_ptr = dataptr + metadata_offset;
+		auto metadata_offset = Load<uint32_t>(data);
+		metadata_ptr = data + metadata_offset;
 	}
 
 //	BufferHandle handle;
-	char *metadata_ptr;
+        uint8_t *metadata_ptr;
 	idx_t total_value_count = 0;
 	ChimpGroupState<CHIMP_TYPE> group_state;
 
@@ -250,7 +249,7 @@ public:
 };
 
 template <class T>
-std::unique_ptr<ChimpScanState<T>> ChimpInitScan(char* data) {
+std::unique_ptr<ChimpScanState<T>> ChimpInitScan(uint8_t* data) {
 	auto result = std::make_unique<ChimpScanState<T>>(data);
 	return result;
 }
@@ -259,9 +258,8 @@ std::unique_ptr<ChimpScanState<T>> ChimpInitScan(char* data) {
 // Scan base data
 //===--------------------------------------------------------------------===//
 template <class T>
-void ChimpScanPartial(ChimpScanState<T> &state, idx_t scan_count,char* result) {
+void ChimpScanPartial(ChimpScanState<T> &scan_state, idx_t scan_count,uint8_t* result) {
 	using INTERNAL_TYPE = typename ChimpType<T>::type;
-	auto &scan_state = (ChimpScanState<T> &)*state.scan_state;
 
 	auto current_result_ptr = (INTERNAL_TYPE *)(result);
 
@@ -280,8 +278,8 @@ void ChimpSkip(ChimpScanState<T> &state, idx_t skip_count) {
 }
 
 template <class T>
-void ChimpScan(ChimpScanState<T> &state, idx_t scan_count, char * result) {
-	ChimpScanPartial<T>(state, scan_count, result, 0);
+void ChimpScan(ChimpScanState<T> &state, idx_t scan_count, uint8_t * result) {
+	ChimpScanPartial<T>(state, scan_count, result);
 }
 
 } // namespace duckdb
