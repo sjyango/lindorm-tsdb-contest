@@ -44,24 +44,34 @@ namespace LindormContest {
         template <bool finish_compaction>
         void query_time_range(const Vin& vin, const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
-            for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
-                TimeRange file_tr (
-                        std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
-                        std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
-                        );
-
-                if constexpr (finish_compaction) {
-                    _query_from_one_tsm_file(vin, file_idx, file_tr, requested_columns, trReadRes);
-                } else {
+            if constexpr (finish_compaction) {
+                trReadRes.resize((tr._end_idx-tr._start_idx)+1);
+                for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
+                    TimeRange file_tr (
+                            std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
+                            std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
+                    );
+                    _query_from_one_tsm_file(vin, tr,file_idx, file_tr, requested_columns, trReadRes);
+                }
+            }else{
+                for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
+                    TimeRange file_tr (
+                            std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
+                            std::min(tr._end_idx, (uint16_t) ((file_idx + 1) * FILE_CONVERT_SIZE - 1)) % FILE_CONVERT_SIZE
+                    );
                     _query_from_one_flush_file(vin, file_idx, file_tr, requested_columns, trReadRes);
                 }
             }
+
         }
 
     private:
-        void _query_from_one_tsm_file(const Vin& vin, uint16_t file_idx, const TimeRange& file_tr,
+        void _query_from_one_tsm_file(const Vin& vin, const TimeRange& tr,uint16_t file_idx, const TimeRange& file_tr,
                                       const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
             std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
+            uint32_t ts_start = file_idx * FILE_CONVERT_SIZE + file_tr._start_idx;
+            int flag = 0;
+            size_t row_nums = 0;
 
             for (const auto &column_name: requested_columns) {
                 std::vector<ColumnValue> column_values;
@@ -70,25 +80,33 @@ namespace LindormContest {
                 _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
                 _get_column_values(file_idx, _schema->columnTypeMap[column_name], index_entries, ranges, column_values);
                 all_column_values.emplace(column_name, std::move(column_values));
-            }
-
-            size_t row_nums = all_column_values.begin()->second.size();
-            uint32_t ts_start = file_idx * FILE_CONVERT_SIZE + file_tr._start_idx;
-            uint32_t ts_end = file_idx * FILE_CONVERT_SIZE + file_tr._end_idx;
-
-            for (size_t i = 0; i < row_nums; ++i) {
-                Row result_row;
-                result_row.vin = vin;
-                result_row.timestamp = encode_ts(ts_start++);
-
-                for (const auto &column_name: requested_columns) {
-                    result_row.columns.emplace(column_name, all_column_values[column_name][i]);
+                if(unlikely(!flag)){
+                    row_nums = all_column_values.begin()->second.size();
                 }
-
-                trReadRes.emplace_back(std::move(result_row));
+                for (size_t i = 0; i < row_nums; ++i) {
+                    if(unlikely(!flag)) {
+                        Row result_row;
+                        result_row.vin = vin;
+                        result_row.timestamp =  encode_ts(ts_start+i);
+                        trReadRes[ts_start+i-tr._start_idx] = result_row;
+                    }
+                    trReadRes[ts_start+i-tr._start_idx].columns.emplace(column_name, all_column_values[column_name][i]);
+                }
+                flag++;
             }
-
-            assert(ts_start == ts_end + 1);
+//            size_t row_nums = all_column_values.begin()->second.size();
+//            uint32_t ts_start = file_idx * FILE_CONVERT_SIZE + file_tr._start_idx;
+//            uint32_t ts_end = file_idx * FILE_CONVERT_SIZE + file_tr._end_idx;
+//            for (size_t i = 0; i < row_nums; ++i) {
+//                Row result_row;
+//                result_row.vin = vin;
+//                result_row.timestamp = encode_ts(ts_start++);
+//                for (const auto &column_name: requested_columns) {
+//                    result_row.columns.emplace(column_name, all_column_values[column_name][i]);
+//                }
+//                trReadRes.emplace_back(std::move(result_row));
+//            }
+//            assert(ts_start == ts_end + 1);
         }
 
         void _query_from_one_flush_file(const Vin& vin, uint16_t file_idx, const TimeRange& file_tr,
@@ -202,7 +220,6 @@ namespace LindormContest {
             }
             _tr_managers[vin_num]->query_time_range<finish_compaction>(vin, tr, requested_columns, trReadRes);
         }
-
     private:
         std::unique_ptr<TimeRangeManager> _tr_managers[VIN_NUM_RANGE];
     };
