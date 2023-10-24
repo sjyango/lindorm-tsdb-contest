@@ -287,7 +287,7 @@ namespace LindormContest {
                 return false;
             }
 
-            INFO_LOG("encode_to_fastpfor, range: %d, uncompress_size: %lu, compress_size: %lu", _max - _min, DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t), stage_one_compress_size * sizeof(uint32_t))
+            // INFO_LOG("encode_to_fastpfor, range: %d, uncompress_size: %lu, compress_size: %lu", _max - _min, DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t), stage_one_compress_size * sizeof(uint32_t))
             const char* stage_two_uncompress_data = reinterpret_cast<const char *>(stage_one_compress_data.data());
             uint32_t stage_two_uncompress_size = stage_one_compress_size * sizeof(uint32_t);
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
@@ -298,6 +298,7 @@ namespace LindormContest {
                 buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
                 buf->append(stage_two_uncompress_data, stage_two_uncompress_size);
             } else {
+                INFO_LOG("encode_to_fastpfor_zstd, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
                 put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR_ZSTD));
                 buf->append((const char*) &_min, sizeof(int32_t));
                 buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
@@ -472,9 +473,11 @@ namespace LindormContest {
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
             std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
             uint32_t stage_one_compress_size = compression::compress_double(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
+
             if (stage_one_compress_size >= stage_one_uncompress_size) {
                 return false;
             }
+
             const char* stage_two_uncompress_data = stage_one_compress_data.get();
             uint32_t stage_two_uncompress_size = stage_one_compress_size;
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
@@ -485,6 +488,7 @@ namespace LindormContest {
                 buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
                 buf->append(stage_one_compress_data.get(), stage_one_compress_size);
             } else {
+                // INFO_LOG("encode_to_gorilla_zstd, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size, stage_two_uncompress_size, stage_two_compress_size)
                 put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA_ZSTD));
                 buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
                 buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
