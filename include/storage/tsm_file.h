@@ -298,7 +298,7 @@ namespace LindormContest {
                 buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
                 buf->append(stage_two_uncompress_data, stage_two_uncompress_size);
             } else {
-                INFO_LOG("encode_to_fastpfor_zstd, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
+                // INFO_LOG("encode_to_fastpfor_zstd, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
                 put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR_ZSTD));
                 buf->append((const char*) &_min, sizeof(int32_t));
                 buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
@@ -579,6 +579,7 @@ namespace LindormContest {
                 INFO_LOG("encode_to_zstd, compress_size >= uncompress_size")
                 return false;
             }
+            // INFO_LOG("string encode_to_zstd, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
