@@ -191,7 +191,7 @@ public:
     }
 
     // FIXME: only do this if the wasted space meets a certain threshold (>= 20%)
-    void FlushSegment() {
+    size_t FlushSegment() {
         if (group_idx) {
             // Only call this when the group actually has data that needs to be flushed
             FlushGroup();
@@ -211,10 +211,11 @@ public:
         //  Store the offset of the metadata of the first group (which is at the highest address).
         Store<uint32_t>(metadata_offset + metadata_size, dataptr);
 //        checkpoint_state.FlushSegment(std::move(current_segment), total_segment_size);
+        return total_segment_size;
     }
 
-    void Finalize() {
-        FlushSegment();
+    size_t Finalize() {
+        return FlushSegment();
     }
 
     size_t GetSegCount(){
@@ -224,10 +225,10 @@ public:
 
 // Compression Functions
 template<class T>
-size_t ChimpCompress(uint8_t* srcData, idx_t count, uint8_t* destData){
+size_t ChimpCompress(uint8_t* srcData, idx_t count, uint8_t* destData, size_t& compressSize){
     ChimpCompressionState<T> state = ChimpCompressionState<T>(destData);
     state.Append(srcData, count);
-    state.Finalize();
+    compressSize = state.Finalize();
     return state.GetSegCount();
 }
 

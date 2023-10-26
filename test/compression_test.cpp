@@ -107,37 +107,38 @@ namespace LindormContest::test {
 //    }
 
     TEST(Compression, chimp_double_test) {
-        static constexpr size_t BIG_INT = 10 * LindormContest::Storage::BLOCK_SIZE + 1;
-        using CHIMP_TYPE = typename duckdb::ChimpType<double>::type;
-//        std::vector<double> input = {1.3, 2.9, 3.1, 5.9};
+        static constexpr size_t BIG_INT = 1 * LindormContest::Storage::BLOCK_SIZE + 1;
         std::vector<double> input;
-        int A = -5000, B = 5000;
+        int A = -10, B = 10;
         for (auto i = 0; i < 2000; ++i) {
             float r3 = A + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(B-A)));
             input.emplace_back(r3);
         }
         
         auto length = input.size();
-        uint32_t uncompressSize = length * sizeof(CHIMP_TYPE);
+        uint32_t uncompressSize = length * sizeof(double);
 
         // pre-allocate a large size
-        uint8_t *origin = reinterpret_cast<uint8_t *>(input.data());
-        uint8_t *compress = reinterpret_cast<uint8_t *>(malloc(BIG_INT));
-        auto compressSize = duckdb::ChimpCompress<double>(origin,length,compress);
+        char *origin = reinterpret_cast<char *>(input.data());
+        char *compress = reinterpret_cast<char *>(malloc(BIG_INT));
+        char *gorilla_compress = reinterpret_cast<char *>(malloc(BIG_INT));
+        size_t compressSize, compressGorilla;
+        compressSize = LindormContest::compression::compress_double_chimp(origin,uncompressSize,compress);
+        compressGorilla = LindormContest::compression::compress_double(origin,uncompressSize,gorilla_compress);
         GTEST_LOG_(INFO) << "compress size: " << compressSize;
 
-        uint8_t *recover = reinterpret_cast<uint8_t *>(malloc(BIG_INT));
-
-        duckdb::DecompressChimp<double>(compress,compressSize,recover);
-
-//        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
-//
-        verifyResult<double>(input, reinterpret_cast<const char*>(recover));
+        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+        
+        auto newDest = LindormContest::compression::decompress_double_chimp(compress,compressSize,recover,uncompressSize);
+        
+        verifyResult<double>(input, reinterpret_cast<const char*>(newDest));
 //
         free(recover);
         free(compress);
-//        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
-//        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
+        free(gorilla_compress);
+        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compressSize;
+        GTEST_LOG_(INFO) << "chimp compress ratio: " << compressSize * 1.0 / uncompressSize;
+        GTEST_LOG_(INFO) << "gorilla compress ratio: " << compressGorilla * 1.0 / uncompressSize;
     }
 
 //TEST(Compression, gorilla_int_test) {
