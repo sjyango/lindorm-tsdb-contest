@@ -3,6 +3,7 @@
 #include "compression/float_compression.h"
 #include "compression/string_compressor.h"
 #include "compression/integer_compression.h"
+#include "compression/chimp_compression.h"
 
 namespace LindormContest::compression {
 
@@ -16,6 +17,17 @@ namespace LindormContest::compression {
         return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
     }
 
+    static uint32_t compress_double_chimp(const char *source, uint32_t source_size, char *dest) {
+        static CompressionCodecChimp compressor(8);
+        return compressor.compress<double>(source, source_size, dest);
+    }
+    
+    static char * decompress_double_chimp(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+        static CompressionCodecChimp decompressor(8);
+        decompressor.decompress<double>(source, source_size, dest, uncompressed_size);
+        return dest;
+    }
+    
     static uint32_t compress_int16(const char *source, uint32_t source_size, char *dest) {
         static CompressionCodecGorilla compressionCodecGorilla(2);
         return compressionCodecGorilla.compress(source, source_size, dest);
