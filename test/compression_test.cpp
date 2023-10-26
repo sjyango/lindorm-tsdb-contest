@@ -16,8 +16,8 @@ namespace LindormContest::test {
         auto length = input.size();
         auto *base = reinterpret_cast<T *>(const_cast<char *>(result));
         for (auto i = 0; i < length; ++i) {
-//            assert(input[i] == *base);
-                GTEST_LOG_(INFO) << input[i] << " " <<  *base;
+            assert(input[i] == *base);
+//                GTEST_LOG_(INFO) << input[i] << " " <<  *base;
             if (i != length - 1)base++;
         }
     }
@@ -107,26 +107,28 @@ namespace LindormContest::test {
 //    }
 
     TEST(Compression, chimp_double_test) {
-        static constexpr size_t BIG_INT = 100000;
+        static constexpr size_t BIG_INT = 10 * LindormContest::Storage::BLOCK_SIZE + 1;
         using CHIMP_TYPE = typename duckdb::ChimpType<double>::type;
-        std::vector<double> input = {1.3, 2.9, 3.1, 5.9};
-
+//        std::vector<double> input = {1.3, 2.9, 3.1, 5.9};
+        std::vector<double> input;
+        int A = -5000, B = 5000;
+        for (auto i = 0; i < 2000; ++i) {
+            float r3 = A + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(B-A)));
+            input.emplace_back(r3);
+        }
+        
         auto length = input.size();
         uint32_t uncompressSize = length * sizeof(CHIMP_TYPE);
 
         // pre-allocate a large size
-        char *origin = reinterpret_cast<char *>(input.data());
-        uint8_t *compress = reinterpret_cast<uint8_t *>(malloc(uncompressSize));
-        std::unique_ptr<duckdb::ChimpCompressionState<double>> chimpCompressor = duckdb::ChimpInitCompression<double>(compress);
-        chimpCompressor->Append(origin,length);
-        chimpCompressor->Finalize();
-        auto compressSize = chimpCompressor->UsedSpace();
+        uint8_t *origin = reinterpret_cast<uint8_t *>(input.data());
+        uint8_t *compress = reinterpret_cast<uint8_t *>(malloc(BIG_INT));
+        auto compressSize = duckdb::ChimpCompress<double>(origin,length,compress);
         GTEST_LOG_(INFO) << "compress size: " << compressSize;
 
         uint8_t *recover = reinterpret_cast<uint8_t *>(malloc(BIG_INT));
 
-        std::unique_ptr<duckdb::ChimpScanState<double>> chimpDecompressor = duckdb::ChimpInitScan<double>(compress);
-        duckdb::ChimpScan<double>(reinterpret_cast<duckdb::ChimpScanState<double>&>(*chimpCompressor),compressSize,recover);
+        duckdb::DecompressChimp<double>(compress,compressSize,recover);
 
 //        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
 //
