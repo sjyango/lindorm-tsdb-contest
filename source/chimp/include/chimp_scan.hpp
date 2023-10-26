@@ -118,16 +118,16 @@ struct ChimpScanState: public SegmentScanState {
 public:
     using CHIMP_TYPE = typename ChimpType<T>::type;
 
-    explicit ChimpScanState(uint8_t* compressData, size_t segCnt) : segment_count(segCnt) {
+    explicit ChimpScanState(const uint8_t* compressData, size_t segCnt) : segment_count(segCnt) {
 //        auto &buffer_manager = BufferManager::GetBufferManager(segment.db);
         
         data = compressData;
         // ScanStates never exceed the boundaries of a Segment,
         // but are not guaranteed to start at the beginning of the Block
         auto start_of_data_segment = data + ChimpPrimitives::HEADER_SIZE;
-        group_state.Init(start_of_data_segment);
+        group_state.Init(const_cast<uint8_t*>(start_of_data_segment));
         auto metadata_offset = Load<uint32_t>(data);
-        metadata_ptr = data + metadata_offset;
+        metadata_ptr = const_cast<uint8_t*>(data) + metadata_offset;
     }
 
 //    BufferHandle handle;
@@ -136,7 +136,7 @@ public:
     ChimpGroupState<CHIMP_TYPE> group_state;
 
 //    ColumnSegment &segment;
-    uint8_t* data;
+    const uint8_t* data;
     idx_t segment_count;
 
     idx_t LeftInGroup() const {
@@ -244,8 +244,8 @@ public:
 template <class T>
 void DecompressChimp(uint8_t* compress, size_t segCnt, uint8_t* recover){
     ChimpScanState<T> state = ChimpScanState<T>(compress,segCnt);
-    for (idx_t base_row_index = 0; base_row_index < segCnt; base_row_index += 2048) {
-        idx_t count = MinValue<idx_t>(segCnt - base_row_index, 2048);
+    for (idx_t base_row_index = 0; base_row_index < segCnt; base_row_index += STANDARD_VECTOR_SIZE) {
+        idx_t count = MinValue<idx_t>(segCnt - base_row_index, STANDARD_VECTOR_SIZE);
 //        scan_state.row_index = segment.start + base_row_index;
         ChimpScanPartial<T>(state, count, recover);
     }

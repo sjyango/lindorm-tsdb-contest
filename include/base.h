@@ -147,3 +147,5 @@ namespace LindormContest {
 
 #define DUCKDB_LIKELY(...)   DUCKDB_BUILTIN_EXPECT((__VA_ARGS__), 1)
 #define DUCKDB_UNLIKELY(...) DUCKDB_BUILTIN_EXPECT((__VA_ARGS__), 0)
+
+#define STANDARD_VECTOR_SIZE 2048
