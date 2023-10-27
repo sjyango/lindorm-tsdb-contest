@@ -3,17 +3,29 @@
 #include "compression/float_compression.h"
 #include "compression/string_compressor.h"
 #include "compression/integer_compression.h"
+#include "compression/chimp_compression.h"
 
 namespace LindormContest::compression {
 
-    static uint32_t compress_double(const char *source, uint32_t source_size, char *dest) {
+    static uint32_t compress_double_gorilla(const char *source, uint32_t source_size, char *dest) {
         static CompressionCodecGorilla compressionCodecGorilla(8);
         return compressionCodecGorilla.compress(source, source_size, dest);
     }
 
-    static char * decompress_double(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+    static char * decompress_double_gorilla(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
         static CompressionCodecGorilla compressionCodecGorilla(8);
         return dest + compressionCodecGorilla.decompress(source, source_size, dest, uncompressed_size);
+    }
+
+    static uint32_t compress_double_chimp(const char *source, uint32_t source_size, char *dest) {
+        static CompressionCodecChimp compressor;
+        return compressor.compress(source, source_size, dest);
+    }
+
+    static char * decompress_double_chimp(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+        static CompressionCodecChimp decompressor;
+        decompressor.decompress(source, source_size, dest, uncompressed_size);
+        return dest;
     }
 
     static uint32_t compress_int16(const char *source, uint32_t source_size, char *dest) {
@@ -78,4 +90,13 @@ namespace LindormContest::compression {
         compressionCodecZstd.decompress(source, source_size, dest, uncompressed_size);
     }
 
+    static uint32_t compress_string_brotli(const char *source, uint32_t source_size, char *dest) {
+        static CompressionCodecBrotli compressionCodecBrotli;
+        return compressionCodecBrotli.compress(source, source_size, dest);
+    }
+
+    static void decompress_string_brotli(const char *source, uint32_t source_size, char *dest, uint32_t uncompressed_size) {
+        static CompressionCodecBrotli compressionCodecBrotli;
+        compressionCodecBrotli.decompress(source, source_size, dest, uncompressed_size);
+    }
 }

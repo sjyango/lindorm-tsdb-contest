@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "spinlock.h"
-#include "concurrentqueue.h"
 
 namespace LindormContest {
 
@@ -31,8 +30,6 @@ namespace LindormContest {
 
     using ThreadPoolSPtr = std::shared_ptr<ThreadPool>;
     using ThreadPoolUPtr = std::unique_ptr<ThreadPool>;
-
-    // using ConcurrentQueue = moodycamel::ConcurrentQueue<std::function<void()>>;
 
     class ConcurrentQueue {
     public:

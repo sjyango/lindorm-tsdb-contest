@@ -87,10 +87,10 @@ namespace LindormContest {
 
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 2000;
-    static constexpr uint16_t FILE_CONVERT_SIZE = 6000;
+    static constexpr uint16_t FILE_CONVERT_SIZE = 12000;
     static constexpr uint16_t TSM_FILE_COUNT = TS_NUM_RANGE / FILE_CONVERT_SIZE;
     static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
-    static constexpr uint16_t POOL_THREAD_NUM = 6;
+    static constexpr uint16_t POOL_THREAD_NUM = 8;
     static constexpr uint32_t BITPACKING_RANGE_NUM = 1 << 6;
     static constexpr uint32_t ROW_CACHE_SIZE = 256 * 1024;
 
@@ -102,7 +102,9 @@ namespace LindormContest {
     static const int32_t INT_NAN = 0x80000000;
     static const double_t EPSILON = std::pow(10.0, -5);
 
-
+    static constexpr int BLOCK_HEADER_SIZE = sizeof(uint64_t);
+    static constexpr int BLOCK_ALLOC_SIZE = DATA_BLOCK_ITEM_NUMS * sizeof(double_t) * 2;
+    static constexpr int BLOCK_SIZE = BLOCK_ALLOC_SIZE - BLOCK_HEADER_SIZE;
 
 #define ERR_LOG(str, ...) {                                  \
     fprintf(stderr, "%s:%d. [ERROR]: ", __FILE__, __LINE__); \
@@ -125,3 +127,5 @@ namespace LindormContest {
         INFO_LOG("time cost for %s: %ld ms", #name, duration_##name.count())                                     \
     } while (false);
 }
+
+#define STANDARD_VECTOR_SIZE 2048

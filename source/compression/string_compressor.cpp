@@ -24,4 +24,22 @@ namespace LindormContest::compression {
             throw "Error on decompressing";
         }
     }
+
+    uint32_t CompressionCodecBrotli::compress(const char *source, uint32_t source_size, char *dest) const {
+        size_t encode_size;
+        bool encode_res = BrotliEncoderCompress(BROTLI_DEFAULT_QUALITY, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
+                                                source_size, reinterpret_cast<const uint8_t *>(source), &encode_size,
+                                                reinterpret_cast<uint8_t *>(dest));
+        assert(encode_res);
+        return encode_size;
+    }
+
+    void CompressionCodecBrotli::decompress(const char *source, uint32_t source_size,
+                                            char *dest, uint32_t uncompressed_size) const {
+        size_t decode_size;
+        auto decode_res = BrotliDecoderDecompress(source_size, reinterpret_cast<const uint8_t *>(source), &decode_size,
+                                                  reinterpret_cast<uint8_t *>(dest));
+        assert(decode_size == uncompressed_size);
+        assert(decode_res == BROTLI_DECODER_RESULT_SUCCESS);
+    }
 }
