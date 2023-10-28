@@ -27,7 +27,7 @@ namespace LindormContest::compression {
 
     uint32_t CompressionCodecBrotli::compress(const char *source, uint32_t source_size, char *dest) const {
         size_t encode_size;
-        bool encode_res = BrotliEncoderCompress(BROTLI_DEFAULT_QUALITY, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
+        bool encode_res = BrotliEncoderCompress(2, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
                                                 source_size, reinterpret_cast<const uint8_t *>(source), &encode_size,
                                                 reinterpret_cast<uint8_t *>(dest));
         assert(encode_res);

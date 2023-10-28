@@ -185,6 +185,12 @@ namespace LindormContest {
                         ColumnValue column_value(p, str_length);
                         p += str_length;
                         string_data_block._column_values[block_offset] = column_value;
+                        if (unlikely(string_data_block._str_length == std::numeric_limits<uint8_t>::max())) {
+                            string_data_block._str_length = str_length;
+                        }
+                        if (string_data_block._same_length) {
+                            string_data_block._same_length = string_data_block._str_length == str_length;
+                        }
                         break;
                     }
                     default:
