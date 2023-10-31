@@ -361,7 +361,7 @@ namespace LindormContest {
                 buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
                 buf->append(stage_one_compress_data.get(), stage_one_compress_size);
             } else {
-                INFO_LOG("encode_to_bitpack_zstd, range: %d, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", _max - _min + 1, stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
+                // INFO_LOG("encode_to_bitpack_zstd, range: %d, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", _max - _min + 1, stage_one_uncompress_size, stage_two_uncompress_size, stage_two_compress_size)
                 put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACK_ZSTD));
                 put_fixed(buf, _required_bits);
                 put_fixed(buf, _min);

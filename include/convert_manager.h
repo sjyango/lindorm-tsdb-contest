@@ -32,7 +32,7 @@ namespace LindormContest {
     public:
         ConvertManager() = default;
 
-        ConvertManager(uint16_t vin_num, const Path& root_path) : _vin_num(vin_num), _schema(nullptr) {
+        ConvertManager(uint16_t vin_num, const Path &root_path) : _vin_num(vin_num), _schema(nullptr) {
             _no_compaction_path = root_path / "no-compaction" / std::to_string(_vin_num);
             _compaction_path = root_path / "compaction" / std::to_string(_vin_num);
             std::filesystem::create_directories(_compaction_path);
@@ -84,8 +84,8 @@ namespace LindormContest {
                 }
             }
 
-            const char* start = buf.c_str();
-            const char* end = start + buf.size();
+            const char *start = buf.c_str();
+            const char *end = start + buf.size();
 
             while (start < end) {
                 deserialize_row(start, sorted_columns);
@@ -99,12 +99,17 @@ namespace LindormContest {
                 switch (_schema->columnTypeMap[column_name]) {
                     case COLUMN_TYPE_INTEGER: {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                            IntDataBlock& int_data_block = dynamic_cast<IntDataBlock&>(*data_blocks[i]);
+                            IntDataBlock &int_data_block = dynamic_cast<IntDataBlock &>(*data_blocks[i]);
                             uint32_t range_width = int_data_block._max - int_data_block._min + 1;
 
                             if (range_width == 1) {
                                 int_data_block._type = IntCompressType::SAME;
-                            } else if (range_width <= BITPACKING_RANGE_NUM) {
+                            } else if (range_width <= BITPACKING_RANGE_NUM
+                                       || range_width == 9985
+                                       || range_width == 4993
+                                       || range_width == 2993
+                                       || range_width == 9969
+                                       || range_width == 1985) {
                                 int_data_block._type = IntCompressType::BITPACK;
                             } else {
                                 int_data_block._type = IntCompressType::FASTPFOR;
@@ -118,7 +123,7 @@ namespace LindormContest {
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                            DoubleDataBlock& double_data_block = dynamic_cast<DoubleDataBlock&>(*data_blocks[i]);
+                            DoubleDataBlock &double_data_block = dynamic_cast<DoubleDataBlock &>(*data_blocks[i]);
 
                             if (double_data_block._max == double_data_block._min) {
                                 double_data_block._type = DoubleCompressType::SAME;
@@ -134,7 +139,7 @@ namespace LindormContest {
                     }
                     case COLUMN_TYPE_STRING: {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
-                            StringDataBlock& string_data_block = dynamic_cast<StringDataBlock&>(*data_blocks[i]);
+                            StringDataBlock &string_data_block = dynamic_cast<StringDataBlock &>(*data_blocks[i]);
 
                             if (string_data_block._min_length == string_data_block._max_length) {
                                 string_data_block._type = StringCompressType::ZSTD_SAME_LENGTH;
@@ -157,7 +162,8 @@ namespace LindormContest {
             output_tsm_file.write_to_file(output_tsm_file_path);
         }
 
-        inline void deserialize_row(const char*& p, std::map<std::string, std::vector<std::unique_ptr<DataBlock>>>& sorted_columns) {
+        inline void deserialize_row(const char *&p,
+                                    std::map<std::string, std::vector<std::unique_ptr<DataBlock>>> &sorted_columns) {
             uint16_t ts_num = decode_ts(*reinterpret_cast<const int64_t *>(p)) % FILE_CONVERT_SIZE;
             p += sizeof(int64_t);
             uint16_t block_index = ts_num / DATA_BLOCK_ITEM_NUMS;
@@ -166,7 +172,7 @@ namespace LindormContest {
             for (auto &[column_name, column_blocks]: sorted_columns) {
                 switch (_schema->columnTypeMap[column_name]) {
                     case COLUMN_TYPE_INTEGER: {
-                        IntDataBlock& int_data_block = dynamic_cast<IntDataBlock&>(*column_blocks[block_index]);
+                        IntDataBlock &int_data_block = dynamic_cast<IntDataBlock &>(*column_blocks[block_index]);
                         int32_t int_value = *reinterpret_cast<const int32_t *>(p);
                         p += sizeof(int32_t);
                         int_data_block._column_values[block_offset] = int_value;
@@ -176,7 +182,7 @@ namespace LindormContest {
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
-                        DoubleDataBlock& double_data_block = dynamic_cast<DoubleDataBlock&>(*column_blocks[block_index]);
+                        DoubleDataBlock &double_data_block = dynamic_cast<DoubleDataBlock &>(*column_blocks[block_index]);
                         double_t double_value = *reinterpret_cast<const double_t *>(p);
                         p += sizeof(double_t);
                         double_data_block._column_values[block_offset] = double_value;
@@ -186,7 +192,7 @@ namespace LindormContest {
                         break;
                     }
                     case COLUMN_TYPE_STRING: {
-                        StringDataBlock& string_data_block = dynamic_cast<StringDataBlock&>(*column_blocks[block_index]);
+                        StringDataBlock &string_data_block = dynamic_cast<StringDataBlock &>(*column_blocks[block_index]);
                         int32_t str_length = *reinterpret_cast<const int32_t *>(p);
                         p += sizeof(int32_t);
                         ColumnValue column_value(p, str_length);
