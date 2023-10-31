@@ -106,7 +106,6 @@ namespace LindormContest {
                                 int_data_block._type = IntCompressType::SAME;
                             } else if (range_width <= BITPACKING_RANGE_NUM) {
                                 int_data_block._type = IntCompressType::BITPACK;
-                                int_data_block._required_bits = get_next_power_of_two(range_width);
                             } else {
                                 int_data_block._type = IntCompressType::FASTPFOR;
                             }

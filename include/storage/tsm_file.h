@@ -152,7 +152,7 @@ namespace LindormContest {
         int64_t _sum = 0;
         int32_t _min = std::numeric_limits<int32_t>::max();
         int32_t _max = std::numeric_limits<int32_t>::lowest();
-        uint8_t _required_bits; // just for BITPACK
+        mutable uint8_t _required_bits; // just for BITPACK
 
         IntDataBlock() = default;
 
@@ -279,14 +279,7 @@ namespace LindormContest {
 
         bool encode_to_fastpfor(std::string* buf) const {
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> column_values;
-
-            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-            //     column_values[i] = _column_values[i] - _min;
-            // }
-            // FastPForLib::Delta::deltaSIMD(column_values.data(), column_values.size());
-
             delta_and_zigzag_encode(_column_values.data(), column_values.data(), DATA_BLOCK_ITEM_NUMS);
-
             const uint32_t * stage_one_uncompress_data = column_values.data();
             uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS;
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS * 2> stage_one_compress_data;
@@ -325,13 +318,7 @@ namespace LindormContest {
             std::memcpy(compress_data.data(), buf + 2 * sizeof(uint32_t), compress_size * sizeof(uint32_t));
             uint32_t decompress_size = compression::decompress_int32_fastpfor(compress_data.data(), compress_size, uncompress_data.data());
             assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
-
             delta_and_zigzag_decode(uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
-
-            // FastPForLib::Delta::inverseDeltaSIMD(uncompress_data.data(), uncompress_data.size());
-            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-            //     _column_values[i] = _min + uncompress_data[i];
-            // }
         }
 
         void decode_from_fastpfor_zstd(const char* buf) {
@@ -347,16 +334,11 @@ namespace LindormContest {
             uint32_t stage_one_compress_size = stage_two_uncompress_size / sizeof(uint32_t);
             uint32_t decompress_size = compression::decompress_int32_fastpfor(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.data());
             assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
-
             delta_and_zigzag_decode(stage_one_uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
-
-            // FastPForLib::Delta::inverseDeltaSIMD(stage_one_uncompress_data.data(), stage_one_uncompress_data.size());
-            // for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
-            //     _column_values[i] = _min + stage_one_uncompress_data[i];
-            // }
         }
 
         void encode_to_bitpack(std::string* buf) const {
+            _required_bits = get_next_power_of_two(_max - _min + 1);
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
 
             for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
@@ -427,7 +409,6 @@ namespace LindormContest {
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
             uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
             if (compress_size >= uncompress_size) {
-                // INFO_LOG("int encode_to_zstd, compress_size >= uncompress_size")
                 return false;
             }
             put_fixed(buf, static_cast<uint8_t>(IntCompressType::ZSTD));
