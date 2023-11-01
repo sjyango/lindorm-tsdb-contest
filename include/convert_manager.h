@@ -102,14 +102,14 @@ namespace LindormContest {
                             IntDataBlock &int_data_block = dynamic_cast<IntDataBlock &>(*data_blocks[i]);
                             uint32_t range_width = int_data_block._max - int_data_block._min + 1;
 
-                            if (range_width == 1) {
+                            if (unlikely(range_width == 1)) {
                                 int_data_block._type = IntCompressType::SAME;
-                            } else if (range_width <= BITPACKING_RANGE_NUM
-                                       || range_width == 9985
-                                       || range_width == 4993
-                                       || range_width == 2993
-                                       || range_width == 9969
-                                       || range_width == 1985) {
+                            } else if (unlikely(range_width <= BITPACKING_RANGE_NUM
+                                                || range_width == 9985
+                                                || range_width == 4993
+                                                || range_width == 2993
+                                                || range_width == 9969
+                                                || range_width == 1985)) {
                                 int_data_block._type = IntCompressType::BITPACK;
                             } else {
                                 int_data_block._type = IntCompressType::FASTPFOR;
