@@ -63,6 +63,10 @@ namespace LindormContest {
             }
             return trs;
         }
+
+        uint16_t range_width() const {
+            return _end_idx - _start_idx + 1;
+        }
     };
 
     struct IndexRange {

@@ -27,6 +27,13 @@ namespace LindormContest::test {
         return dis(gen);
     }
 
+    static int32_t generate_random_int32() {
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<int32_t> dis(13000, 13000 + 9985);
+        return dis(gen);
+    }
+
     static std::string generate_random_string(int length) {
         const std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -150,52 +157,25 @@ namespace LindormContest::test {
         GTEST_LOG_(INFO) << "gorilla compress ratio: " << compressGorilla * 1.0 / uncompressSize;
     }
 
-    //    TEST(Compression, BitPackingTest) {
-    //        size_t k, N = 9999;
-    //        __m128i * endofbuf;
-    //        uint32_t * datain = static_cast<uint32_t *>(std::malloc(N * sizeof(uint32_t)));
-    //        uint8_t * buffer;
-    //        uint32_t * backbuffer = static_cast<uint32_t *>(malloc(N * sizeof(uint32_t)));
-    //        uint32_t b;
-    //
-    //        for (k = 0; k < N; ++k) {        /* start with k=0, not k=1! */
-    //            datain[k] = k;
-    //        }
-    //
-    //        b = maxbits_length(datain, N);
-    //        buffer = static_cast<uint8_t *>(malloc(simdpack_compressedbytes(N, b))); // allocate just enough memory
-    //        endofbuf = simdpack_length(datain, N, (__m128i *)buffer, b);
-    //        /* compressed data is stored between buffer and endofbuf using (endofbuf-buffer)*sizeof(__m128i) bytes */
-    //        /* would be safe to do : buffer = realloc(buffer,(endofbuf-(__m128i *)buffer)*sizeof(__m128i)); */
-    //        simdunpack_length((const __m128i *)buffer, N, backbuffer, b);
-    //
-    //        for (k = 0; k < N; ++k) {
-    //            ASSERT_EQ(datain[k], backbuffer[k]);
-    //        }
-    //    }
-    //
+    TEST(Compression, gorilla_int_test) {
+       static constexpr size_t N = 2000;
+       std::vector<int32_t> src;
 
-    //TEST(Compression, gorilla_int_test) {
-    //    static constexpr size_t BIG_INT = 100;
-    //    std::vector<uint64_t> input = {3,4,4,2,6,7,2,1,100,35};
-    //    auto length = input.size();
-    //    uint32_t uncompressSize = length * sizeof(uint64_t);
-    //
-    //    // pre-allocate a large size
-    //    char* origin = reinterpret_cast<char *>(input.data());
-    //    char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
-    //
-    //    uint32_t compress_size = LindormContest::compression::compress_int64(origin,uncompressSize,compress);
-    //
-    //    char *recover = reinterpret_cast<char*>(malloc(BIG_INT));
-    //
-    //    auto newDest = LindormContest::compression::decompress_int64(compress,compress_size,recover,uncompressSize);
-    //
-    //    verifyResult<uint64_t>(input,newDest);
-    //
-    //    free(recover);
-    //    free(compress);
-    //    GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compress_size;
-    //    GTEST_LOG_(INFO) << "compress ratio: " << (uncompressSize - compress_size) * 1.0 / uncompressSize;
-    //}
+       for (size_t i = 0; i < N; ++i) {
+           src.push_back(generate_random_int32());
+       }
+
+       std::unique_ptr<char[]> dst1 = std::make_unique<char[]>(N * 4);
+       std::unique_ptr<char[]> dst2 = std::make_unique<char[]>(N * 4);
+       std::unique_ptr<char[]> dst3 = std::make_unique<char[]>(N * 4);
+
+       uint32_t compress_size1 = compression::compress_int32_gorilla(reinterpret_cast<const char *>(src.data()), N * 4, dst1.get());
+       // uint32_t compress_size2 = compression::compress_int32_fastpfor(reinterpret_cast<const uint32_t *>(src.data()), N * 4,
+       //                                                                reinterpret_cast<uint32_t *>(dst2.get()));
+       uint32_t compress_size3 = compression::compress_int32_simple8b(reinterpret_cast<const char *>(src.data()), N * 4, dst3.get());
+
+        INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size1)
+        // INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size2)
+        INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size3)
+    }
 }

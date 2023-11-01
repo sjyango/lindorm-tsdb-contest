@@ -44,6 +44,15 @@ namespace LindormContest {
         template <bool finish_compaction>
         void query_time_range(const Vin& vin, const TimeRange& tr, const std::set<std::string>& requested_columns,
                               std::vector<Row> &trReadRes) {
+            if constexpr (finish_compaction) {
+                trReadRes.resize(tr.range_width());
+                for (size_t i = 0; i < trReadRes.size(); ++i) {
+                    trReadRes[i].vin = vin;
+                    trReadRes[i].timestamp = encode_ts(i + tr._start_idx);
+                }
+            }
+            uint16_t row_idx = 0;
+
             for (uint16_t file_idx = tr._start_idx / FILE_CONVERT_SIZE; file_idx <= tr._end_idx / FILE_CONVERT_SIZE; ++file_idx) {
                 TimeRange file_tr (
                         std::max(tr._start_idx, (uint16_t) (file_idx * FILE_CONVERT_SIZE)) % FILE_CONVERT_SIZE,
@@ -51,7 +60,8 @@ namespace LindormContest {
                         );
 
                 if constexpr (finish_compaction) {
-                    _query_from_one_tsm_file(vin, file_idx, file_tr, requested_columns, trReadRes);
+                    _query_from_one_tsm_file(vin, file_idx, file_tr, requested_columns, row_idx, trReadRes);
+                    row_idx += file_tr.range_width();
                 } else {
                     _query_from_one_flush_file(vin, file_idx, file_tr, requested_columns, trReadRes);
                 }
@@ -60,35 +70,15 @@ namespace LindormContest {
 
     private:
         void _query_from_one_tsm_file(const Vin& vin, uint16_t file_idx, const TimeRange& file_tr,
-                                      const std::set<std::string>& requested_columns, std::vector<Row> &trReadRes) {
-            std::unordered_map<std::string, std::vector<ColumnValue>> all_column_values;
-
+                                      const std::set<std::string>& requested_columns,
+                                      uint16_t row_idx, std::vector<Row> &trReadRes) {
             for (const auto &column_name: requested_columns) {
-                std::vector<ColumnValue> column_values;
                 std::vector<IndexEntry> index_entries;
                 std::vector<IndexRange> ranges;
                 _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
-                _get_column_values(file_idx, _schema->columnTypeMap[column_name], index_entries, ranges, column_values);
-                all_column_values.emplace(column_name, std::move(column_values));
+                _get_column_values(file_idx, column_name, _schema->columnTypeMap[column_name],
+                                   index_entries, ranges, row_idx, trReadRes);
             }
-
-            size_t row_nums = all_column_values.begin()->second.size();
-            uint32_t ts_start = file_idx * FILE_CONVERT_SIZE + file_tr._start_idx;
-            uint32_t ts_end = file_idx * FILE_CONVERT_SIZE + file_tr._end_idx;
-
-            for (size_t i = 0; i < row_nums; ++i) {
-                Row result_row;
-                result_row.vin = vin;
-                result_row.timestamp = encode_ts(ts_start++);
-
-                for (const auto &column_name: requested_columns) {
-                    result_row.columns.emplace(column_name, all_column_values[column_name][i]);
-                }
-
-                trReadRes.emplace_back(std::move(result_row));
-            }
-
-            assert(ts_start == ts_end + 1);
         }
 
         void _query_from_one_flush_file(const Vin& vin, uint16_t file_idx, const TimeRange& file_tr,
@@ -120,10 +110,9 @@ namespace LindormContest {
             }
         }
 
-        void _get_column_values(uint16_t file_idx, ColumnType type,
-                                const std::vector<IndexEntry>& index_entries,
-                                const std::vector<IndexRange>& ranges,
-                                std::vector<ColumnValue>& column_values) {
+        void _get_column_values(uint16_t file_idx, const std::string& column_name,
+                                ColumnType column_type, const std::vector<IndexEntry>& index_entries,
+                                const std::vector<IndexRange>& ranges, uint16_t start_idx, std::vector<Row> &trReadRes) {
             Path tsm_file_path = _vin_dir_path / std::to_string(file_idx);
             uint32_t global_offset = index_entries.front()._offset;
             uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
@@ -132,29 +121,41 @@ namespace LindormContest {
 
             for (size_t i = 0; i < index_entries.size(); ++i) {
                 uint32_t local_offset = index_entries[i]._offset - global_offset;
-                switch (type) {
+                switch (column_type) {
                     case COLUMN_TYPE_INTEGER: {
                         IntDataBlock int_data_block;
                         int_data_block.decode_from_decompress(buf.c_str() + local_offset);
-                        for (uint16_t start = ranges[i]._start_index; start <= ranges[i]._end_index; ++start) {
-                            column_values.emplace_back(int_data_block._column_values[start]);
+                        uint16_t start = ranges[i]._start_index;
+                        uint16_t end = ranges[i]._end_index;
+
+                        for (; start <= end; ++start) {
+                            trReadRes[start_idx++].columns.emplace(column_name, int_data_block._column_values[start]);
                         }
+
                         break;
                     }
                     case COLUMN_TYPE_DOUBLE_FLOAT: {
                         DoubleDataBlock double_data_block;
                         double_data_block.decode_from_decompress(buf.c_str() + local_offset);
-                        for (uint16_t start = ranges[i]._start_index; start <= ranges[i]._end_index; ++start) {
-                            column_values.emplace_back(double_data_block._column_values[start]);
+                        uint16_t start = ranges[i]._start_index;
+                        uint16_t end = ranges[i]._end_index;
+
+                        for (; start <= end; ++start) {
+                            trReadRes[start_idx++].columns.emplace(column_name, double_data_block._column_values[start]);
                         }
+
                         break;
                     }
                     case COLUMN_TYPE_STRING: {
                         StringDataBlock str_data_block;
                         str_data_block.decode_from_decompress(buf.c_str() + local_offset);
-                        for (uint16_t start = ranges[i]._start_index; start <= ranges[i]._end_index; ++start) {
-                            column_values.emplace_back(str_data_block._column_values[start]);
+                        uint16_t start = ranges[i]._start_index;
+                        uint16_t end = ranges[i]._end_index;
+
+                        for (; start <= end; ++start) {
+                            trReadRes[start_idx++].columns.emplace(column_name, str_data_block._column_values[start]);
                         }
+
                         break;
                     }
                     default:
