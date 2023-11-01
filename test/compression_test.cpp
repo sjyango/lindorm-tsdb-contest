@@ -157,25 +157,4 @@ namespace LindormContest::test {
         GTEST_LOG_(INFO) << "gorilla compress ratio: " << compressGorilla * 1.0 / uncompressSize;
     }
 
-    TEST(Compression, gorilla_int_test) {
-       static constexpr size_t N = 2000;
-       std::vector<int32_t> src;
-
-       for (size_t i = 0; i < N; ++i) {
-           src.push_back(generate_random_int32());
-       }
-
-       std::unique_ptr<char[]> dst1 = std::make_unique<char[]>(N * 4);
-       std::unique_ptr<char[]> dst2 = std::make_unique<char[]>(N * 4);
-       std::unique_ptr<char[]> dst3 = std::make_unique<char[]>(N * 4);
-
-       uint32_t compress_size1 = compression::compress_int32_gorilla(reinterpret_cast<const char *>(src.data()), N * 4, dst1.get());
-       // uint32_t compress_size2 = compression::compress_int32_fastpfor(reinterpret_cast<const uint32_t *>(src.data()), N * 4,
-       //                                                                reinterpret_cast<uint32_t *>(dst2.get()));
-       uint32_t compress_size3 = compression::compress_int32_simple8b(reinterpret_cast<const char *>(src.data()), N * 4, dst3.get());
-
-        INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size1)
-        // INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size2)
-        INFO_LOG("uncompress size: %lu, compress size: %d", N * 4, compress_size3)
-    }
 }

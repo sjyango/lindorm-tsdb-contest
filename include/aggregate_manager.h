@@ -90,7 +90,7 @@ namespace LindormContest {
 
                 if constexpr (finish_compaction) {
                     _query_avg_from_one_tsm_file<T>(file_idx, file_tr, column_name, sum_value);
-                    sum_count += (file_tr._end_idx - file_tr._start_idx + 1);
+                    sum_count += file_tr.range_width();
                 } else {
                     _query_avg_from_one_flush_file<T>(file_idx, file_tr, column_name, sum_value, sum_count);
                 }
@@ -113,6 +113,14 @@ namespace LindormContest {
             std::vector<IndexEntry> index_entries;
             std::vector<IndexRange> ranges;
             _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
+
+            if (unlikely(file_tr.range_width() == FILE_CONVERT_SIZE)) {
+                for (const auto &index_entry : index_entries) {
+                    file_max_value = std::max(file_max_value, index_entry.get_max<T>());
+                }
+                return;
+            }
+
             uint32_t global_offset = index_entries.front()._offset;
             uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
             Path tsm_file_path = _vin_dir_path / std::to_string(file_idx);
@@ -160,6 +168,14 @@ namespace LindormContest {
             std::vector<IndexEntry> index_entries;
             std::vector<IndexRange> ranges;
             _index_manager->query_indexes(_vin_num, file_idx, column_name, file_tr, index_entries, ranges);
+
+            if (unlikely(file_tr.range_width() == FILE_CONVERT_SIZE)) {
+                for (const auto &index_entry : index_entries) {
+                    sum_value += index_entry.get_sum<T>();
+                }
+                return;
+            }
+
             uint32_t global_offset = index_entries.front()._offset;
             uint32_t global_size = index_entries.back()._offset + index_entries.back()._size - global_offset;
             Path tsm_file_path = _vin_dir_path / std::to_string(file_idx);
