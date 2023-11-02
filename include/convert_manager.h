@@ -101,7 +101,26 @@ namespace LindormContest {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                             IntDataBlock &int_data_block = dynamic_cast<IntDataBlock &>(*data_blocks[i]);
                             uint32_t range_width = int_data_block._max - int_data_block._min + 1;
-
+                            int flag = 0;
+                            int choose = int_data_block._column_values[1] - int_data_block._column_values[0];
+                            if(choose > 0) {
+                                flag = 1;
+                                for (int k = 2; k < DATA_BLOCK_ITEM_NUMS; k++) {
+                                    if (int_data_block._column_values[k] < int_data_block._column_values[k - 1]) {
+                                        flag = -1;
+                                        break;
+                                    }
+                                }
+                            }else{
+                                flag = 2;
+                                for (int k = 2; k < DATA_BLOCK_ITEM_NUMS; k++) {
+                                    if (int_data_block._column_values[k] > int_data_block._column_values[k - 1]) {
+                                        flag = -1;
+                                        break;
+                                    }
+                                }
+                            }
+                            //flag-->judge
                             if (range_width == 1) {
                                 int_data_block._type = IntCompressType::SAME;
                             } else if (range_width <= BITPACKING_RANGE_NUM
