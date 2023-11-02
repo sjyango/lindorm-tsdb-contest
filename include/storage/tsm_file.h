@@ -842,10 +842,12 @@ namespace LindormContest {
         }
 
         bool encode_to_brotli(std::string *buf, std::string& uncompress_buf) const {
-            for (const auto &column_value: _column_values) {
-                uint8_t str_length = static_cast<uint8_t>(*reinterpret_cast<int32_t*>(column_value.columnData));
-                uncompress_buf.append((const char*) &str_length, sizeof(uint8_t));
-                uncompress_buf.append(column_value.columnData + sizeof(int32_t), str_length);
+            uncompress_buf.resize(DATA_BLOCK_ITEM_NUMS);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                uint8_t str_length = static_cast<uint8_t>(*reinterpret_cast<int32_t*>(_column_values[i].columnData));
+                *reinterpret_cast<uint8_t*>(uncompress_buf.data() + i) = str_length;
+                uncompress_buf.append(_column_values[i].columnData + sizeof(int32_t), str_length);
             }
 
             const char* uncompress_data = uncompress_buf.c_str();
@@ -857,7 +859,7 @@ namespace LindormContest {
                 return false;
             }
 
-            // INFO_LOG("string encode_to_brotli, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            // INFO_LOG("string encode_to_zstd, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
 
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::BROTLI));
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
@@ -873,22 +875,27 @@ namespace LindormContest {
             std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
             std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
             compression::decompress_string_brotli(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
-            size_t str_offset = 0;
-            uint16_t str_count = 0;
 
-            while (str_offset != uncompress_size) {
-                uint8_t str_length = *reinterpret_cast<uint8_t*>(uncompress_data.get() + str_offset);
-                str_offset += sizeof(uint8_t);
-                _column_values[str_count] = ColumnValue(uncompress_data.get() + str_offset, str_length);
-                str_offset += str_length;
-                str_count++;
+            std::array<uint8_t, DATA_BLOCK_ITEM_NUMS> str_lengths;
+            std::memcpy(str_lengths.data(), uncompress_data.get(), DATA_BLOCK_ITEM_NUMS);
+            const char* str_offset = uncompress_data.get() + DATA_BLOCK_ITEM_NUMS;
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = ColumnValue(str_offset, str_lengths[i]);
+                str_offset += str_lengths[i];
             }
 
-            assert(str_offset == uncompress_size);
-            assert(str_count == DATA_BLOCK_ITEM_NUMS);
+            assert(str_offset == uncompress_data.get() + uncompress_size);
         }
 
         bool encode_to_brotli_same_length(std::string *buf, std::string& uncompress_buf) const {
+            if (unlikely(_min_length == 0)) {
+                put_fixed(buf, static_cast<uint8_t>(StringCompressType::BROTLI_SAME_LENGTH));
+                uint8_t str_length = static_cast<uint8_t>(_min_length);
+                buf->append((const char*) &str_length, sizeof(uint8_t));
+                return true;
+            }
+
             for (const auto &column_value: _column_values) {
                 uncompress_buf.append(column_value.columnData + sizeof(int32_t), _min_length);
             }
@@ -902,7 +909,7 @@ namespace LindormContest {
                 return false;
             }
 
-            // INFO_LOG("string encode_to_brotli, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            // INFO_LOG("string encode_to_zstd_same_length, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
 
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::BROTLI_SAME_LENGTH));
             uint8_t str_length = static_cast<uint8_t>(_min_length);
@@ -910,11 +917,20 @@ namespace LindormContest {
             buf->append((const char*) &uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &compress_size, sizeof(uint32_t));
             buf->append(compress_data.get(), compress_size);
+
             return true;
         }
 
         void decode_from_brotli_same_length(const char* buf) {
-            uint32_t str_length = *reinterpret_cast<const uint8_t*>(buf);
+            uint8_t str_length = *reinterpret_cast<const uint8_t*>(buf);
+
+            if (unlikely(str_length == 0)) {
+                for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                    _column_values[i] = ColumnValue(buf, 0);
+                }
+                return;
+            }
+
             uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t));
             uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(uint32_t));
             std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);

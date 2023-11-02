@@ -36,7 +36,7 @@ namespace LindormContest {
 
     class GlobalLatestManager {
     public:
-        GlobalLatestManager(const Path& root_path, bool finish_compaction) : _root_path(root_path) {}
+        GlobalLatestManager(const Path& root_path) : _root_path(root_path) {}
 
         ~GlobalLatestManager() = default;
 
