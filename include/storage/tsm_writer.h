@@ -64,7 +64,7 @@ namespace LindormContest {
                         _cache[file_idx].shrink_to_fit();
                     }
                     _streams[file_idx].close();
-                    _convert_manager->convert_async(_vin_num, file_idx);
+                    _convert_manager->convert_async(_vin_num, file_idx,string_map);
                 }
             }
         }
@@ -90,6 +90,7 @@ namespace LindormContest {
         std::mutex _mutexes[TSM_FILE_COUNT];
         std::ofstream _streams[TSM_FILE_COUNT];
         GlobalConvertManagerSPtr _convert_manager;
+        std::map<std::string,int> string_map;
     };
 
     class TsmWriterManager;

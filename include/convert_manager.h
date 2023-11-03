@@ -46,7 +46,7 @@ namespace LindormContest {
             _schema = schema;
         }
 
-        void convert(uint16_t file_idx) {
+        void convert(uint16_t file_idx,std::map<std::string,int> &string_map) {
             TsmFile output_tsm_file;
             Path flush_file_path = _no_compaction_path / std::to_string(file_idx);
             std::string buf;
@@ -101,26 +101,6 @@ namespace LindormContest {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                             IntDataBlock &int_data_block = dynamic_cast<IntDataBlock &>(*data_blocks[i]);
                             uint32_t range_width = int_data_block._max - int_data_block._min + 1;
-                            int flag = 0;
-                            int choose = int_data_block._column_values[1] - int_data_block._column_values[0];
-                            if(choose > 0) {
-                                flag = 1;
-                                for (int k = 2; k < DATA_BLOCK_ITEM_NUMS; k++) {
-                                    if (int_data_block._column_values[k] < int_data_block._column_values[k - 1]) {
-                                        flag = -1;
-                                        break;
-                                    }
-                                }
-                            }else{
-                                flag = 2;
-                                for (int k = 2; k < DATA_BLOCK_ITEM_NUMS; k++) {
-                                    if (int_data_block._column_values[k] > int_data_block._column_values[k - 1]) {
-                                        flag = -1;
-                                        break;
-                                    }
-                                }
-                            }
-                            //flag-->judge
                             if (range_width == 1) {
                                 int_data_block._type = IntCompressType::SAME;
                             } else if (range_width <= BITPACKING_RANGE_NUM
@@ -159,7 +139,27 @@ namespace LindormContest {
                     case COLUMN_TYPE_STRING: {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                             StringDataBlock &string_data_block = dynamic_cast<StringDataBlock &>(*data_blocks[i]);
-
+                            if((i==0)&&(file_idx==0)) {
+                                if((column_name=="GLNG")||(column_name=="JUBK")||(column_name=="ORNI")||(column_name=="UZSV")) {
+                                    std::string string_key;
+                                    for (int j = 0; j < 6; j++) {
+                                        std::pair<int32_t, const char*> temp;
+                                        string_data_block._column_values[j].getStringValue(temp);
+                                        std::string str_temp;
+                                        for (int k = 0; k < temp.first; k++) {
+                                            const char* char_temp = temp.second + k;
+                                            str_temp += *char_temp;
+                                        }
+                                        string_key += str_temp;
+                                    }
+                                    if(string_map.count(string_key)==0){
+                                        string_map[string_key] = 1;
+                                    }else{
+                                        string_map[string_key] += 1;
+                                        INFO_LOG("string_map same vin=%d,column_name=%s", _vin_num,column_name.c_str())
+                                    }
+                                }
+                            }
                             if (string_data_block._min_length == string_data_block._max_length) {
                                 string_data_block._type = StringCompressType::ZSTD_SAME_LENGTH;
                             } else {
@@ -253,12 +253,12 @@ namespace LindormContest {
             }
         }
 
-        void convert_async(uint16_t vin_num, uint16_t file_idx) {
-            _thread_pool->submit(do_convert, _convert_managers[vin_num].get(), file_idx);
+        void convert_async(uint16_t vin_num, uint16_t file_idx, std::map<std::string,int> &string_map) {
+            _thread_pool->submit(do_convert, _convert_managers[vin_num].get(), file_idx, string_map);
         }
 
-        static void do_convert(ConvertManager *convert_manager, uint16_t file_idx) {
-            convert_manager->convert(file_idx);
+        static void do_convert(ConvertManager *convert_manager, uint16_t file_idx,std::map<std::string,int> &string_map) {
+            convert_manager->convert(file_idx,string_map);
         }
 
         void finalize_convert() {
