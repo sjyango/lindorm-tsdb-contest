@@ -152,7 +152,7 @@ namespace LindormContest {
                                         string_map[str_temp] = 1;
                                     }else{
                                         string_map[str_temp] += 1;
-                                        INFO_LOG("b_index=%d,string_map same vin=%d,column_name=%s,value=%s",i,_vin_num,column_name.c_str(),str_temp.c_str())
+                                        INFO_LOG("b_index=%d,map value=%d,string_map same vin=%d,column_name=%s,map_size=%ld,value=%s",i,string_map[str_temp],_vin_num,column_name.c_str(),string_map.size(),str_temp.c_str())
                                     }
                                 }
                             }
@@ -260,7 +260,6 @@ namespace LindormContest {
         void finalize_convert() {
             _thread_pool->shutdown();
             assert(_thread_pool->empty());
-
         }
 
         // void save_latest_records_to_file(const Path& latest_records_path) const {

@@ -70,6 +70,7 @@ namespace LindormContest {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
         INFO_LOG("####################### [demo->shutdown()] #######################")
+        INFO_LOG("####map_size=%ld",string_map.size())
         int i = 0;
         std::vector<std::pair<std::string ,int>>vec(string_map.begin(),string_map.end());
         std::sort(vec.begin(),vec.end(),cmp);
