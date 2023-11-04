@@ -60,19 +60,33 @@ namespace LindormContest {
         _convert_manager->init(_schema);
         return 0;
     }
-
+    bool cmp(std::pair<std::string ,int> a,std::pair<std::string ,int> b){
+        return a.second > b.second;
+    }
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
         _convert_manager->finalize_convert();
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
+        INFO_LOG("####################### [demo->shutdown()] #######################")
+        int i = 0;
+        std::vector<std::pair<std::string ,int>>vec(string_map.begin(),string_map.end());
+        std::sort(vec.begin(),vec.end(),cmp);
+        INFO_LOG("####size=%ld",vec.size())
+        INFO_LOG("####firstone,key=%s,value=%d",vec[0].first.c_str(),vec[0].second)
+        for(auto &e:vec){
+            if(e.second>=2) {
+                INFO_LOG("index=%d,key=%s,value=%d", i,e.first.c_str(), e.second)
+                i++;
+            }
+        }
         return 0;
     }
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
-            _writer_manager->append(row);
+            _writer_manager->append(row,string_map);
         }
         return 0;
     }

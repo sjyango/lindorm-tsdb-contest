@@ -139,24 +139,20 @@ namespace LindormContest {
                     case COLUMN_TYPE_STRING: {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                             StringDataBlock &string_data_block = dynamic_cast<StringDataBlock &>(*data_blocks[i]);
-                            if((i==0)&&(file_idx==0)) {
-                                if((column_name=="GLNG")||(column_name=="JUBK")||(column_name=="ORNI")||(column_name=="UZSV")) {
-                                    std::string string_key;
-                                    for (int j = 0; j < 6; j++) {
-                                        std::pair<int32_t, const char*> temp;
-                                        string_data_block._column_values[j].getStringValue(temp);
-                                        std::string str_temp;
-                                        for (int k = 0; k < temp.first; k++) {
-                                            const char* char_temp = temp.second + k;
-                                            str_temp += *char_temp;
-                                        }
-                                        string_key += str_temp;
+                            if((column_name=="GLNG")||(column_name=="JUBK")||(column_name=="ORNI")||(column_name=="UZSV")) {
+                                for (int j = 0; j < DATA_BLOCK_ITEM_NUMS; j++) {
+                                    std::pair<int32_t, const char*> temp;
+                                    string_data_block._column_values[j].getStringValue(temp);
+                                    std::string str_temp;
+                                    for (int k = 0; k < temp.first; k++) {
+                                        const char* char_temp = temp.second + k;
+                                        str_temp += *char_temp;
                                     }
-                                    if(string_map.count(string_key)==0){
-                                        string_map[string_key] = 1;
+                                    if(string_map.count(str_temp)==0){
+                                        string_map[str_temp] = 1;
                                     }else{
-                                        string_map[string_key] += 1;
-                                        INFO_LOG("string_map same vin=%d,column_name=%s", _vin_num,column_name.c_str())
+                                        string_map[str_temp] += 1;
+                                        INFO_LOG("b_index=%d,string_map same vin=%d,column_name=%s,value=%s",i,_vin_num,column_name.c_str(),str_temp.c_str())
                                     }
                                 }
                             }
@@ -264,6 +260,7 @@ namespace LindormContest {
         void finalize_convert() {
             _thread_pool->shutdown();
             assert(_thread_pool->empty());
+
         }
 
         // void save_latest_records_to_file(const Path& latest_records_path) const {

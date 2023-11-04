@@ -69,6 +69,7 @@ namespace LindormContest {
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
         GlobalConvertManagerSPtr _convert_manager;
+        std::map<std::string,int> string_map;
     }; // End class TSDBEngineImpl.
 
 }

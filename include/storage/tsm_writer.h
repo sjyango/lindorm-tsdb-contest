@@ -47,7 +47,7 @@ namespace LindormContest {
             }
         }
 
-        void append(const Row& row) {
+        void append(const Row& row,std::map<std::string,int> &string_map) {
             uint16_t file_idx = decode_ts(row.timestamp) / FILE_CONVERT_SIZE;
             {
                 std::lock_guard<std::mutex> l(_mutexes[file_idx]);
@@ -90,7 +90,7 @@ namespace LindormContest {
         std::mutex _mutexes[TSM_FILE_COUNT];
         std::ofstream _streams[TSM_FILE_COUNT];
         GlobalConvertManagerSPtr _convert_manager;
-        std::map<std::string,int> string_map;
+        //std::map<std::string,int> string_map;
     };
 
     class TsmWriterManager;
@@ -115,8 +115,8 @@ namespace LindormContest {
             }
         }
 
-        void append(const Row& row) {
-            _tsm_writers[decode_vin(row.vin)]->append(row);
+        void append(const Row& row,std::map<std::string,int> &string_map) {
+            _tsm_writers[decode_vin(row.vin)]->append(row,string_map);
         }
 
         void flush(uint16_t vin_num) {
