@@ -46,11 +46,11 @@ namespace LindormContest {
 
         template <bool finish_compaction>
         void query_latest(uint16_t vin_num, const std::set<std::string>& requested_columns, Row &result_row) {
+            const Row& target_row = _latest_records[vin_num];
             if constexpr (finish_compaction) {
-                result_row.timestamp = _latest_records[vin_num].timestamp;
-
+                result_row.timestamp = target_row.timestamp;
                 for (const auto& requested_column : requested_columns) {
-                    result_row.columns[requested_column] = _latest_records[vin_num].columns.at(requested_column);
+                    result_row.columns[requested_column] = target_row.columns.at(requested_column);
                 }
             } else {
                 Row latest_row;

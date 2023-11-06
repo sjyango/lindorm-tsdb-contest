@@ -26,7 +26,7 @@ namespace LindormContest {
             _writer_manager = std::make_unique<TsmWriterManager>(_get_root_path(), _convert_manager);
         }
         _index_manager = std::make_shared<GlobalIndexManager>();
-        _latest_manager = std::make_unique<GlobalLatestManager>(_get_root_path(), _finish_compaction);
+        _latest_manager = std::make_unique<GlobalLatestManager>(_get_root_path());
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _finish_compaction, _index_manager);
         _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _finish_compaction, _index_manager);
         _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _finish_compaction, _index_manager);
@@ -83,15 +83,14 @@ namespace LindormContest {
             if (unlikely(vin_num == INVALID_VIN_NUM)) {
                 continue;
             }
-            Row result_row;
-            result_row.vin = vin;
+            Row& result_row = pReadRes.emplace_back();
+            std::strncpy(result_row.vin.vin, vin.vin, VIN_LENGTH);
             if (_finish_compaction) {
                 _latest_manager->query_latest<true>(vin_num, pReadReq.requestedColumns, result_row);
             } else {
                 _writer_manager->flush(vin_num);
                 _latest_manager->query_latest<false>(vin_num, pReadReq.requestedColumns, result_row);
             }
-            pReadRes.emplace_back(std::move(result_row));
         }
         return 0;
     }
