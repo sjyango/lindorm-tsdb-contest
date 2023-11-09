@@ -142,9 +142,9 @@ namespace LindormContest {
                             StringDataBlock &string_data_block = dynamic_cast<StringDataBlock &>(*data_blocks[i]);
 
                             if (string_data_block._min_length == string_data_block._max_length) {
-                                string_data_block._type = StringCompressType::ZSTD_SAME_LENGTH;
+                                string_data_block._type = StringCompressType::FSST_SAME_LENGTH;
                             } else {
-                                string_data_block._type = StringCompressType::ZSTD;
+                                string_data_block._type = StringCompressType::FSST;
                             }
 
                             output_tsm_file._data_blocks.emplace_back(std::move(data_blocks[i]));

@@ -89,6 +89,15 @@ namespace LindormContest::compression {
         static CompressionCodecZSTD compressionCodecZstd;
         compressionCodecZstd.decompress(source, source_size, dest, uncompressed_size);
     }
+    static uint32_t compress_string_fsst(const std::vector<std::string> &source, uint32_t source_size, char *dest) {
+        static CompressionCodecFsst compressionCodecfsst;
+        return compressionCodecfsst.compress(source, source_size, dest);
+    }
+
+    static void decompress_string_fsst(const char *source, uint32_t source_size, std::vector<std::string> &dest, uint32_t uncompressed_size) {
+        static CompressionCodecFsst compressionCodecfsst;
+        compressionCodecfsst.decompress(source, source_size, dest, uncompressed_size);
+    }
 
     static uint32_t compress_string_brotli(const char *source, uint32_t source_size, char *dest) {
         static CompressionCodecBrotli compressionCodecBrotli;
