@@ -19,7 +19,7 @@
 #include <math.h>
 #include <string.h>
 
-Symbol concat(Symbol a, Symbol b) {
+extern "C" Symbol concat(Symbol a, Symbol b) {
    Symbol s;
    u32 length = min(8, a.length()+b.length());
    s.set_code_len(FSST_CODE_MASK, length);
@@ -49,11 +49,11 @@ class hash<Symbol> {
 };
 }
 
-std::ostream& operator<<(std::ostream& out, const Symbol& s) {
-   for (u32 i=0; i<s.length(); i++)
-      out << s.symbol[i];
-   return out;
-}
+//std::ostream& operator<<(std::ostream& out, const Symbol& s) {
+//   for (u32 i=0; i<s.length(); i++)
+//      out << s.symbol[i];
+//   return out;
+//}
 
 #define FSST_SAMPLETARGET (1<<17) 
 #define FSST_SAMPLEMAXSZ ((long) 2*FSST_SAMPLETARGET) 
@@ -298,84 +298,84 @@ long makeSample(vector<ulong> &sample, ulong nlines, ulong len[]) {
    return (sampleLong < FSST_SAMPLEMAXSZ)?sampleLong:FSST_SAMPLEMAXSZ-sampleLong; 
 }
 
-extern "C" fsst_encoder_t* fsst_create(ulong n, ulong lenIn[], u8 *strIn[], int dummy) {
-   vector<ulong> sample;
-   (void) dummy;
-   long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
-   Encoder *encoder = new Encoder();
-   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(encoder->counters, sampleSize, sample, lenIn, strIn));
-   return (fsst_encoder_t*) encoder;
-}
+//extern "C" fsst_encoder_t* fsst_create(ulong n, ulong lenIn[], u8 *strIn[], int dummy) {
+//   vector<ulong> sample;
+//   (void) dummy;
+//   long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
+//   Encoder *encoder = new Encoder();
+//   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(encoder->counters, sampleSize, sample, lenIn, strIn));
+//   return (fsst_encoder_t*) encoder;
+//}
 
 /* create another encoder instance, necessary to do multi-threaded encoding using the same dictionary */
-extern "C" fsst_encoder_t* fsst_duplicate(fsst_encoder_t *encoder) {
-   Encoder *e = new Encoder();
-   e->symbolMap = ((Encoder*)encoder)->symbolMap; // it is a shared_ptr
-   return (fsst_encoder_t*) e;
-}
+//extern "C" fsst_encoder_t* fsst_duplicate(fsst_encoder_t *encoder) {
+//   Encoder *e = new Encoder();
+//   e->symbolMap = ((Encoder*)encoder)->symbolMap; // it is a shared_ptr
+//   return (fsst_encoder_t*) e;
+//}
 
 // export a dictionary in compact format. 
-extern "C" u32 fsst_export(fsst_encoder_t *encoder, u8 *buf) {
-   Encoder *e = (Encoder*) encoder;
-   // In ->version there is a versionnr, but we hide also suffixLim/terminator/symbolCount there.
-   // This is sufficient in principle to *reconstruct* a fsst_encoder_t from a fsst_decoder_t
-   // (such functionality could be useful to append compressed data to an existing block).
-   //
-   // However, the hash function in the encoder hash table is endian-sensitive, and given its
-   // 'lossy perfect' hashing scheme is *unable* to contain other-endian-produced symbol tables.
-   // Doing a endian-conversion during hashing will be slow and self-defeating.
-   //
-   // Overall, we could support reconstructing an encoder for incremental compression, but 
-   // should enforce equal-endianness. Bit of a bummer. Not going there now.
-   // 
-   // The version field is now there just for future-proofness, but not used yet
-   
-   // version allows keeping track of fsst versions, track endianness, and encoder reconstruction
-   u64 version = (FSST_VERSION << 32) | FSST_ENDIAN_MARKER; // least significant byte is nonzero
-
-   /* do not assume unaligned reads here */
-   memcpy(buf, &version, 8);
-   memcpy(buf+8, e->symbolMap->lenHisto, 16); // serialize the lenHisto
-   u32 pos = 24;
-
-   // emit only the used bytes of the symbols 
-   for(u32 i = 0; i < e->symbolMap->symbolCount; i++) {
-      buf[pos++] = e->symbolMap->symbols[i].length();
-      for(u32 j = 0; j < e->symbolMap->symbols[i].length(); j++) {
-         buf[pos++] = ((u8*) &e->symbolMap->symbols[i].symbol)[j]; // serialize used symbol bytes
-      }
-   }
-   return pos; // length of what was serialized
-}
+//extern "C" u32 fsst_export(fsst_encoder_t *encoder, u8 *buf) {
+//   Encoder *e = (Encoder*) encoder;
+//   // In ->version there is a versionnr, but we hide also suffixLim/terminator/symbolCount there.
+//   // This is sufficient in principle to *reconstruct* a fsst_encoder_t from a fsst_decoder_t
+//   // (such functionality could be useful to append compressed data to an existing block).
+//   //
+//   // However, the hash function in the encoder hash table is endian-sensitive, and given its
+//   // 'lossy perfect' hashing scheme is *unable* to contain other-endian-produced symbol tables.
+//   // Doing a endian-conversion during hashing will be slow and self-defeating.
+//   //
+//   // Overall, we could support reconstructing an encoder for incremental compression, but
+//   // should enforce equal-endianness. Bit of a bummer. Not going there now.
+//   //
+//   // The version field is now there just for future-proofness, but not used yet
+//
+//   // version allows keeping track of fsst versions, track endianness, and encoder reconstruction
+//   u64 version = (FSST_VERSION << 32) | FSST_ENDIAN_MARKER; // least significant byte is nonzero
+//
+//   /* do not assume unaligned reads here */
+//   memcpy(buf, &version, 8);
+//   memcpy(buf+8, e->symbolMap->lenHisto, 16); // serialize the lenHisto
+//   u32 pos = 24;
+//
+//   // emit only the used bytes of the symbols
+//   for(u32 i = 0; i < e->symbolMap->symbolCount; i++) {
+//      buf[pos++] = e->symbolMap->symbols[i].length();
+//      for(u32 j = 0; j < e->symbolMap->symbols[i].length(); j++) {
+//         buf[pos++] = ((u8*) &e->symbolMap->symbols[i].symbol)[j]; // serialize used symbol bytes
+//      }
+//   }
+//   return pos; // length of what was serialized
+//}
 
 #define FSST_CORRUPT 32774747032022883 /* 7-byte number in little endian containing "corrupt" */
 
-extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
-   u64 version = 0, symbolCount = 0;
-   u32 pos = 24;
-   u16 lenHisto[8];
-
-   // version field (first 8 bytes) is now there just for future-proofness, unused still (skipped)
-   memcpy(&version, buf, 8);
-   if ((version>>32) != FSST_VERSION) return 0;
-   memcpy(lenHisto, buf+8, 16);
-
-   for(u32 i=0; i<8; i++) 
-     symbolCount += lenHisto[i]; 
-
-   for(u32 i = 0; i < symbolCount; i++) {
-      u32 len = decoder->len[i] = buf[pos++];
-      for(u32 j = 0; j < len; j++) {
-        ((u8*) &decoder->symbol[i])[j] = buf[pos++];
-      }
-   }
-   // fill unused symbols with text "corrupt". Gives a chance to detect corrupted code sequences (if there are unused symbols).
-   while(symbolCount<4096) {
-       decoder->symbol[symbolCount] = FSST_CORRUPT;    
-       decoder->len[symbolCount++] = 8;
-   }
-   return pos;
-}
+//extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
+//   u64 version = 0, symbolCount = 0;
+//   u32 pos = 24;
+//   u16 lenHisto[8];
+//
+//   // version field (first 8 bytes) is now there just for future-proofness, unused still (skipped)
+//   memcpy(&version, buf, 8);
+//   if ((version>>32) != FSST_VERSION) return 0;
+//   memcpy(lenHisto, buf+8, 16);
+//
+//   for(u32 i=0; i<8; i++)
+//     symbolCount += lenHisto[i];
+//
+//   for(u32 i = 0; i < symbolCount; i++) {
+//      u32 len = decoder->len[i] = buf[pos++];
+//      for(u32 j = 0; j < len; j++) {
+//        ((u8*) &decoder->symbol[i])[j] = buf[pos++];
+//      }
+//   }
+//   // fill unused symbols with text "corrupt". Gives a chance to detect corrupted code sequences (if there are unused symbols).
+//   while(symbolCount<4096) {
+//       decoder->symbol[symbolCount] = FSST_CORRUPT;
+//       decoder->len[symbolCount++] = 8;
+//   }
+//   return pos;
+//}
 
 // runtime check for simd
 inline ulong _compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
@@ -384,39 +384,39 @@ inline ulong _compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[],
    (void) simd;
    return compressBulk(*e->symbolMap, nlines, lenIn, strIn, size, output, lenOut, strOut);
 }
-ulong compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
-   return _compressImpl(e, nlines, lenIn, strIn, size, output, lenOut, strOut, noSuffixOpt, avoidBranch, simd);
-}
+//ulong compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
+//   return _compressImpl(e, nlines, lenIn, strIn, size, output, lenOut, strOut, noSuffixOpt, avoidBranch, simd);
+//}
 
 // adaptive choosing of scalar compression method based on symbol length histogram 
 inline ulong _compressAuto(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
    (void) simd;
    return _compressImpl(e, nlines, lenIn, strIn, size, output, lenOut, strOut, false, false, false);
 }
-ulong compressAuto(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
-   return _compressAuto(e, nlines, lenIn, strIn, size, output, lenOut, strOut, simd);
-}
+//ulong compressAuto(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
+//   return _compressAuto(e, nlines, lenIn, strIn, size, output, lenOut, strOut, simd);
+//}
 
 // the main compression function (everything automatic)
-extern "C" ulong fsst_compress(fsst_encoder_t *encoder, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[]) {
-   // to be faster than scalar, simd needs 64 lines or more of length >=12; or fewer lines, but big ones (totLen > 32KB)
-   ulong totLen = accumulate(lenIn, lenIn+nlines, 0);
-   int simd = totLen > nlines*12 && (nlines > 64 || totLen > (ulong) 1<<15); 
-   return _compressAuto((Encoder*) encoder, nlines, lenIn, strIn, size, output, lenOut, strOut, 3*simd);
-}
+//extern "C" ulong fsst_compress(fsst_encoder_t *encoder, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[]) {
+//   // to be faster than scalar, simd needs 64 lines or more of length >=12; or fewer lines, but big ones (totLen > 32KB)
+//   ulong totLen = accumulate(lenIn, lenIn+nlines, 0);
+//   int simd = totLen > nlines*12 && (nlines > 64 || totLen > (ulong) 1<<15);
+//   return _compressAuto((Encoder*) encoder, nlines, lenIn, strIn, size, output, lenOut, strOut, 3*simd);
+//}
 
 /* deallocate encoder */
-extern "C" void fsst_destroy(fsst_encoder_t* encoder) {
-   Encoder *e = (Encoder*) encoder; 
-   delete e;
-}
+//extern "C" void fsst_destroy(fsst_encoder_t* encoder) {
+//   Encoder *e = (Encoder*) encoder;
+//   delete e;
+//}
 
 /* very lazy implementation relying on export and import */
-extern "C" fsst_decoder_t fsst_decoder(fsst_encoder_t *encoder) {
-   u8 buf[sizeof(fsst_decoder_t)];
-   u32 cnt1 = fsst_export(encoder, buf);
-   fsst_decoder_t decoder;
-   u32 cnt2 = fsst_import(&decoder, buf);
-   assert(cnt1 == cnt2); (void) cnt1; (void) cnt2; 
-   return decoder;
-}
+//extern "C" fsst_decoder_t fsst_decoder(fsst_encoder_t *encoder) {
+//   u8 buf[sizeof(fsst_decoder_t)];
+//   u32 cnt1 = fsst_export(encoder, buf);
+//   fsst_decoder_t decoder;
+//   u32 cnt2 = fsst_import(&decoder, buf);
+//   assert(cnt1 == cnt2); (void) cnt1; (void) cnt2;
+//   return decoder;
+//}

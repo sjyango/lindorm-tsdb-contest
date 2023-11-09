@@ -17,7 +17,7 @@
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst.hpp"
 
-Symbol concat(Symbol a, Symbol b) {
+extern Symbol concat(Symbol a, Symbol b) {
    Symbol s;
    u32 length = a.length()+b.length();
    if (length > Symbol::maxLength) length = Symbol::maxLength; 
