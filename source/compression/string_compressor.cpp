@@ -5,7 +5,7 @@ namespace LindormContest::compression {
     uint32_t CompressionCodecZSTD::compress(const char *source, uint32_t source_size, char *dest) const {
         ZSTD_CCtx *cctx = ZSTD_createCCtx();
         ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, 1);
-        ZSTD_CCtx_setParameter(cctx, ZSTD_c_strategy, ZSTD_greedy);
+        ZSTD_CCtx_setParameter(cctx, ZSTD_c_strategy, ZSTD_fast);
         size_t compressed_size = ZSTD_compress2(cctx, dest, ZSTD_compressBound(source_size), source, source_size);
         ZSTD_freeCCtx(cctx);
 

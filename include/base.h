@@ -87,7 +87,7 @@ namespace LindormContest {
 
     static constexpr uint16_t SCHEMA_COLUMN_NUMS = 60;
     static constexpr uint16_t DATA_BLOCK_ITEM_NUMS = 2000;
-    static constexpr uint16_t FILE_CONVERT_SIZE = 6000;
+    static constexpr uint16_t FILE_CONVERT_SIZE = 12000;
     static constexpr uint16_t TSM_FILE_COUNT = TS_NUM_RANGE / FILE_CONVERT_SIZE;
     static constexpr uint16_t DATA_BLOCK_COUNT = FILE_CONVERT_SIZE / DATA_BLOCK_ITEM_NUMS;
     static constexpr uint16_t POOL_THREAD_NUM = 6;
