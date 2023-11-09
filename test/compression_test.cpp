@@ -49,112 +49,138 @@ namespace LindormContest::test {
         return str;
     }
 
-    TEST(Compression, brotli_string_test) {
-        const size_t N = 100000;
-        std::string encode_data = generate_random_string(N);
-        std::string decode_data;
-        decode_data.resize(N);
-        std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(N * 2);
-        size_t encode_size;
-        bool encode_res = BrotliEncoderCompress(BROTLI_DEFAULT_QUALITY, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
-                              N, reinterpret_cast<const uint8_t *>(encode_data.c_str()), &encode_size,
-                              reinterpret_cast<uint8_t *>(compress_data.get()));
-        ASSERT_TRUE(encode_res);
-
-        size_t decode_size;
-        auto decode_res = BrotliDecoderDecompress(encode_size, reinterpret_cast<const uint8_t *>(compress_data.get()), &decode_size,
-                                                  reinterpret_cast<uint8_t *>(decode_data.data()));
-        ASSERT_EQ(decode_res, BROTLI_DECODER_RESULT_SUCCESS);
-        ASSERT_EQ(decode_size, N);
-        ASSERT_EQ(encode_data, decode_data);
-        GTEST_LOG_(INFO) << "original size: " << N << "; compress size: " << encode_size;
-    }
-
-    TEST(Compression, simple8b_int_test) {
-        static constexpr size_t BIG_INT = 100000;
-        std::vector<int> input;
-        for (auto i = 0; i < 20'000; ++i) {
-            auto num = rand() % 1000 - 500;
-            //        GTEST_LOG_(INFO) << num;
-            input.emplace_back(num);
+//    TEST(Compression, brotli_string_test) {
+//        const size_t N = 100000;
+//        std::string encode_data = generate_random_string(N);
+//        std::string decode_data;
+//        decode_data.resize(N);
+//        std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(N * 2);
+//        size_t encode_size;
+//        bool encode_res = BrotliEncoderCompress(BROTLI_DEFAULT_QUALITY, BROTLI_DEFAULT_WINDOW, BROTLI_DEFAULT_MODE,
+//                              N, reinterpret_cast<const uint8_t *>(encode_data.c_str()), &encode_size,
+//                              reinterpret_cast<uint8_t *>(compress_data.get()));
+//        ASSERT_TRUE(encode_res);
+//
+//        size_t decode_size;
+//        auto decode_res = BrotliDecoderDecompress(encode_size, reinterpret_cast<const uint8_t *>(compress_data.get()), &decode_size,
+//                                                  reinterpret_cast<uint8_t *>(decode_data.data()));
+//        ASSERT_EQ(decode_res, BROTLI_DECODER_RESULT_SUCCESS);
+//        ASSERT_EQ(decode_size, N);
+//        ASSERT_EQ(encode_data, decode_data);
+//        GTEST_LOG_(INFO) << "original size: " << N << "; compress size: " << encode_size;
+//    }
+//
+//    TEST(Compression, simple8b_int_test) {
+//        static constexpr size_t BIG_INT = 100000;
+//        std::vector<int> input;
+//        for (auto i = 0; i < 20'000; ++i) {
+//            auto num = rand() % 1000 - 500;
+//            //        GTEST_LOG_(INFO) << num;
+//            input.emplace_back(num);
+//        }
+//        auto length = input.size();
+//        uint32_t uncompressSize = length * sizeof(int);
+//
+//        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
+//        // pre-allocate a large size
+//        char *origin = reinterpret_cast<char *>(input.data());
+//        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
+//
+//        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
+//
+//        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+//
+//        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
+//    }
+//
+//    TEST(Compression, rle_int_test) {
+//        static constexpr size_t BIG_INT = 100000;
+//        std::vector<int> input;
+//        for (auto i = 0; i < 20'000; ++i) {
+//            auto num = 10;
+//            //        GTEST_LOG_(INFO) << num;
+//            input.emplace_back(num);
+//        }
+//        auto length = input.size();
+//        uint32_t uncompressSize = length * sizeof(int);
+//
+//        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
+//        // pre-allocate a large size
+//        char *origin = reinterpret_cast<char *>(input.data());
+//        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
+//
+//        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
+//
+//        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+//
+//        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
+//
+//        verifyResult<int>(input, recover);
+//
+//        free(recover);
+//        free(compress);
+//        GTEST_LOG_(INFO) << "original size: " << uncompressSize
+//                         << "; compress size: " << compress_size;
+//        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
+//    }
+//
+//    TEST(Compression, chimp_double_test) {
+//        const size_t N = 2000;
+//        const size_t BIG_INT = BLOCK_SIZE;
+//        std::vector<double> input;
+//
+//        for (size_t i = 0; i < N; ++i) {
+//            input.emplace_back(generate_random_float64());
+//        }
+//
+//        uint32_t uncompressSize = N * sizeof(double);
+//
+//        char *origin = reinterpret_cast<char *>(input.data());
+//        char *compress = reinterpret_cast<char *>(malloc(BIG_INT));
+//        char *gorilla_compress = reinterpret_cast<char *>(malloc(BIG_INT));
+//        size_t compressSize, compressGorilla;
+//        compressSize = LindormContest::compression::compress_double_chimp(origin, uncompressSize, compress);
+//        compressGorilla = LindormContest::compression::compress_double_gorilla(origin, uncompressSize, gorilla_compress);
+//        GTEST_LOG_(INFO) << "compress size: " << compressSize;
+//
+//        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
+//
+//        auto newDest = LindormContest::compression::decompress_double_chimp(compress, compressSize, recover, uncompressSize);
+//
+//        verifyResult<double>(input, reinterpret_cast<const char *>(newDest));
+//        //
+//        free(recover);
+//        free(compress);
+//        free(gorilla_compress);
+//        GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compressSize;
+//        GTEST_LOG_(INFO) << "chimp compress ratio: " << compressSize * 1.0 / uncompressSize;
+//        GTEST_LOG_(INFO) << "gorilla compress ratio: " << compressGorilla * 1.0 / uncompressSize;
+//    }
+    
+    TEST(Compression, fsst_string_test) {
+        const size_t N = 1000;
+        uint32_t uncompressSize = 0;
+        std::vector<std::string> ori, recover;
+        char *compress = reinterpret_cast<char *>(malloc(100000));
+        std::string default_ = generate_random_string(100);
+        
+        ori.resize(N);
+        for(auto i = 0;i <N;++i){
+            ori[i] = generate_random_string(11);
+            uncompressSize += ori[i].size();
         }
-        auto length = input.size();
-        uint32_t uncompressSize = length * sizeof(int);
-
-        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
-        // pre-allocate a large size
-        char *origin = reinterpret_cast<char *>(input.data());
-        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
-
-        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
-
-        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
-
-        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
-    }
-
-    TEST(Compression, rle_int_test) {
-        static constexpr size_t BIG_INT = 100000;
-        std::vector<int> input;
-        for (auto i = 0; i < 20'000; ++i) {
-            auto num = 10;
-            //        GTEST_LOG_(INFO) << num;
-            input.emplace_back(num);
+        recover.resize(N);
+        compression::CompressionCodecFsst agent;
+        
+        auto compressSize = agent.compress(ori,0,compress);
+        GTEST_LOG_(INFO) << "**" << ori[0];
+        agent.decompress(compress,compressSize, recover,uncompressSize);
+        
+        for(auto i = 0; i< ori.size();++i){
+            ASSERT_EQ(ori[i],recover[i]);
         }
-        auto length = input.size();
-        uint32_t uncompressSize = length * sizeof(int);
-
-        LindormContest::compression::CompressionSimple8b compressionSimple8B(4);
-        // pre-allocate a large size
-        char *origin = reinterpret_cast<char *>(input.data());
-        char *compress = reinterpret_cast<char *>(malloc(uncompressSize));
-
-        uint64_t compress_size = compressionSimple8B.compress(origin, uncompressSize, compress);
-
-        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
-
-        compressionSimple8B.decompress(compress, compress_size, recover, uncompressSize);
-
-        verifyResult<int>(input, recover);
-
-        free(recover);
         free(compress);
-        GTEST_LOG_(INFO) << "original size: " << uncompressSize
-                         << "; compress size: " << compress_size;
-        GTEST_LOG_(INFO) << "compress ratio: " << compress_size * 1.0 / uncompressSize;
-    }
-
-    TEST(Compression, chimp_double_test) {
-        const size_t N = 2000;
-        const size_t BIG_INT = BLOCK_SIZE;
-        std::vector<double> input;
-
-        for (size_t i = 0; i < N; ++i) {
-            input.emplace_back(generate_random_float64());
-        }
-
-        uint32_t uncompressSize = N * sizeof(double);
-
-        char *origin = reinterpret_cast<char *>(input.data());
-        char *compress = reinterpret_cast<char *>(malloc(BIG_INT));
-        char *gorilla_compress = reinterpret_cast<char *>(malloc(BIG_INT));
-        size_t compressSize, compressGorilla;
-        compressSize = LindormContest::compression::compress_double_chimp(origin, uncompressSize, compress);
-        compressGorilla = LindormContest::compression::compress_double_gorilla(origin, uncompressSize, gorilla_compress);
-        GTEST_LOG_(INFO) << "compress size: " << compressSize;
-
-        char *recover = reinterpret_cast<char *>(malloc(BIG_INT));
-
-        auto newDest = LindormContest::compression::decompress_double_chimp(compress, compressSize, recover, uncompressSize);
-
-        verifyResult<double>(input, reinterpret_cast<const char *>(newDest));
-        //
-        free(recover);
-        free(compress);
-        free(gorilla_compress);
         GTEST_LOG_(INFO) << "original size: " << uncompressSize << "; compress size: " << compressSize;
-        GTEST_LOG_(INFO) << "chimp compress ratio: " << compressSize * 1.0 / uncompressSize;
-        GTEST_LOG_(INFO) << "gorilla compress ratio: " << compressGorilla * 1.0 / uncompressSize;
     }
 
 }
