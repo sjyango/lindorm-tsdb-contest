@@ -822,7 +822,7 @@ namespace LindormContest {
             uint32_t uncompress_size_stage_one = static_cast<uint32_t>(uncompress_buf.size());
             std::vector<std::string> uncompress_data_stage_one_vec;
             uncompress_data_stage_one_vec.push_back(std::move(uncompress_buf));
-            std::unique_ptr<char[]> compress_data_stage_one = std::make_unique<char[]>(uncompress_size_stage_one * 1.2);
+            std::unique_ptr<char[]> compress_data_stage_one = std::make_unique<char[]>(uncompress_size_stage_one * 3);
             uint32_t compress_size_stage_one = compression::compress_string_fsst(uncompress_data_stage_one_vec, uncompress_size_stage_one, compress_data_stage_one.get());
 
             if (compress_size_stage_one >= uncompress_size_stage_one) {
@@ -885,7 +885,7 @@ namespace LindormContest {
             uint32_t uncompress_size_stage_one = static_cast<uint32_t>(uncompress_buf.size());
             std::vector<std::string> uncompress_data_stage_one_vec;
             uncompress_data_stage_one_vec.push_back(std::move(uncompress_buf));
-            std::unique_ptr<char[]> compress_data_stage_one = std::make_unique<char[]>(uncompress_size_stage_one * 1.2);
+            std::unique_ptr<char[]> compress_data_stage_one = std::make_unique<char[]>(uncompress_size_stage_one * 3);
             uint32_t compress_size_stage_one = compression::compress_string_fsst(uncompress_data_stage_one_vec, uncompress_size_stage_one, compress_data_stage_one.get());
 
             if (compress_size_stage_one >= uncompress_size_stage_one) {
