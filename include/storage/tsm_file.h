@@ -834,7 +834,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
             uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
 
-            // INFO_LOG("string encode_to_fsst, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            INFO_LOG("string encode_to_fsst, uncompress_size: %u, compress_size: %u", uncompress_size_stage_one, stage_two_compress_size)
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::FSST));
             buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
             buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
@@ -896,7 +896,7 @@ namespace LindormContest {
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
             uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
 
-            // INFO_LOG("string encode_to_fsst_same_length, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+            INFO_LOG("string encode_to_fsst_same_length, uncompress_size: %u, compress_size: %u", uncompress_size_stage_one, stage_two_compress_size)
 
             put_fixed(buf, static_cast<uint8_t>(StringCompressType::FSST_SAME_LENGTH));
             uint8_t str_length = static_cast<uint8_t>(_min_length);
