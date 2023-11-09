@@ -125,11 +125,11 @@ namespace LindormContest {
                         for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
                             DoubleDataBlock &double_data_block = dynamic_cast<DoubleDataBlock &>(*data_blocks[i]);
 
-                            if (double_data_block._max == double_data_block._min) {
-                                double_data_block._type = DoubleCompressType::SAME;
-                            } else {
-                                double_data_block._type = DoubleCompressType::CHIMP;
-                            }
+                            // if (double_data_block._max == double_data_block._min) {
+                            //     double_data_block._type = DoubleCompressType::SAME;
+                            // } else {
+                            //     double_data_block._type = DoubleCompressType::CHIMP;
+                            // }
 
                             index_block._index_entries[i].set_sum(double_data_block._sum);
                             index_block._index_entries[i].set_max(double_data_block._max);

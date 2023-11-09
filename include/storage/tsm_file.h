@@ -305,13 +305,11 @@ namespace LindormContest {
             uint32_t stage_two_compress_size = compression::compress_string_brotli(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
             if (stage_two_compress_size >= stage_two_uncompress_size) {
                 put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR));
-                buf->append((const char*) &_min, sizeof(int32_t));
                 buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
                 buf->append(stage_two_uncompress_data, stage_two_uncompress_size);
             } else {
                 // INFO_LOG("encode_to_fastpfor_brotli, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
                 put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR_BROTLI));
-                buf->append((const char*) &_min, sizeof(int32_t));
                 buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
                 buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
                 buf->append(stage_two_compress_data.get(), stage_two_compress_size);
@@ -320,23 +318,21 @@ namespace LindormContest {
         }
 
         void decode_from_fastpfor(const char* buf) {
-            _min = *reinterpret_cast<const int32_t*>(buf);
-            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(int32_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf);
             std::vector<uint32_t> compress_data(compress_size);
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
-            std::memcpy(compress_data.data(), buf + 2 * sizeof(uint32_t), compress_size * sizeof(uint32_t));
+            std::memcpy(compress_data.data(), buf + sizeof(uint32_t), compress_size * sizeof(uint32_t));
             uint32_t decompress_size = compression::decompress_int32_fastpfor(compress_data.data(), compress_size, uncompress_data.data());
             assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
             delta_and_zigzag_decode(uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
         }
 
         void decode_from_fastpfor_zstd(const char* buf) {
-            _min = *reinterpret_cast<const int32_t*>(buf);
-            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(int32_t));
-            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
-            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 2 * sizeof(uint32_t), stage_two_compress_size);
             compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
             const uint32_t * stage_one_compress_data = reinterpret_cast<const uint32_t *>(stage_two_uncompress_data.get());
@@ -347,12 +343,11 @@ namespace LindormContest {
         }
 
         void decode_from_fastpfor_brotli(const char* buf) {
-            _min = *reinterpret_cast<const int32_t*>(buf);
-            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(int32_t));
-            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
             std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
             std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
-            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 2 * sizeof(uint32_t), stage_two_compress_size);
             compression::decompress_string_brotli(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
             std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
             const uint32_t * stage_one_compress_data = reinterpret_cast<const uint32_t *>(stage_two_uncompress_data.get());
