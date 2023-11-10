@@ -15,8 +15,9 @@
 
 #pragma once
 
-#include <variant>
-#include <optional>
+extern "C" {
+#include "../source/bitpacking/include/simdbitpack.h"
+}
 
 #include "struct/Schema.h"
 #include "common/coding.h"
@@ -24,19 +25,13 @@
 #include "common/time_range.h"
 #include "compression/compressor.h"
 #include "io/io_utils.h"
+#include "../source/pfor/deltautil.h"
 
 namespace LindormContest {
 
-    // one index entry corresponds to one data block
-    // an index block has a batch of index entry
     struct IndexEntry {
-        uint16_t _min_time_index; // inclusive
-        uint16_t _max_time_index; // inclusive
-        int64_t _min_time; // inclusive
-        int64_t _max_time; // inclusive
-        char _sum[8]; // int64_t or double_t
-        char _max[8]; // int32_t or double_t
-        uint16_t _count;
+        char _sum[8];        // int64_t or double_t
+        char _max[8];        // int32_t or double_t
         uint32_t _offset;
         uint32_t _size;
 
@@ -60,279 +55,948 @@ namespace LindormContest {
             *reinterpret_cast<T*>(_max) = max;
         }
 
-        TimeRange get_time_range() const {
-            return {_min_time, _max_time + 1};
-        }
-
-        void encode_to(std::string *buf, ColumnType type) const {
-            put_fixed(buf, _min_time_index);
-            put_fixed(buf, _max_time_index);
-            put_fixed(buf, _min_time);
-            put_fixed(buf, _max_time);
+        void encode_to(std::string *buf) const {
             buf->append(_sum, 8);
             buf->append(_max, 8);
-            put_fixed(buf, _count);
             put_fixed(buf, _offset);
             put_fixed(buf, _size);
         }
 
-        void decode_from(const uint8_t *&buf, ColumnType type) {
-            _min_time_index = decode_fixed<uint16_t>(buf);
-            _max_time_index = decode_fixed<uint16_t>(buf);
-            _min_time = decode_fixed<int64_t>(buf);
-            _max_time = decode_fixed<int64_t>(buf);
+        void decode_from(const uint8_t *&buf) {
             std::memcpy(_sum, buf, 8);
             buf += 8;
             std::memcpy(_max, buf, 8);
             buf += 8;
-            _count = decode_fixed<uint16_t>(buf);
             _offset = decode_fixed<uint32_t>(buf);
             _size = decode_fixed<uint32_t>(buf);
         }
     };
 
-    // one index block meta corresponds to one index block, and corresponds to one column
-    struct IndexBlockMeta {
-        uint16_t _count;
-        ColumnType _type;
-        std::string _column_name;
-
-        IndexBlockMeta() = default;
-
-        IndexBlockMeta(const std::string &column_name, ColumnType type)
-                : _column_name(column_name), _type(type), _count(0) {}
-
-        IndexBlockMeta(const IndexBlockMeta& other) = default;
-
-        IndexBlockMeta& operator=(const IndexBlockMeta& other) = default;
-
-        IndexBlockMeta(IndexBlockMeta &&other) noexcept
-                : _column_name(std::move(other._column_name)), _type(other._type), _count(other._count) {}
-
-        ~IndexBlockMeta() = default;
-
-        void encode_to(std::string *buf) const {
-            put_fixed(buf, _count);
-            put_fixed(buf, (uint8_t) _type);
-            put_fixed(buf, (uint8_t) _column_name.size());
-            buf->append(_column_name);
-        }
-
-        void decode_from(const uint8_t *&buf) {
-            _count = decode_fixed<uint16_t>(buf);
-            _type = (ColumnType) decode_fixed<uint8_t>(buf);
-            uint8_t column_name_size = decode_fixed<uint8_t>(buf);
-            _column_name.assign(reinterpret_cast<const char *>(buf), column_name_size);
-            buf += column_name_size;
-        }
-    };
-
     // one entry corresponds to one column
     struct IndexBlock {
-        IndexBlockMeta _index_meta;
-        std::vector<IndexEntry> _index_entries;
+        std::array<IndexEntry, DATA_BLOCK_COUNT> _index_entries;
 
         IndexBlock() = default;
-
-        IndexBlock(const std::string &column_name, ColumnType type) : _index_meta(column_name, type) {}
 
         IndexBlock(const IndexBlock& other) = default;
 
         IndexBlock& operator=(const IndexBlock& other) = default;
 
-        IndexBlock(IndexBlock &&other) noexcept
-                : _index_meta(std::move(other._index_meta)), _index_entries(std::move(other._index_entries)) {}
+        IndexBlock(IndexBlock &&other) noexcept : _index_entries(other._index_entries) {}
 
         ~IndexBlock() = default;
 
-        void add_entry(const IndexEntry &entry) {
-            _index_entries.emplace_back(entry);
-            _index_meta._count++;
-        }
-
-        bool get_index_entries(const TimeRange& tr, std::vector<IndexEntry>& index_entries) {
-            size_t start = std::numeric_limits<size_t>::max(), end = _index_entries.size();
-            // find lower index (inclusive)
-            for (size_t i = 0; i < _index_entries.size(); ++i) {
-                if (tr.overlap(_index_entries[i].get_time_range())) {
-                    start = i;
-                    break;
-                }
+        void get_index_entries_and_ranges(const TimeRange& file_tr, std::vector<IndexEntry>& index_entries, std::vector<IndexRange>& ranges) {
+            for (uint16_t i = file_tr._start_idx / DATA_BLOCK_ITEM_NUMS; i <= file_tr._end_idx / DATA_BLOCK_ITEM_NUMS; ++i) {
+                index_entries.emplace_back(_index_entries[i]);
+                ranges.emplace_back(std::max(file_tr._start_idx, (uint16_t) (i * DATA_BLOCK_ITEM_NUMS)) % DATA_BLOCK_ITEM_NUMS,
+                                    std::min(file_tr._end_idx, (uint16_t) ((i + 1) * DATA_BLOCK_ITEM_NUMS - 1)) % DATA_BLOCK_ITEM_NUMS);
             }
-            if (start == std::numeric_limits<size_t>::max()) {
-                return false;
-            }
-            // find upper index (exclusive)
-            for (size_t i = start + 1; i < _index_entries.size(); ++i) {
-                if (!tr.overlap(_index_entries[i].get_time_range())) {
-                    end = i;
-                    break;
-                }
-            }
-            index_entries.assign(_index_entries.begin() + start, _index_entries.begin() + end);
-            return true;
-        }
-
-        bool get_max_index_entry(const TimeRange& tr, IndexEntry& index_entry) {
-            for (auto it = _index_entries.rbegin(); it != _index_entries.rend(); ++it) {
-                if (tr.overlap(it->get_time_range())) {
-                    index_entry = *it;
-                    return true;
-                }
-            }
-            return false;
         }
 
         void encode_to(std::string *buf) const {
-            _index_meta.encode_to(buf);
-            for (const auto &entry: _index_entries) {
-                entry.encode_to(buf, _index_meta._type);
+            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                _index_entries[i].encode_to(buf);
             }
         }
 
         void decode_from(const uint8_t *&buf) {
-            _index_meta.decode_from(buf);
-            for (uint16_t i = 0; i < _index_meta._count; ++i) {
-                IndexEntry index_entry;
-                index_entry.decode_from(buf, _index_meta._type);
-                _index_entries.emplace_back(index_entry);
+            for (uint16_t i = 0; i < DATA_BLOCK_COUNT; ++i) {
+                _index_entries[i].decode_from(buf);
             }
         }
     };
 
-    // one data block contains a part of column data
-    struct DataBlock {
-        std::vector<ColumnValue> _column_values;
+    enum class IntCompressType : uint8_t {
+        SAME,
+        BITPACK,
+        BITPACK_ZSTD,
+        BITPACK_BROTLI,
+        SIMPLE8B,
+        SIMPLE8B_ZSTD,
+        FASTPFOR,
+        FASTPFOR_ZSTD,
+        FASTPFOR_BROTLI,
+        ZSTD,
+        PLAIN
+    };
 
+    enum class DoubleCompressType : uint8_t {
+        SAME,
+        GORILLA,
+        GORILLA_ZSTD,
+        CHIMP,
+        CHIMP_ZSTD,
+        CHIMP_BROTLI,
+        PLAIN
+    };
+
+    enum class StringCompressType : uint8_t {
+        ZSTD,
+        ZSTD_SAME_LENGTH,
+        BROTLI,
+        BROTLI_SAME_LENGTH,
+        PLAIN
+    };
+
+    struct DataBlock {
         DataBlock() = default;
 
-        DataBlock(const std::vector<ColumnValue>::iterator &start,
-                  const std::vector<ColumnValue>::iterator &end)
-                : _column_values(start, end) {}
+        virtual ~DataBlock() = default;
 
-        DataBlock(DataBlock &&other) : _column_values(std::move(other._column_values)) {}
+        virtual void encode_to_compress(std::string *buf) const = 0;
 
-        ~DataBlock() = default;
+        virtual void decode_from_decompress(const char* buf) = 0;
+    };
 
-        void encode_to(std::string *buf) const {
-            for (const auto &val: _column_values) {
-                buf->append(val.columnData, val.getRawDataSize());
+    struct IntDataBlock : public DataBlock {
+        std::array<int32_t, DATA_BLOCK_ITEM_NUMS> _column_values;
+        IntCompressType _type = IntCompressType::FASTPFOR;
+        int64_t _sum = 0;
+        int32_t _min = std::numeric_limits<int32_t>::max();
+        int32_t _max = std::numeric_limits<int32_t>::lowest();
+        mutable uint8_t _required_bits; // just for BITPACK
+
+        IntDataBlock() = default;
+
+        ~IntDataBlock() override = default;
+
+        void encode_to_compress(std::string *buf) const override {
+            if (_type == IntCompressType::SAME) {
+                encode_to_same(buf);
+            } else if (_type == IntCompressType::BITPACK) {
+                encode_to_bitpack(buf);
+            } else if (_type == IntCompressType::SIMPLE8B) {
+                if (!encode_to_simple8b(buf)) {
+                    if (!encode_to_zstd(buf)) {
+                        encode_to_plain(buf);
+                    }
+                }
+            } else if (_type == IntCompressType::FASTPFOR) {
+                if (!encode_to_fastpfor(buf)) {
+                    if (!encode_to_zstd(buf)) {
+                        encode_to_plain(buf);
+                    }
+                }
             }
         }
 
-        void decode_from(const uint8_t *&buf, ColumnType type, uint16_t count) {
+        void decode_from_decompress(const char* buf) override {
+            IntCompressType type = static_cast<IntCompressType>(*reinterpret_cast<const uint8_t*>(buf));
+            buf += sizeof(uint8_t);
+
             switch (type) {
-                case COLUMN_TYPE_INTEGER: {
-                    for (uint16_t i = 0; i < count; ++i) {
-                        int32_t int_value = decode_fixed<int32_t>(buf);
-                        _column_values.emplace_back(int_value);
-                    }
+                case IntCompressType::SAME:
+                    decode_from_same(buf);
                     break;
-                }
-                case COLUMN_TYPE_DOUBLE_FLOAT: {
-                    for (uint16_t i = 0; i < count; ++i) {
-                        double_t double_value = decode_fixed<double_t>(buf);
-                        _column_values.emplace_back(double_value);
-                    }
+                case IntCompressType::SIMPLE8B:
+                    decode_from_simple8b(buf);
                     break;
-                }
-                case COLUMN_TYPE_STRING: {
-                    for (uint16_t i = 0; i < count; ++i) {
-                        int32_t str_length = decode_fixed<int32_t>(buf);
-                        _column_values.emplace_back((const char *) buf, str_length);
-                        buf += str_length;
-                    }
+                case IntCompressType::SIMPLE8B_ZSTD:
+                    decode_from_simple8b_zstd(buf);
                     break;
-                }
-                default:
-                    throw std::runtime_error("invalid column type");
+                case IntCompressType::FASTPFOR:
+                    decode_from_fastpfor(buf);
+                    break;
+                case IntCompressType::FASTPFOR_ZSTD:
+                    decode_from_fastpfor_zstd(buf);
+                    break;
+                case IntCompressType::FASTPFOR_BROTLI:
+                    decode_from_fastpfor_brotli(buf);
+                    break;
+                case IntCompressType::ZSTD:
+                    decode_from_zstd(buf);
+                    break;
+                case IntCompressType::BITPACK:
+                    decode_from_bitpack(buf);
+                    break;
+                case IntCompressType::BITPACK_ZSTD:
+                    decode_from_bitpack_zstd(buf);
+                    break;
+                case IntCompressType::BITPACK_BROTLI:
+                    decode_from_bitpack_brotli(buf);
+                    break;
+                case IntCompressType::PLAIN:
+                    decode_from_plain(buf);
+                    break;
             }
+        }
+
+        void encode_to_same(std::string *buf) const {
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::SAME));
+            put_fixed(buf, _column_values[0]);
+        }
+
+        void decode_from_same(const char* buf) {
+            int32_t same_value = *reinterpret_cast<const int32_t*>(buf);
+            std::fill(_column_values.begin(), _column_values.end(), same_value);
+        }
+
+        bool encode_to_simple8b(std::string* buf) const {
+            const char* stage_one_uncompress_data = reinterpret_cast<const char*>(_column_values.data());
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(int32_t);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
+            uint32_t stage_one_compress_size = compression::compress_int32_simple8b(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
+            if (stage_one_compress_size >= stage_one_uncompress_size) {
+                return false;
+            }
+            const char* stage_two_uncompress_data = stage_one_compress_data.get();
+            uint32_t stage_two_uncompress_size = stage_one_compress_size;
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::SIMPLE8B_ZSTD));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+            return true;
+        }
+
+        void decode_from_simple8b(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_int32_simple8b(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values.data(), src, uncompress_size);
+        }
+
+        void decode_from_simple8b_zstd(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
+            assert(stage_one_uncompress_size / sizeof(int32_t) == DATA_BLOCK_ITEM_NUMS);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            uint32_t stage_one_compress_size = stage_two_uncompress_size;
+            char* src = compression::decompress_int32_simple8b(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.get(), stage_one_uncompress_size);
+            std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+        }
+
+        bool encode_to_fastpfor(std::string* buf) const {
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> column_values;
+            delta_and_zigzag_encode(_column_values.data(), column_values.data(), DATA_BLOCK_ITEM_NUMS);
+            const uint32_t * stage_one_uncompress_data = column_values.data();
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS;
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS * 2> stage_one_compress_data;
+            uint32_t stage_one_compress_size = compression::compress_int32_fastpfor(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.data());
+
+            if (stage_one_compress_size >= stage_one_uncompress_size) {
+                return false;
+            }
+
+            // INFO_LOG("encode_to_fastpfor, range: %d, uncompress_size: %lu, compress_size: %lu", _max - _min, DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t), stage_one_compress_size * sizeof(uint32_t))
+            const char* stage_two_uncompress_data = reinterpret_cast<const char *>(stage_one_compress_data.data());
+            uint32_t stage_two_uncompress_size = stage_one_compress_size * sizeof(uint32_t);
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_brotli(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_two_uncompress_data, stage_two_uncompress_size);
+            } else {
+                // INFO_LOG("encode_to_fastpfor_brotli, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size * 4, stage_two_uncompress_size, stage_two_compress_size)
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::FASTPFOR_BROTLI));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+            return true;
+        }
+
+        void decode_from_fastpfor(const char* buf) {
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf);
+            std::vector<uint32_t> compress_data(compress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
+            std::memcpy(compress_data.data(), buf + sizeof(uint32_t), compress_size * sizeof(uint32_t));
+            uint32_t decompress_size = compression::decompress_int32_fastpfor(compress_data.data(), compress_size, uncompress_data.data());
+            assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
+            delta_and_zigzag_decode(uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
+        }
+
+        void decode_from_fastpfor_zstd(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 2 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+            const uint32_t * stage_one_compress_data = reinterpret_cast<const uint32_t *>(stage_two_uncompress_data.get());
+            uint32_t stage_one_compress_size = stage_two_uncompress_size / sizeof(uint32_t);
+            uint32_t decompress_size = compression::decompress_int32_fastpfor(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.data());
+            assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
+            delta_and_zigzag_decode(stage_one_uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
+        }
+
+        void decode_from_fastpfor_brotli(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 2 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_brotli(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+            const uint32_t * stage_one_compress_data = reinterpret_cast<const uint32_t *>(stage_two_uncompress_data.get());
+            uint32_t stage_one_compress_size = stage_two_uncompress_size / sizeof(uint32_t);
+            uint32_t decompress_size = compression::decompress_int32_fastpfor(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.data());
+            assert(decompress_size == DATA_BLOCK_ITEM_NUMS);
+            delta_and_zigzag_decode(stage_one_uncompress_data.data(), _column_values.data(), DATA_BLOCK_ITEM_NUMS);
+        }
+
+        void encode_to_bitpack(std::string* buf) const {
+            _required_bits = get_next_power_of_two(_max - _min + 1);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                stage_one_uncompress_data[i] = _column_values[i] - _min;
+            }
+
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(uint32_t);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size);
+            __m128i* end_buf = simdpack_length(stage_one_uncompress_data.data(), DATA_BLOCK_ITEM_NUMS, (__m128i*) stage_one_compress_data.get(), _required_bits);
+            uint32_t stage_one_compress_size = (end_buf - (__m128i *) stage_one_compress_data.get()) * sizeof(__m128i);
+            const char* stage_two_uncompress_data = stage_one_compress_data.get();
+            uint32_t stage_two_uncompress_size = stage_one_compress_size;
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_brotli(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACK));
+                put_fixed(buf, _required_bits);
+                put_fixed(buf, _min);
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                // INFO_LOG("encode_to_bitpack_brotli, range: %d, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", _max - _min + 1, stage_one_uncompress_size, stage_two_uncompress_size, stage_two_compress_size)
+                put_fixed(buf, static_cast<uint8_t>(IntCompressType::BITPACK_BROTLI));
+                put_fixed(buf, _required_bits);
+                put_fixed(buf, _min);
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+        }
+
+        void decode_from_bitpack(const char* buf) {
+            _required_bits = *reinterpret_cast<const uint8_t*>(buf);
+            _min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::memcpy(compress_data.get(), buf + sizeof(uint8_t) + sizeof(int32_t) + sizeof(uint32_t), compress_size);
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> uncompress_data;
+            simdunpack_length((const __m128i*) compress_data.get(), DATA_BLOCK_ITEM_NUMS, uncompress_data.data(), _required_bits);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = uncompress_data[i] + _min;
+            }
+        }
+
+        void decode_from_bitpack_zstd(const char* buf) {
+            _required_bits = *reinterpret_cast<const uint8_t*>(buf);
+            _min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + sizeof(uint8_t) + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+            simdunpack_length((const __m128i*) stage_one_compress_data, DATA_BLOCK_ITEM_NUMS, stage_one_uncompress_data.data(), _required_bits);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = stage_one_uncompress_data[i] + _min;
+            }
+        }
+
+        void decode_from_bitpack_brotli(const char* buf) {
+            _required_bits = *reinterpret_cast<const uint8_t*>(buf);
+            _min = *reinterpret_cast<const int32_t*>(buf + sizeof(uint8_t));
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(int32_t));
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + sizeof(uint8_t) + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_brotli(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            std::array<uint32_t, DATA_BLOCK_ITEM_NUMS> stage_one_uncompress_data;
+            simdunpack_length((const __m128i*) stage_one_compress_data, DATA_BLOCK_ITEM_NUMS, stage_one_uncompress_data.data(), _required_bits);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = stage_one_uncompress_data[i] + _min;
+            }
+        }
+
+        bool encode_to_zstd(std::string* buf) const {
+            const char* uncompress_data = reinterpret_cast<const char *>(_column_values.data());
+            uint32_t uncompress_size = static_cast<uint32_t>(DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
+            if (compress_size >= uncompress_size) {
+                return false;
+            }
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::ZSTD));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_zstd(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            assert(uncompress_size == DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+            std::memcpy(_column_values.data(), uncompress_data.get(), uncompress_size);
+        }
+
+        void encode_to_plain(std::string* buf) const {
+            put_fixed(buf, static_cast<uint8_t>(IntCompressType::PLAIN));
+            buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
+        }
+
+        void decode_from_plain(const char* buf) {
+            std::memcpy(_column_values.data(), buf, DATA_BLOCK_ITEM_NUMS * sizeof(int32_t));
         }
     };
 
-    // footer contains all timestamps data
-    struct Footer {
-        std::vector<int64_t> _tss;
-        uint32_t _index_offset;
-        uint32_t _footer_offset;
+    struct DoubleDataBlock : public DataBlock {
+        std::array<double_t, DATA_BLOCK_ITEM_NUMS> _column_values;
+        DoubleCompressType _type = DoubleCompressType::CHIMP;
+        double_t _sum = 0.0;
+        double_t _min = std::numeric_limits<double_t>::max();
+        double_t _max = std::numeric_limits<double_t>::lowest();
 
-        Footer() = default;
+        DoubleDataBlock() = default;
 
-        ~Footer() = default;
+        ~DoubleDataBlock() override = default;
 
-        void encode_to(std::string *buf) const {
-            buf->append((const char *) _tss.data(), _tss.size() * sizeof(int64_t));
-            put_fixed(buf, _index_offset);
-            put_fixed(buf, _footer_offset);
+        void encode_to_compress(std::string *buf) const override {
+            if (_type == DoubleCompressType::SAME) {
+                encode_to_same(buf);
+            } else if (_type == DoubleCompressType::GORILLA) {
+                if (!encode_to_gorilla(buf)) {
+                    encode_to_plain(buf);
+                }
+            } else if (_type == DoubleCompressType::CHIMP) {
+                if (!encode_to_chimp(buf)) {
+                    encode_to_plain(buf);
+                }
+            }
         }
 
-        void decode_from(const uint8_t *&buf, size_t ts_count) {
-            _tss.resize(ts_count);
-            std::memcpy(_tss.data(), buf, ts_count * sizeof(int64_t));
-            buf += ts_count * sizeof(int64_t);
-            _index_offset = decode_fixed<uint32_t>(buf);
-            _footer_offset = decode_fixed<uint32_t>(buf);
+        void decode_from_decompress(const char* buf) override {
+            DoubleCompressType type = static_cast<DoubleCompressType>(*reinterpret_cast<const uint8_t*>(buf));
+            buf += sizeof(uint8_t);
+
+            switch (type) {
+                case DoubleCompressType::SAME:
+                    decode_from_same(buf);
+                    break;
+                case DoubleCompressType::GORILLA:
+                    decode_from_gorilla(buf);
+                    break;
+                case DoubleCompressType::GORILLA_ZSTD:
+                    decode_from_gorilla_zstd(buf);
+                    break;
+                case DoubleCompressType::CHIMP:
+                    decode_from_chimp(buf);
+                    break;
+                case DoubleCompressType::CHIMP_ZSTD:
+                    decode_from_chimp_zstd(buf);
+                    break;
+                case DoubleCompressType::CHIMP_BROTLI:
+                    decode_from_chimp_brotli(buf);
+                    break;
+                case DoubleCompressType::PLAIN:
+                    decode_from_plain(buf);
+                    break;
+            }
+        }
+
+        void encode_to_same(std::string *buf) const {
+            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::SAME));
+            put_fixed(buf, _column_values[0]);
+        }
+
+        void decode_from_same(const char* buf) {
+            double_t same_value = *reinterpret_cast<const double_t*>(buf);
+            std::fill(_column_values.begin(), _column_values.end(), same_value);
+        }
+
+        bool encode_to_gorilla(std::string* buf) const {
+            const char* stage_one_uncompress_data = reinterpret_cast<const char*>(_column_values.data());
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
+            uint32_t stage_one_compress_size = compression::compress_double_gorilla(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
+
+            if (stage_one_compress_size >= stage_one_uncompress_size) {
+                return false;
+            }
+
+            const char* stage_two_uncompress_data = stage_one_compress_data.get();
+            uint32_t stage_two_uncompress_size = stage_one_compress_size;
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_zstd(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                // INFO_LOG("encode_to_gorilla_zstd, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size, stage_two_uncompress_size, stage_two_compress_size)
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::GORILLA_ZSTD));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+            return true;
+        }
+
+        void decode_from_gorilla(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_double_gorilla(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values.data(), src, uncompress_size);
+        }
+
+        void decode_from_gorilla_zstd(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
+            assert(stage_one_uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            uint32_t stage_one_compress_size = stage_two_uncompress_size;
+            char* src = compression::decompress_double_gorilla(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.get(), stage_one_uncompress_size);
+            std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+
+        bool encode_to_chimp(std::string* buf) const {
+            const char* stage_one_uncompress_data = reinterpret_cast<const char*>(_column_values.data());
+            uint32_t stage_one_uncompress_size = DATA_BLOCK_ITEM_NUMS * sizeof(double_t);
+            std::unique_ptr<char[]> stage_one_compress_data = std::make_unique<char[]>(stage_one_uncompress_size * 2);
+            uint32_t stage_one_compress_size = compression::compress_double_chimp(stage_one_uncompress_data, stage_one_uncompress_size, stage_one_compress_data.get());
+
+            if (stage_one_compress_size >= stage_one_uncompress_size) {
+                return false;
+            }
+
+            const char* stage_two_uncompress_data = stage_one_compress_data.get();
+            uint32_t stage_two_uncompress_size = stage_one_compress_size;
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_uncompress_size * 2);
+            uint32_t stage_two_compress_size = compression::compress_string_brotli(stage_two_uncompress_data, stage_two_uncompress_size, stage_two_compress_data.get());
+            if (stage_two_compress_size >= stage_two_uncompress_size) {
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::CHIMP));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_compress_size, sizeof(uint32_t));
+                buf->append(stage_one_compress_data.get(), stage_one_compress_size);
+            } else {
+                // INFO_LOG("encode_to_chimp_brotli, stage_one_uncompress_size: %u, stage_two_uncompress_size: %u, stage_two_compress_size: %u", stage_one_uncompress_size, stage_two_uncompress_size, stage_two_compress_size)
+                put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::CHIMP_BROTLI));
+                buf->append((const char*) &stage_two_uncompress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_two_compress_size, sizeof(uint32_t));
+                buf->append((const char*) &stage_one_uncompress_size, sizeof(uint32_t));
+                buf->append(stage_two_compress_data.get(), stage_two_compress_size);
+            }
+            return true;
+        }
+
+        void decode_from_chimp(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            assert(uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            char* src = compression::decompress_double_chimp(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            std::memcpy(_column_values.data(), src, uncompress_size);
+        }
+
+        void decode_from_chimp_zstd(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_zstd(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
+            assert(stage_one_uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            uint32_t stage_one_compress_size = stage_two_uncompress_size;
+            char* src = compression::decompress_double_chimp(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.get(), stage_one_uncompress_size);
+            std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+
+        void decode_from_chimp_brotli(const char* buf) {
+            uint32_t stage_two_uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t stage_two_compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            uint32_t stage_one_uncompress_size = *reinterpret_cast<const uint32_t*>(buf + 2 * sizeof(uint32_t));
+            std::unique_ptr<char[]> stage_two_compress_data = std::make_unique<char[]>(stage_two_compress_size);
+            std::unique_ptr<char[]> stage_two_uncompress_data = std::make_unique<char[]>(stage_two_uncompress_size);
+            std::memcpy(stage_two_compress_data.get(), buf + 3 * sizeof(uint32_t), stage_two_compress_size);
+            compression::decompress_string_brotli(stage_two_compress_data.get(), stage_two_compress_size, stage_two_uncompress_data.get(), stage_two_uncompress_size);
+            std::unique_ptr<char[]> stage_one_uncompress_data = std::make_unique<char[]>(stage_one_uncompress_size);
+            assert(stage_one_uncompress_size / sizeof(double_t) == DATA_BLOCK_ITEM_NUMS);
+            const char* stage_one_compress_data = stage_two_uncompress_data.get();
+            uint32_t stage_one_compress_size = stage_two_uncompress_size;
+            char* src = compression::decompress_double_chimp(stage_one_compress_data, stage_one_compress_size, stage_one_uncompress_data.get(), stage_one_uncompress_size);
+            std::memcpy(_column_values.data(), src, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+
+        void encode_to_plain(std::string* buf) const {
+            put_fixed(buf, static_cast<uint8_t>(DoubleCompressType::PLAIN));
+            buf->append(reinterpret_cast<const char*>(_column_values.data()), DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+
+        void decode_from_plain(const char* buf) {
+            std::memcpy(_column_values.data(), buf, DATA_BLOCK_ITEM_NUMS * sizeof(double_t));
+        }
+    };
+
+    struct StringDataBlock : public DataBlock {
+        std::array<ColumnValue, DATA_BLOCK_ITEM_NUMS> _column_values;
+        StringCompressType _type = StringCompressType::ZSTD;
+        int32_t _min_length = std::numeric_limits<int32_t>::max();
+        int32_t _max_length = std::numeric_limits<int32_t>::lowest();
+
+        StringDataBlock() = default;
+
+        ~StringDataBlock() override = default;
+
+        void encode_to_compress(std::string *buf) const override {
+            std::string uncompress_buf;
+            if (_type == StringCompressType::ZSTD) {
+                if (!encode_to_zstd(buf, uncompress_buf)) {
+                    encode_to_plain(uncompress_buf, buf);
+                }
+            } else if (_type == StringCompressType::ZSTD_SAME_LENGTH) {
+                if (!encode_to_zstd_same_length(buf, uncompress_buf)) {
+                    encode_to_plain(uncompress_buf, buf);
+                }
+            } else if (_type == StringCompressType::BROTLI) {
+                if (!encode_to_brotli(buf, uncompress_buf)) {
+                    encode_to_plain(uncompress_buf, buf);
+                }
+            } else if (_type == StringCompressType::BROTLI_SAME_LENGTH) {
+                if (!encode_to_brotli_same_length(buf, uncompress_buf)) {
+                    encode_to_plain(uncompress_buf, buf);
+                }
+            }
+        }
+
+        void decode_from_decompress(const char* buf) override {
+            StringCompressType type = static_cast<StringCompressType>(*reinterpret_cast<const uint8_t*>(buf));
+            buf += sizeof(uint8_t);
+
+            switch (type) {
+                case StringCompressType::ZSTD:
+                    decode_from_zstd(buf);
+                    break;
+                case StringCompressType::ZSTD_SAME_LENGTH:
+                    decode_from_zstd_same_length(buf);
+                    break;
+                case StringCompressType::BROTLI:
+                    decode_from_brotli(buf);
+                    break;
+                case StringCompressType::BROTLI_SAME_LENGTH:
+                    decode_from_brotli_same_length(buf);
+                    break;
+                case StringCompressType::PLAIN:
+                    decode_from_plain(buf);
+                    break;
+            }
+        }
+
+        bool encode_to_zstd(std::string *buf, std::string& uncompress_buf) const {
+            uncompress_buf.resize(DATA_BLOCK_ITEM_NUMS);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                uint8_t str_length = static_cast<uint8_t>(*reinterpret_cast<int32_t*>(_column_values[i].columnData));
+                *reinterpret_cast<uint8_t*>(uncompress_buf.data() + i) = str_length;
+                uncompress_buf.append(_column_values[i].columnData + sizeof(int32_t), str_length);
+            }
+
+            const char* uncompress_data = uncompress_buf.c_str();
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
+
+            if (compress_size >= uncompress_size) {
+                return false;
+            }
+
+            // INFO_LOG("string encode_to_zstd, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_zstd(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+
+            std::array<uint8_t, DATA_BLOCK_ITEM_NUMS> str_lengths;
+            std::memcpy(str_lengths.data(), uncompress_data.get(), DATA_BLOCK_ITEM_NUMS);
+            const char* str_offset = uncompress_data.get() + DATA_BLOCK_ITEM_NUMS;
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = ColumnValue(str_offset, str_lengths[i]);
+                str_offset += str_lengths[i];
+            }
+
+            assert(str_offset == uncompress_data.get() + uncompress_size);
+        }
+
+        bool encode_to_zstd_same_length(std::string *buf, std::string& uncompress_buf) const {
+            if (unlikely(_min_length == 0)) {
+                put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD_SAME_LENGTH));
+                uint8_t str_length = static_cast<uint8_t>(_min_length);
+                buf->append((const char*) &str_length, sizeof(uint8_t));
+                return true;
+            }
+
+            for (const auto &column_value: _column_values) {
+                uncompress_buf.append(column_value.columnData + sizeof(int32_t), _min_length);
+            }
+
+            const char* uncompress_data = uncompress_buf.c_str();
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_zstd(uncompress_data, uncompress_size, compress_data.get());
+
+            if (compress_size >= uncompress_size) {
+                return false;
+            }
+
+            // INFO_LOG("string encode_to_zstd_same_length, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::ZSTD_SAME_LENGTH));
+            uint8_t str_length = static_cast<uint8_t>(_min_length);
+            buf->append((const char*) &str_length, sizeof(uint8_t));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_zstd_same_length(const char* buf) {
+            uint8_t str_length = *reinterpret_cast<const uint8_t*>(buf);
+
+            if (unlikely(str_length == 0)) {
+                for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                    _column_values[i] = ColumnValue(buf, 0);
+                }
+                return;
+            }
+
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + sizeof(uint8_t) + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_zstd(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = ColumnValue(uncompress_data.get() + i * str_length, str_length);
+            }
+        }
+
+        bool encode_to_brotli(std::string *buf, std::string& uncompress_buf) const {
+            for (const auto &column_value: _column_values) {
+                uint8_t str_length = static_cast<uint8_t>(*reinterpret_cast<int32_t*>(column_value.columnData));
+                uncompress_buf.append((const char*) &str_length, sizeof(uint8_t));
+                uncompress_buf.append(column_value.columnData + sizeof(int32_t), str_length);
+            }
+
+            const char* uncompress_data = uncompress_buf.c_str();
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_brotli(uncompress_data, uncompress_size, compress_data.get());
+
+            if (compress_size >= uncompress_size) {
+                return false;
+            }
+
+            // INFO_LOG("string encode_to_brotli, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::BROTLI));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_brotli(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_brotli(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+            size_t str_offset = 0;
+            uint16_t str_count = 0;
+
+            while (str_offset != uncompress_size) {
+                uint8_t str_length = *reinterpret_cast<uint8_t*>(uncompress_data.get() + str_offset);
+                str_offset += sizeof(uint8_t);
+                _column_values[str_count] = ColumnValue(uncompress_data.get() + str_offset, str_length);
+                str_offset += str_length;
+                str_count++;
+            }
+
+            assert(str_offset == uncompress_size);
+            assert(str_count == DATA_BLOCK_ITEM_NUMS);
+        }
+
+        bool encode_to_brotli_same_length(std::string *buf, std::string& uncompress_buf) const {
+            for (const auto &column_value: _column_values) {
+                uncompress_buf.append(column_value.columnData + sizeof(int32_t), _min_length);
+            }
+
+            const char* uncompress_data = uncompress_buf.c_str();
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(uncompress_size * 1.2);
+            uint32_t compress_size = compression::compress_string_brotli(uncompress_data, uncompress_size, compress_data.get());
+
+            if (compress_size >= uncompress_size) {
+                return false;
+            }
+
+            // INFO_LOG("string encode_to_brotli, uncompress_size: %u, compress_size: %u", uncompress_size, compress_size)
+
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::BROTLI_SAME_LENGTH));
+            uint8_t str_length = static_cast<uint8_t>(_min_length);
+            buf->append((const char*) &str_length, sizeof(uint8_t));
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append((const char*) &compress_size, sizeof(uint32_t));
+            buf->append(compress_data.get(), compress_size);
+            return true;
+        }
+
+        void decode_from_brotli_same_length(const char* buf) {
+            uint32_t str_length = *reinterpret_cast<const uint8_t*>(buf);
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t));
+            uint32_t compress_size = *reinterpret_cast<const uint32_t*>(buf + sizeof(uint8_t) + sizeof(uint32_t));
+            std::unique_ptr<char[]> compress_data = std::make_unique<char[]>(compress_size);
+            std::unique_ptr<char[]> uncompress_data = std::make_unique<char[]>(uncompress_size);
+            std::memcpy(compress_data.get(), buf + sizeof(uint8_t) + 2 * sizeof(uint32_t), compress_size);
+            compression::decompress_string_brotli(compress_data.get(), compress_size, uncompress_data.get(), uncompress_size);
+
+            for (uint16_t i = 0; i < DATA_BLOCK_ITEM_NUMS; ++i) {
+                _column_values[i] = ColumnValue(uncompress_data.get() + i * str_length, str_length);
+            }
+        }
+
+        void encode_to_plain(const std::string& uncompress_buf, std::string* buf) const {
+            put_fixed(buf, static_cast<uint8_t>(StringCompressType::PLAIN));
+            uint32_t uncompress_size = static_cast<uint32_t>(uncompress_buf.size());
+            buf->append((const char*) &uncompress_size, sizeof(uint32_t));
+            buf->append(uncompress_buf.c_str(), uncompress_size);
+        }
+
+        void decode_from_plain(const char* buf) {
+            uint32_t uncompress_size = *reinterpret_cast<const uint32_t*>(buf);
+            std::string uncompress_buf;
+            uncompress_buf.resize(uncompress_size);
+            std::memcpy(uncompress_buf.data(), buf + sizeof(uint32_t), uncompress_size);
+            size_t str_offset = 0;
+            uint16_t str_count = 0;
+
+            while (str_offset != uncompress_size) {
+                uint8_t str_length = *reinterpret_cast<uint8_t*>(uncompress_buf.data() + str_offset);
+                str_offset += sizeof(uint8_t);
+                _column_values[str_count] = ColumnValue(uncompress_buf.data() + str_offset, str_length);
+                str_offset += str_length;
+                str_count++;
+            }
+
+            assert(str_offset == uncompress_size);
+            assert(str_count == DATA_BLOCK_ITEM_NUMS);
         }
     };
 
     // tsm file representation in memory
     struct TsmFile {
-        struct ColumnIterator {
-            std::vector<DataBlock>::const_iterator _block_iter;
-            std::vector<ColumnValue>::const_iterator _value_iter;
-
-            ColumnIterator(std::vector<DataBlock>::const_iterator block_iter,
-                           std::vector<ColumnValue>::const_iterator value_iter)
-                    : _block_iter(block_iter), _value_iter(value_iter) {}
-
-            ColumnIterator &operator++() {
-                ++_value_iter;
-                return *this;
-            }
-
-            const ColumnValue &operator*() {
-                if (_value_iter == (*_block_iter)._column_values.cend()) {
-                    ++_block_iter;
-                    _value_iter = (*_block_iter)._column_values.cbegin();
-                }
-                return *_value_iter;
-            }
-
-            bool operator==(const ColumnIterator &other) const {
-                return _block_iter == other._block_iter && _value_iter == other._value_iter;
-            }
-
-            bool operator!=(const ColumnIterator &other) const {
-                return !(*this == other);
-            }
-        };
-
-        std::vector<DataBlock> _data_blocks;
+        std::vector<std::unique_ptr<DataBlock>> _data_blocks;
         std::vector<IndexBlock> _index_blocks;
-        Footer _footer;
+        uint32_t _index_offset;
 
         TsmFile() = default;
 
-        TsmFile(TsmFile &&other) : _data_blocks(std::move(other._data_blocks)),
-                                   _index_blocks(std::move(other._index_blocks)),
-                                   _footer(other._footer) {}
-
         ~TsmFile() = default;
 
-        ColumnIterator column_begin(const std::string &column_name) const;
+        void encode_to(std::string *buf) {
+            size_t index_entry_count = 0;
 
-        ColumnIterator column_end(const std::string &column_name) const;
+            for (auto &index_block: _index_blocks) {
+                for (auto &index_entry: index_block._index_entries) {
+                    index_entry._offset = buf->size();
+                    _data_blocks[index_entry_count++]->encode_to_compress(buf);
+                    index_entry._size = buf->size() - index_entry._offset;
+                }
+            }
 
-        void encode_to(std::string *buf);
+            assert(index_entry_count == _data_blocks.size());
+            _index_offset = buf->size();
 
-        void decode_from(const uint8_t *buf, uint32_t file_size);
+            for (const auto &block: _index_blocks) {
+                block.encode_to(buf);
+            }
 
-        void write_to_file(const Path &tsm_file_path);
+            buf->append(reinterpret_cast<const char*>(&_index_offset), sizeof(uint32_t));
+        }
 
-        void read_from_file(const Path &tsm_file_path);
+        void write_to_file(const Path &tsm_file_path) {
+            std::string buf;
+            buf.reserve(10 * 1024 * 1024);
+            encode_to(&buf);
+            io::stream_write_string_to_file(tsm_file_path, buf);
+        }
 
-        static void get_size_and_offset(const Path& tsm_file_path, uint32_t& file_size, uint32_t& index_offset, uint32_t& footer_offset);
-
-        static void get_footer(const Path& tsm_file_path, Footer& footer);
+        static void get_size_and_offset(const Path& tsm_file_path, uint32_t* file_size, uint32_t* index_offset) {
+            std::ifstream input_file(tsm_file_path, std::ios::binary | std::ios::ate);
+            if (!input_file.is_open() || !input_file.good()) {
+                throw std::runtime_error("failed to open the file");
+            }
+            *file_size = input_file.tellg();
+            input_file.seekg(-sizeof(uint32_t), std::ios::end);
+            input_file.read(reinterpret_cast<char*>(index_offset), sizeof(uint32_t));
+            input_file.close();
+        }
     };
 }

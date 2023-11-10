@@ -5,6 +5,8 @@
 // the interface semantics correctly.
 //
 
+#include <omp.h>
+
 #include "TSDBEngineImpl.h"
 #include <fstream>
 
@@ -19,10 +21,12 @@ namespace LindormContest {
             : TSDBEngine(dataDirPath) {
         Path compaction_data_path = _get_root_path() / "compaction";
         _finish_compaction = std::filesystem::exists(compaction_data_path);
+        _convert_manager = std::make_shared<GlobalConvertManager>(_get_root_path());
+        if (!_finish_compaction) {
+            _writer_manager = std::make_unique<TsmWriterManager>(_get_root_path(), _convert_manager);
+        }
         _index_manager = std::make_shared<GlobalIndexManager>();
-        _compaction_manager = std::make_shared<GlobalCompactionManager>(_get_root_path(), _index_manager);
-        _writer_manager = std::make_unique<TsmWriterManager>(_index_manager, _finish_compaction, _compaction_manager, _get_root_path());
-        _latest_manager = std::make_unique<GlobalLatestManager>();
+        _latest_manager = std::make_unique<GlobalLatestManager>(_get_root_path(), _finish_compaction);
         _tr_manager = std::make_unique<GlobalTimeRangeManager>(_get_root_path(), _finish_compaction, _index_manager);
         _agg_manager = std::make_unique<GlobalAggregateManager>(_get_root_path(), _finish_compaction, _index_manager);
         _ds_manager = std::make_unique<GlobalDownSampleManager>(_get_root_path(), _finish_compaction, _index_manager);
@@ -32,36 +36,34 @@ namespace LindormContest {
 
     int TSDBEngineImpl::connect() {
         _load_schema_from_file();
-        Path compaction_data_path = _get_root_path() / "compaction";
-        _finish_compaction = std::filesystem::exists(compaction_data_path);
         if (_schema == nullptr) {
             return 0;
         }
         assert(_finish_compaction);
         _index_manager->decode_from_file(_get_root_path(), _schema);
-        _latest_manager->load_latest_records_from_file(_get_latest_records_path(), _schema);
-        _tr_manager->set_schema(_schema);
-        _agg_manager->set_schema(_schema);
-        _ds_manager->set_schema(_schema);
-        _compaction_manager->set_schema(_schema);
+        _latest_manager->init(_schema);
+        _tr_manager->init(_schema);
+        _agg_manager->init(_schema);
+        _ds_manager->init(_schema);
+        _convert_manager->init(_schema);
+        _get_latest_records();
         return 0;
     }
 
     int TSDBEngineImpl::createTable(const std::string &tableName, const Schema &schema) {
         _schema = std::make_shared<Schema>(schema);
-        _writer_manager->set_schema(_schema);
-        _tr_manager->set_schema(_schema);
-        _agg_manager->set_schema(_schema);
-        _ds_manager->set_schema(_schema);
-        _compaction_manager->set_schema(_schema);
+        _writer_manager->init(_schema);
+        _latest_manager->init(_schema);
+        _tr_manager->init(_schema);
+        _agg_manager->init(_schema);
+        _ds_manager->init(_schema);
+        _convert_manager->init(_schema);
         return 0;
     }
 
     int TSDBEngineImpl::shutdown() {
         _save_schema_to_file();
-        _latest_manager->save_latest_records_to_file(_get_latest_records_path(), _schema);
-        _writer_manager->finalize_close_flush_stream();
-        _compaction_manager->finalize_compaction();
+        _convert_manager->finalize_convert();
         if (std::filesystem::exists(_get_root_path() / "no-compaction")) {
             std::filesystem::remove_all(_get_root_path() / "no-compaction");
         }
@@ -70,12 +72,7 @@ namespace LindormContest {
 
     int TSDBEngineImpl::write(const WriteRequest &writeRequest) {
         for (const auto &row: writeRequest.rows) {
-            _latest_manager->add_latest(row);
-            uint16_t vin_num = decode_vin(row.vin);
-            {
-                std::unique_lock<std::shared_mutex> l(_mutexes[vin_num]);
-                _writer_manager->append(row);
-            }
+            _writer_manager->append(row);
         }
         return 0;
     }
@@ -86,8 +83,15 @@ namespace LindormContest {
             if (unlikely(vin_num == INVALID_VIN_NUM)) {
                 continue;
             }
-            INFO_LOG("executeLatestQuery vin:%s",vin.vin)
-            pReadRes.emplace_back(std::move(_latest_manager->get_latest(vin_num, vin, pReadReq.requestedColumns)));
+            Row result_row;
+            result_row.vin = vin;
+            if (_finish_compaction) {
+                _latest_manager->query_latest<true>(vin_num, pReadReq.requestedColumns, result_row);
+            } else {
+                _writer_manager->flush(vin_num);
+                _latest_manager->query_latest<false>(vin_num, pReadReq.requestedColumns, result_row);
+            }
+            pReadRes.emplace_back(std::move(result_row));
         }
         return 0;
     }
@@ -97,14 +101,14 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        INFO_LOG("executeTimeRangeQuery begin vin:%s",trReadReq.vin.vin)
-        {
-            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
-            _tr_manager->query_time_range(vin_num, trReadReq.timeLowerBound,
-                                          trReadReq.timeUpperBound, trReadReq.requestedColumns,
-                                          trReadRes);
+        if (_finish_compaction) {
+            _tr_manager->query_time_range<true>(vin_num, trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
+                                          trReadReq.requestedColumns, trReadRes);
+        } else {
+            _writer_manager->flush(vin_num);
+            _tr_manager->query_time_range<false>(vin_num, trReadReq.vin, trReadReq.timeLowerBound, trReadReq.timeUpperBound,
+                                                          trReadReq.requestedColumns, trReadRes);
         }
-        INFO_LOG("executeTimeRangeQuery after")
         return 0;
     }
 
@@ -113,13 +117,14 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        {
-            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
-            _agg_manager->query_aggregate(vin_num, aggregationReq.timeLowerBound,
-                                          aggregationReq.timeUpperBound, aggregationReq.columnName,
-                                          aggregationReq.aggregator, aggregationRes);
+        if (_finish_compaction) {
+            _agg_manager->query_aggregate<true>(vin_num, aggregationReq.vin, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+                                          aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
+        } else {
+            _writer_manager->flush(vin_num);
+            _agg_manager->query_aggregate<false>(vin_num, aggregationReq.vin, aggregationReq.timeLowerBound, aggregationReq.timeUpperBound,
+                                                                          aggregationReq.columnName, aggregationReq.aggregator, aggregationRes);
         }
-        INFO_LOG("executeAggregateQuery")
         return 0;
     }
 
@@ -128,14 +133,17 @@ namespace LindormContest {
         if (unlikely(vin_num == INVALID_VIN_NUM)) {
             return 0;
         }
-        {
-            std::shared_lock<std::shared_mutex> l(_mutexes[vin_num]);
-            _ds_manager->query_down_sample(vin_num, downsampleReq.timeLowerBound,
-                                           downsampleReq.timeUpperBound, downsampleReq.interval,
-                                           downsampleReq.columnName, downsampleReq.aggregator,
+        if (_finish_compaction) {
+            _ds_manager->query_down_sample<true>(vin_num, downsampleReq.vin, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+                                           downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
                                            downsampleReq.columnFilter, downsampleRes);
+        } else {
+            _writer_manager->flush(vin_num);
+            _ds_manager->query_down_sample<false>(vin_num, downsampleReq.vin, downsampleReq.timeLowerBound, downsampleReq.timeUpperBound,
+                                                 downsampleReq.interval, downsampleReq.columnName, downsampleReq.aggregator,
+                                                 downsampleReq.columnFilter, downsampleRes);
         }
-        INFO_LOG("executeDownsampleQuery")
+
         return 0;
     }
 
@@ -152,6 +160,9 @@ namespace LindormContest {
     }
 
     void TSDBEngineImpl::_load_schema_from_file() {
+        if (!std::filesystem::exists(_get_schema_path())) {
+            return;
+        }
         std::ifstream schema_fin;
         schema_fin.open(_get_schema_path(), std::ios::in);
         if (!schema_fin.is_open() || !schema_fin.good()) {
@@ -160,7 +171,7 @@ namespace LindormContest {
         }
         std::map<std::string, ColumnType> column_type_map;
 
-        for (int i = 0; i < SCHEMA_COLUMN_NUMS; ++i) {
+        for (uint16_t i = 0; i < SCHEMA_COLUMN_NUMS; ++i) {
             std::string column_name;
             uint8_t column_type_int;
             schema_fin >> column_name;
@@ -169,5 +180,43 @@ namespace LindormContest {
         }
 
         _schema = std::make_shared<Schema>(std::move(column_type_map));
+    }
+
+    void TSDBEngineImpl::_get_latest_records() {
+        std::set<std::string> column_names;
+
+        for (const auto &item: _schema->columnTypeMap) {
+            column_names.insert(item.first);
+        }
+
+#pragma omp parallel for num_threads(8)
+        for (uint16_t i = 0; i < VIN_NUM_RANGE; ++i) {
+            std::vector<Row> latest_row;
+            _tr_manager->query_time_range<true>(i, encode_vin(i), MAX_TS, MAX_TS + 1, column_names, latest_row);
+            assert(latest_row.size() == 1);
+            _latest_manager->set_latest_row(i, latest_row[0]);
+        }
+    }
+
+    void TSDBEngineImpl::_print_schema() {
+        std::stringstream ss;
+
+        for (const auto& pair : _schema->columnTypeMap) {
+            switch (pair.second) {
+                case COLUMN_TYPE_INTEGER:
+                    ss << pair.first << ": { type: int }" << std::endl;
+                    break;
+                case COLUMN_TYPE_DOUBLE_FLOAT:
+                    ss << pair.first << ": { type: double }" << std::endl;
+                    break;
+                case COLUMN_TYPE_STRING:
+                    ss << pair.first << ": { type: string }" << std::endl;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        INFO_LOG("schema:\n%s", ss.str().c_str())
     }
 }

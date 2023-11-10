@@ -28,6 +28,7 @@ set(EXECUTABLES
         # io_test
         # tsm_test
         multi_thread_test
+        compression_test
         )
 
 foreach(EXECUTABLE ${EXECUTABLES})
@@ -35,5 +36,5 @@ foreach(EXECUTABLE ${EXECUTABLES})
     target_link_libraries(${EXECUTABLE} PRIVATE Threads::Threads gtest gtest_main DBLib)
 endforeach()
 
-add_executable(ut_test ${TEST_LIST})
+add_executable(ut_test ${TEST_LIST} compression_test.cpp)
 target_link_libraries(ut_test Threads::Threads gtest gtest_main DBLib)

@@ -14,7 +14,7 @@
 #include "time_range_manager.h"
 #include "aggregate_manager.h"
 #include "downsample_manager.h"
-#include "compaction_manager.h"
+#include "convert_manager.h"
 #include "storage/tsm_writer.h"
 
 namespace LindormContest {
@@ -52,11 +52,13 @@ namespace LindormContest {
 
         Path _get_schema_path() const { return _get_root_path() / "schema.txt"; }
 
-        Path _get_latest_records_path() const { return _get_root_path() / "latest_records.dat"; }
+        void _get_latest_records();
 
         void _save_schema_to_file();
 
         void _load_schema_from_file();
+
+        void _print_schema();
 
         bool _finish_compaction;
         SchemaSPtr _schema;
@@ -66,8 +68,7 @@ namespace LindormContest {
         GlobalTimeRangeManagerUPtr _tr_manager;
         GlobalAggregateManagerUPtr _agg_manager;
         GlobalDownSampleManagerUPtr _ds_manager;
-        GlobalCompactionManagerSPtr _compaction_manager;
-        std::shared_mutex _mutexes[VIN_NUM_RANGE];
+        GlobalConvertManagerSPtr _convert_manager;
     }; // End class TSDBEngineImpl.
 
 }

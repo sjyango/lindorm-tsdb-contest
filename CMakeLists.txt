@@ -20,13 +20,14 @@ set(CMAKE_BUILD_TYPE "DEBUG")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -fopenmp -lstdc++fs")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -lstdc++fs")
 
-set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=address -DADDRESS_SANITIZER")
+set(CXX_FLAGS_ASAN "${CXX_GCC_FLAGS} -O0 -fsanitize=address -DADDRESS_SANITIZER")
 
-set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -std=c++20 -O0 -fsanitize=leak -DLEAK_SANITIZER")
+set(CXX_FLAGS_LSAN "${CXX_GCC_FLAGS} -O0 -fsanitize=leak -DLEAK_SANITIZER")
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
+    set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
     set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
     set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
@@ -60,4 +61,4 @@ add_subdirectory(test)
 file(GLOB_RECURSE sources_c "${PROJECT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE sources_cpp "${PROJECT_SOURCE_DIR}/source/*.cpp")
 
-add_library(DBLib ${sources_c} ${sources_cpp} include/compaction_manager.h include/base.h)
+add_library(DBLib ${sources_c} ${sources_cpp} include/base.h)

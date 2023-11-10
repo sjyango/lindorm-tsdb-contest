@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "spinlock.h"
-#include "concurrentqueue.h"
 
 namespace LindormContest {
 
@@ -31,8 +30,6 @@ namespace LindormContest {
 
     using ThreadPoolSPtr = std::shared_ptr<ThreadPool>;
     using ThreadPoolUPtr = std::unique_ptr<ThreadPool>;
-
-    // using ConcurrentQueue = moodycamel::ConcurrentQueue<std::function<void()>>;
 
     class ConcurrentQueue {
     public:
@@ -74,8 +71,8 @@ namespace LindormContest {
     public:
         explicit ThreadPool(const int thread_nums)
                 : _threads(std::vector<std::thread>(thread_nums)), _shutdown(false) {
-            for (auto & _thread : _threads) {
-                _thread = std::thread(ThreadWorker(this));
+            for (int i = 0; i < thread_nums; ++i) {
+                _threads[i] = std::thread(ThreadWorker(this));
             }
         }
 

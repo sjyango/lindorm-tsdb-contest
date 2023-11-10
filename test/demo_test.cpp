@@ -15,17 +15,38 @@
 
 #include <gtest/gtest.h>
 
-#include "common/concurrentqueue.h"
+#include <random>
+
+#include "common/coding.h"
 
 namespace LindormContest::test {
 
-    TEST(DemoTest, DemoTest) {
-        moodycamel::ConcurrentQueue<int> q;
-        q.enqueue(25);
+    static int32_t generate_random_int32(int32_t start, int32_t end) {
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<int32_t> dis(start, end);
+        return dis(gen);
+    }
 
-        int item;
-        bool found = q.try_dequeue(item);
-        assert(found && item == 25);
+    TEST(DemoTest, DemoTest) {
+        for (int WIDTH = 1; WIDTH <= 8; ++WIDTH) {
+            const int32_t MIN = generate_random_int32(-10000, 10000);
+            const int32_t MAX = MIN + std::pow(2, WIDTH) - 1;
+            const int32_t N = 10000;
+
+            std::vector<int32_t> src(N);
+            std::vector<int32_t> dst(N);
+            char compress_data[N * sizeof(int32_t)];
+
+            for (int32_t i = 0; i < N; ++i) {
+                src[i] = generate_random_int32(MIN, MAX);
+            }
+
+            bit_packing_encoding(WIDTH, MIN, src.data(), N, compress_data);
+            bit_packing_decoding(WIDTH, MIN, compress_data, dst.data(), N);
+
+            ASSERT_EQ(src, dst);
+        }
     }
 
 }

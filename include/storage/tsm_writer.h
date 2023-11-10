@@ -15,11 +15,10 @@
 
 #pragma once
 
-#include <variant>
 #include <atomic>
 
 #include "index_manager.h"
-#include "compaction_manager.h"
+#include "convert_manager.h"
 #include "struct/Schema.h"
 #include "common/coding.h"
 #include "common/thread_pool.h"
@@ -31,31 +30,66 @@ namespace LindormContest {
 
     class TsmWriter {
     public:
-        TsmWriter(uint16_t vin_num, GlobalIndexManagerSPtr index_manager,
-                  GlobalCompactionManagerSPtr compaction_manager, const Path& flush_dir_path);
+        TsmWriter(uint16_t vin_num, const Path& flush_dir_path, GlobalConvertManagerSPtr convert_manager)
+                : _vin_num(vin_num), _convert_manager(convert_manager),
+                  _flush_dir_path(flush_dir_path), _schema(nullptr) {}
 
-        ~TsmWriter();
+        ~TsmWriter() = default;
 
-        void set_schema(SchemaSPtr schema);
+        void init(SchemaSPtr schema) {
+            _schema = schema;
+            for (uint16_t file_idx = 0; file_idx < TSM_FILE_COUNT; ++file_idx) {
+                Path flush_file_path = _flush_dir_path / std::to_string(file_idx);
+                _streams[file_idx].open(flush_file_path, std::ios::out | std::ios::binary);
+                assert(_streams[file_idx].is_open() && _streams[file_idx].good());
+                _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
+                _write_nums[file_idx] = 0;
+            }
+        }
 
-        void open_flush_stream();
+        void append(const Row& row) {
+            uint16_t file_idx = decode_ts(row.timestamp) / FILE_CONVERT_SIZE;
+            {
+                std::lock_guard<std::mutex> l(_mutexes[file_idx]);
+                io::serialize_row(row, false, _cache[file_idx]);
+                if (unlikely(_cache[file_idx].size() >= ROW_CACHE_SIZE)) {
+                    _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                    _cache[file_idx].clear();
+                    _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
+                }
+                if (unlikely(++_write_nums[file_idx] == FILE_CONVERT_SIZE)) {
+                    if (!_cache[file_idx].empty()) {
+                        _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                        _cache[file_idx].clear();
+                        _cache[file_idx].shrink_to_fit();
+                    }
+                    _streams[file_idx].close();
+                    _convert_manager->convert_async(_vin_num, file_idx);
+                }
+            }
+        }
 
-        void close_flush_stream();
-
-        void append(const Row& row);
-
-        void finalize_close_flush_stream();
+        void flush() {
+            for (uint16_t file_idx = 0; file_idx < TSM_FILE_COUNT; ++file_idx) {
+                std::lock_guard<std::mutex> l(_mutexes[file_idx]);
+                if (!_cache[file_idx].empty()) {
+                    _streams[file_idx].write(_cache[file_idx].data(), _cache[file_idx].size());
+                    _cache[file_idx].clear();
+                    _cache[file_idx].reserve(ROW_CACHE_SIZE + 1600);
+                }
+                _streams[file_idx].flush();
+            }
+        }
 
     private:
         uint16_t _vin_num;
         Path _flush_dir_path;
         SchemaSPtr _schema;
-        uint16_t _flush_nums;
-        uint16_t _file_nums;
-        uint16_t _compaction_nums;
-        std::unique_ptr<std::ofstream> _output_file;
-        GlobalIndexManagerSPtr _index_manager;
-        GlobalCompactionManagerSPtr _compaction_manager;
+        std::string _cache[TSM_FILE_COUNT];
+        uint16_t _write_nums[TSM_FILE_COUNT];
+        std::mutex _mutexes[TSM_FILE_COUNT];
+        std::ofstream _streams[TSM_FILE_COUNT];
+        GlobalConvertManagerSPtr _convert_manager;
     };
 
     class TsmWriterManager;
@@ -64,121 +98,32 @@ namespace LindormContest {
 
     class TsmWriterManager {
     public:
-        TsmWriterManager(GlobalIndexManagerSPtr index_manager, bool finish_compaction,
-                         GlobalCompactionManagerSPtr compaction_manager, const Path& root_path);
+        TsmWriterManager(const Path& root_path, GlobalConvertManagerSPtr convert_manager) {
+            for (uint16_t vin_num = 0; vin_num < VIN_NUM_RANGE; ++vin_num) {
+                Path flush_dir_path = root_path / "no-compaction" / std::to_string(vin_num);
+                std::filesystem::create_directories(flush_dir_path);
+                _tsm_writers[vin_num] = std::make_unique<TsmWriter>(vin_num, flush_dir_path, convert_manager);
+            }
+        }
 
-        ~TsmWriterManager();
+        ~TsmWriterManager() = default;
 
-        void set_schema(SchemaSPtr schema);
+        void init(SchemaSPtr schema) {
+            for (auto &tsm_writer: _tsm_writers) {
+                tsm_writer->init(schema);
+            }
+        }
 
-        void append(const Row& row);
+        void append(const Row& row) {
+            _tsm_writers[decode_vin(row.vin)]->append(row);
+        }
 
-        void finalize_close_flush_stream();
+        void flush(uint16_t vin_num) {
+            _tsm_writers[vin_num]->flush();
+        }
 
     private:
         std::unique_ptr<TsmWriter> _tsm_writers[VIN_NUM_RANGE];
     };
 
 }
-
-
-// void encode_to(std::string* buf) const {
-//     std::string uncompress_ts_data;
-//     std::string uncompress_val_data;
-//     uncompress_ts_data.append(reinterpret_cast<const char*>(_tss.data()), _count * sizeof(int64_t));
-//
-//     for (const auto &val: _column_values) {
-//         uncompress_val_data.append(val.columnData, val.getRawDataSize());
-//     }
-//
-//     uint32_t uncompress_ts_size = uncompress_ts_data.size();
-//     uint32_t uncompress_val_size = uncompress_val_data.size();
-//
-//     std::unique_ptr<char[]> compress_ts_data = std::make_unique<char[]>(uncompress_ts_size * 1.2);
-//     std::unique_ptr<char[]> compress_val_data = std::make_unique<char[]>(uncompress_val_size * 1.2);
-//
-//     uint32_t compress_ts_size = compression::compress_int64(uncompress_ts_data.c_str(),uncompress_ts_size, compress_ts_data.get());
-//     uint32_t compress_val_size;
-//
-//     switch (_type) {
-//         case COLUMN_TYPE_INTEGER:
-//             compress_val_size = compression::compress_int32(uncompress_val_data.c_str(), uncompress_val_size, compress_val_data.get());
-//             break;
-//         case COLUMN_TYPE_DOUBLE_FLOAT:
-//             compress_val_size = compression::compress_float(uncompress_val_data.c_str(), uncompress_val_size, compress_val_data.get());
-//             break;
-//         case COLUMN_TYPE_STRING:
-//             compress_val_size = compression::compress_string(uncompress_val_data.c_str(), uncompress_val_size, compress_val_data.get());
-//             break;
-//         default:
-//             throw std::runtime_error("invalid column type");
-//     }
-//
-//     put_fixed(buf, uncompress_ts_size);
-//     put_fixed(buf, compress_ts_size);
-//     buf->append(compress_ts_data.get(), compress_ts_size);
-//     put_fixed(buf, uncompress_val_size);
-//     put_fixed(buf, compress_val_size);
-//     buf->append(compress_val_data.get(), compress_val_size);
-// }
-//
-// void decode_from(const uint8_t*& buf) {
-//     _count = decode_fixed<uint32_t>(buf);
-//     _type = (ColumnType) decode_fixed<uint8_t>(buf);
-//
-//     // decode ts
-//     uint32_t uncompress_ts_size = decode_fixed<uint32_t>(buf);
-//     assert(uncompress_ts_size == _count * sizeof(int64_t));
-//     uint32_t compress_ts_size = decode_fixed<uint32_t>(buf);
-//     std::unique_ptr<char[]> uncompress_ts_data = std::make_unique<char[]>(uncompress_ts_size * 1.2);
-//     auto start_ptr = compression::decompress_int64(reinterpret_cast<const char*>(buf), compress_ts_size,
-//                                                    uncompress_ts_data.get(), uncompress_ts_size);
-//     _tss.resize(_count);
-//     std::memcpy(_tss.data(), start_ptr, uncompress_ts_size);
-//     buf += compress_ts_size;
-//
-//     // decode value
-//     uint32_t uncompress_val_size = decode_fixed<uint32_t>(buf);
-//     uint32_t compress_val_size = decode_fixed<uint32_t>(buf);
-//     std::unique_ptr<char[]> uncompress_val_data = std::make_unique<char[]>(uncompress_val_size * 1.2);
-//
-//     switch (_type) {
-//         case COLUMN_TYPE_INTEGER: {
-//             assert(uncompress_val_size == _count * sizeof(int32_t));
-//             auto* int_ptr = reinterpret_cast<int32_t*>(
-//                     compression::decompress_int32(reinterpret_cast<const char*>(buf), compress_val_size,
-//                                                   uncompress_val_data.get(), uncompress_val_size));
-//             for (int32_t i = 0; i < _count; ++i) {
-//                 _column_values.emplace_back(int_ptr[i]);
-//             }
-//             break;
-//         }
-//         case COLUMN_TYPE_DOUBLE_FLOAT: {
-//             assert(uncompress_val_size == _count * sizeof(double_t));
-//             auto* double_ptr = reinterpret_cast<double_t*>(
-//                     compression::decompress_float(reinterpret_cast<const char*>(buf), compress_val_size,
-//                                                   uncompress_val_data.get(), uncompress_val_size));
-//             for (int32_t i = 0; i < _count; ++i) {
-//                 _column_values.emplace_back(double_ptr[i]);
-//             }
-//             break;
-//         }
-//         case COLUMN_TYPE_STRING: {
-//             compression::decompress_string(reinterpret_cast<const char*>(buf), compress_val_size,
-//                                            uncompress_val_data.get(), uncompress_val_size);
-//             size_t str_offset = 0;
-//             while (str_offset != uncompress_val_size) {
-//                 int32_t str_length = *reinterpret_cast<int32_t *>(uncompress_val_data.get() + str_offset);
-//                 str_offset += sizeof(int32_t);
-//                 _column_values.emplace_back(uncompress_val_data.get() + str_offset, str_length);
-//                 str_offset += str_length;
-//             }
-//             assert(str_offset == uncompress_val_size);
-//             break;
-//         }
-//         default:
-//             throw std::runtime_error("invalid column type");
-//     }
-//
-//     buf += compress_val_size;
-// }
